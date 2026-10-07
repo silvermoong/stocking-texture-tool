@@ -1,0 +1,15 @@
+# Python 3.12. install.bat installs these into .venv (with uv), plus torch from requirements-torch-cuda.txt on a
+# machine with an NVIDIA card or requirements-torch-cpu.txt on any other; the global Python is left alone.
+# By hand: pip install -r requirements.txt -r requirements-torch-cuda.txt
+numpy==2.5.3
+scipy==1.18.1
+opencv-python-headless==5.0.0.93
+contourpy==1.4.0
+pillow==12.3.0
+psd-tools==1.24.0
+fastapi==0.142.2
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+segment-anything==1.0
+transformers==5.19.0
+huggingface-hub==1.33.0

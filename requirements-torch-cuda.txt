@@ -1,0 +1,4 @@
+# torch for NVIDIA cards (CUDA 12.8 build: Turing / RTX 20 series and newer, driver 570 or later)
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128

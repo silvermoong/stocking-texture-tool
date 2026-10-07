@@ -1,0 +1,4 @@
+# Windows scripts get CRLF in every checkout and in GitHub's ZIP downloads (cmd can misread a batch file with LF only)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

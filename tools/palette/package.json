@@ -1,0 +1,13 @@
+{
+  "name": "stocking-palette",
+  "private": true,
+  "type": "module",
+  "description": "Generates the UI colour tokens in stocking/static/style.css and the region colours in stocking/document.py",
+  "scripts": {
+    "audit": "node palette.mjs",
+    "write": "node palette.mjs --write"
+  },
+  "devDependencies": {
+    "chroma-js": "3.2.0"
+  }
+}

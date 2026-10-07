@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>丝袜纹理工具</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2c2c2c">
+<link rel="icon" href="/static/icon.ico" sizes="16x16 20x20 24x24 32x32 40x40 48x48 64x64 96x96 128x128 256x256">
+<link rel="icon" type="image/png" href="/static/icon-256.png" sizes="256x256">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-mode="edit" class="no-doc">
+<a class="skip" href="#stage">跳到画面</a>
+<h1 class="visually-hidden">丝袜纹理工具</h1>
+<header class="bar">
+  <button id="btn-open" class="btn" title="打开 (Ctrl+O)">打开…</button>
+  <div class="modes" role="tablist" aria-label="页面">
+    <button class="mode" id="tab-edit" data-mode="edit" role="tab" aria-controls="pane-edit" title="涂部位、画走向线">引导</button>
+    <button class="mode" id="tab-look" data-mode="look" role="tab" aria-controls="pane-look">纹理</button>
+  </div>
+  <div class="spacer"></div>
+  <button id="btn-undo" class="btn" title="撤销 (Ctrl+Z)" disabled>撤销</button>
+  <button id="btn-redo" class="btn" title="重做 (Ctrl+Shift+Z)" disabled>重做</button>
+  <div class="sep edit-only"></div>
+  <button id="btn-fit" class="btn edit-only" title="适应窗口 (F)">适应窗口</button>
+  <button id="btn-100" class="btn num edit-only" title="实际像素 (1)">100%</button>
+  <span id="zoom-pct" class="zoom num edit-only"></span>
+  <div class="sep"></div>
+  <div class="split">
+    <button id="btn-export" class="btn primary" disabled>导出成品图</button>
+    <button id="btn-export-more" class="btn primary more" disabled aria-haspopup="menu" aria-expanded="false"
+            aria-controls="export-menu" aria-label="选择导出什么" title="选择导出什么">
+      <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </div>
+  <div class="sep"></div>
+  <div class="seg lang" role="radiogroup" aria-label="界面语言">
+    <button class="seg-btn" role="radio" data-lang="zh" lang="zh" translate="no" aria-label="中文" title="中文">中</button>
+    <button class="seg-btn" role="radio" data-lang="en" lang="en" translate="no" aria-label="English" title="English">EN</button>
+  </div>
+</header>
+
+<aside class="side">
+ <div class="side-pane edit-only" id="pane-edit" role="tabpanel" aria-labelledby="tab-edit">
+  <section class="step" data-step="regions">
+    <div class="step-num" aria-hidden="true">1</div>
+    <div class="step-body">
+      <div class="step-head">
+        <h2>部位</h2>
+        <button id="btn-add-region" class="icon-btn add" title="添加部位" aria-label="添加部位">+</button>
+      </div>
+      <ul id="region-list" class="region-list" aria-label="部位"></ul>
+      <div class="tools" role="radiogroup" aria-label="部位工具">
+        <button class="tool" data-tool="segment" role="radio" aria-keyshortcuts="S" title="点选：左键把点到的部分加进当前部位，右键减去">点选<kbd aria-hidden="true" translate="no">S</kbd></button>
+        <button class="tool" data-tool="brush" role="radio" aria-keyshortcuts="B" title="画笔：涂当前部位，右键擦除">画笔<kbd aria-hidden="true" translate="no">B</kbd></button>
+        <button class="tool" data-tool="erase" role="radio" aria-keyshortcuts="E" title="橡皮：擦当前部位">橡皮<kbd aria-hidden="true" translate="no">E</kbd></button>
+        <button class="tool" data-tool="cut" role="radio" aria-keyshortcuts="K" title="切开：在当前部位上画一条线，把它分割成两块">切开<kbd aria-hidden="true" translate="no">K</kbd></button>
+      </div>
+      <label class="slider" for="brush-size">
+        <span>笔刷</span>
+        <input id="brush-size" type="range" min="2" max="400" step="1" value="40">
+        <span id="brush-val" class="num">40</span>
+      </label>
+      <p id="sam-status" class="note" role="status"></p>
+      <div class="shows">
+        <span class="lead">显示</span>
+        <label class="check"><input type="checkbox" id="show-regions" checked>部位</label>
+        <label class="check"><input type="checkbox" id="show-coverage">覆盖范围</label>
+      </div>
+      <p id="coverage-note" class="note" hidden></p>
+    </div>
+  </section>
+
+  <section class="step" data-step="strokes">
+    <div class="step-num" aria-hidden="true">2</div>
+    <div class="step-body">
+      <div class="step-head"><h2>走向</h2></div>
+      <div class="tools" role="radiogroup" aria-label="走向工具">
+        <button class="tool" data-tool="pen" role="radio" aria-keyshortcuts="P" title="走向：沿一道横纹画线，右键删除线">走向<kbd aria-hidden="true" translate="no">P</kbd></button>
+        <button class="tool" data-tool="wall" role="radio" aria-keyshortcuts="W" title="隔开：沿两块丝袜的交界画线，横纹不会穿过它。一块挡住另一块的会自动找到（虚线），贴在一起的（比如大腿压着小腿）要自己画；右键删除隔开线">隔开<kbd aria-hidden="true" translate="no">W</kbd></button>
+      </div>
+      <div class="mirror">
+        <button id="btn-mirror" class="btn" type="button" aria-disabled="true">镜像到…</button>
+      </div>
+      <p class="note">腿弯折、两块丝袜贴在一起时，横纹如果从交界处连了过去，用隔开（W）沿交界画一条线。</p>
+      <div class="shows">
+        <span class="lead">显示</span>
+        <label class="check"><input type="checkbox" id="show-strokes" checked>走向线</label>
+        <label class="check"><input type="checkbox" id="show-courses" checked>横纹</label>
+        <label class="check"><input type="checkbox" id="show-wales">纵纹</label>
+        <label class="check"><input type="checkbox" id="show-walls" checked>隔开线</label>
+      </div>
+    </div>
+  </section>
+ </div>
+
+ <div class="side-pane look-only" id="pane-look" role="tabpanel" aria-labelledby="tab-look">
+  <section class="group">
+    <h2>样式</h2>
+    <div class="styles" role="radiogroup" aria-label="样式">
+      <button class="opt" data-style="knit" role="radio">细线</button>
+      <button class="opt" data-style="loops" role="radio">针织</button>
+      <button class="opt" data-style="lines" role="radio">斜单线</button>
+      <button class="opt" data-style="grain" role="radio">加濑风</button>
+      <button class="opt" data-style="oily" role="radio"
+              title="试验样式：正对的地方透出肤色、边缘发暗，亮的一侧整片泛光，光照最亮处一条窄反光带着柔和的光晕。适合有明显高光的纯色黑丝。">油光<span class="exp-tag">试验</span></button>
+    </div>
+    <p id="style-note" class="note"></p>
+  </section>
+
+  <section class="group">
+    <div class="field">
+      <div class="field-head"><label for="density">密度</label><span id="density-val" class="val num"></span></div>
+      <input id="density" type="range" min="60" max="160" step="1" value="100">
+      <p id="density-note" class="sub"></p>
+    </div>
+    <div class="field" id="tilt-section">
+      <div class="field-head">
+        <label for="tilt">斜度</label>
+        <button class="info-btn" aria-expanded="false" aria-controls="tilt-info" aria-label="斜度说明">?</button>
+        <span id="tilt-val" class="val num"></span>
+      </div>
+      <input id="tilt" type="range" min="0" max="60" step="1" value="32">
+      <div id="tilt-info" class="info-pop" role="note" hidden>
+        <p>细线和横纹之间的夹角。0° 就是顺着横纹走，角度越大线越斜。</p>
+        <p>两条腿往相反的方向斜，左右对称成人字形：名字里带“左”“右”的部位按名字分边，其他部位按在画面里的位置分，画面左边的算左；夹在两边中间的（比如胯部）不斜。</p>
+      </div>
+    </div>
+    <div class="field">
+      <div class="field-head">
+        <label for="strength">强度</label>
+        <button id="strength-auto" class="auto-tag" type="button"
+                data-tip="按丝袜深浅自动设定：同样的纹理在浅色丝袜上更显眼，所以浅色会调低一些。拖动滑杆后就按你设的来。">自动</button>
+        <button id="btn-strength-auto" class="text-btn small" title="按丝袜深浅自动设定强度" hidden>改回自动</button>
+        <span id="strength-val" class="val num"></span>
+      </div>
+      <input id="strength" type="range" min="0" max="200" step="1" value="100">
+    </div>
+  </section>
+
+  <section class="group" id="sparkle-section">
+    <div class="group-head">
+      <h2>亮点</h2>
+      <button class="info-btn" aria-expanded="false" aria-controls="sparkle-info" aria-label="亮点说明">?</button>
+    </div>
+    <div id="sparkle-info" class="info-pop" role="note" hidden>
+      <p>纱线反光形成的细小闪光点，撒在丝袜受光的地方。下面的滑杆决定撒在哪、撒多少，都拉到 0 就是不加。</p>
+      <p><b>按深度</b>：放在鼓起来的地方，比如膝盖、腿正面、胸顶。</p>
+      <p><b>按画面亮部</b>：放在画师画出来的高光上。</p>
+      <p><b>关联</b>：打开时这两个数量保持一样，拖其中一个，另一个跟着变。</p>
+      <p><b>均匀分布</b>：整只丝袜上到处都撒，不挑位置，适合亮片丝、闪光丝。</p>
+      <p>有浅色印花或条纹的丝袜，把画面亮部调低，免得亮点落在印花上。</p>
+      <p>想自己决定位置：在 PSD 的“丝袜引导”组里画一层叫“亮点”的图层，再打开那个 PSD，这里会多一个滑杆。</p>
+    </div>
+    <div class="linked">
+      <div class="field">
+        <div class="field-head"><label for="sparkle-depth">按深度</label><span id="sparkle-depth-val" class="val num"></span></div>
+        <input id="sparkle-depth" type="range" min="0" max="300" step="5" value="100">
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="sparkle-bright">按画面亮部</label><span id="sparkle-bright-val" class="val num"></span></div>
+        <input id="sparkle-bright" type="range" min="0" max="300" step="5" value="100">
+      </div>
+      <button id="btn-sparkle-link" class="link-btn" aria-pressed="true" aria-label="关联"
+              title="关联：两个数量保持一样，拖其中一个，另一个跟着变；打开时以“按深度”的值为准"></button>
+    </div>
+    <div class="field unlinked">
+      <div class="field-head"><label for="sparkle-even">均匀分布</label><span id="sparkle-even-val" class="val num"></span></div>
+      <input id="sparkle-even" type="range" min="0" max="300" step="5" value="0">
+    </div>
+    <div id="sparkle-painted-field" class="field unlinked" hidden>
+      <div class="field-head"><label for="sparkle-painted">按 PSD 里的“亮点”层</label><span id="sparkle-painted-val" class="val num"></span></div>
+      <input id="sparkle-painted" type="range" min="0" max="300" step="5" value="0">
+    </div>
+    <p id="sparkle-note" class="note"></p>
+  </section>
+
+  <section class="group exclude">
+    <div class="field-head">
+      <label class="check"><input type="checkbox" id="exclude" checked>颜色排除</label>
+      <button class="info-btn" aria-expanded="false" aria-controls="exclude-info" aria-label="颜色排除说明">?</button>
+    </div>
+    <div id="exclude-info" class="info-pop" role="note" hidden>
+      <p>打开时，部位里颜色和丝袜差得远的地方不加纹理，比如金边、手套、露出来的皮肤。</p>
+      <p>薄丝袜透出肤色的地方（膝盖、脚尖）偏暖，有时会被误当成皮肤排除掉。这时关掉它，部位里每一处都加纹理。点细节上方的“标出问题”可以看到哪里被排除了（蓝色）。</p>
+    </div>
+    <p id="exclude-note" class="note"></p>
+    <button id="btn-look-reset" class="text-btn" title="样式、密度、斜度、强度和亮点都回到默认值">全部恢复默认</button>
+  </section>
+ </div>
+</aside>
+
+<main id="stage" class="stage" tabindex="-1">
+  <canvas id="view" class="edit-only" role="img" aria-label="画面：涂部位、画走向线"></canvas>
+  <div id="cutbar" class="cutbar edit-only" hidden>
+    <span id="cutbar-text"></span>
+    <label class="check" title="手画的线会抖，打开后切线会自动贴到附近的线稿上（比如乳沟的折线）"><input type="checkbox" id="cut-snap" checked>自动贴线</label>
+    <button id="btn-auto-cut" class="btn" title="把左右一对（两胸、两条腿）沿中线分开；不是左右一对的，自己画线切开">自动分割</button>
+  </div>
+  <div id="tiers" class="tiers edit-only" role="radiogroup" aria-label="点选范围" hidden>
+    <span id="tiers-label" class="tiers-label">范围</span>
+    <button class="tier" data-k="0" role="radio">小</button>
+    <button class="tier" data-k="1" role="radio">中</button>
+    <button class="tier" data-k="2" role="radio">大</button>
+  </div>
+  <div id="empty" class="empty">
+    <div class="drop-frame">
+      <p class="lead">把 PNG 或 PSD 拖到这里</p>
+      <button id="btn-open-2" class="btn primary">打开文件</button>
+      <p class="hint">带“丝袜引导”组的 PSD 会把部位和走向线一起读进来</p>
+    </div>
+  </div>
+  <div id="drop" class="drop" hidden>松开鼠标打开这个文件</div>
+  <div id="busy" class="busy" hidden><span id="busy-text">正在打开…</span></div>
+  <div id="busy-live" class="visually-hidden" role="status"></div>
+  <div id="exported" class="exported" role="status" hidden>
+    <p class="title">已导出到 <span id="exported-folder"></span></p>
+    <ul id="exported-files"></ul>
+    <p id="exported-notes" class="note warn"></p>
+    <div class="actions">
+      <button id="btn-reveal" class="btn small">在文件夹中显示</button>
+      <button id="btn-exported-close" class="btn small">关闭</button>
+    </div>
+  </div>
+  <div id="look-stage" class="look-stage look-only">
+    <section class="pane whole-pane">
+      <div class="pane-head"><h3>整体</h3><span id="fit-status" class="pane-note"></span></div>
+      <div class="pane-body">
+        <canvas id="fit" role="img" aria-label="整体预览" title="点一下，把细节挪到这里"></canvas>
+        <div id="compare-tags" class="compare-tags" aria-hidden="true">
+          <span id="compare-before">原图</span><span id="compare-after">效果</span>
+        </div>
+        <div id="compare" class="compare" role="slider" tabindex="0" aria-label="原图和效果的分界线"
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" title="左右拖动，对比原图（左）和效果（右）">
+          <span class="compare-grip" aria-hidden="true"></span>
+        </div>
+      </div>
+    </section>
+    <section class="pane detail-pane">
+      <div class="pane-head">
+        <h3>细节</h3>
+        <span class="seg" role="radiogroup" aria-label="细节放大">
+          <button class="seg-btn num" data-zoom="1" role="radio">100%</button>
+          <button class="seg-btn num" data-zoom="2" role="radio">200%</button>
+        </span>
+        <button id="btn-densest" class="btn small" title="把细节挪回横纹最密的地方">回到最密处</button>
+        <span class="spacer"></span>
+        <button id="btn-check" class="btn small toggle" aria-pressed="false"
+                title="在整体和细节上标出没有纹理或纹理很弱的地方（只在预览里显示，不会导出）">标出问题</button>
+      </div>
+      <div class="pane-body"><canvas id="crop" tabindex="0" role="img" aria-label="细节预览，方向键移动查看的位置"
+              title="拖动或用方向键看别处"></canvas></div>
+      <div class="pane-foot">
+        <span id="peek-hint" class="peek"><kbd>空格</kbd>按住看这里的原图</span>
+        <span id="check-legend" class="legend" hidden>
+          <button class="key-item" type="button" data-tip="横纹间距已经接近像素大小，为了不出摩尔纹，这里的纹理被自动减弱到一半以下。降低密度可以减少这一块。"><span class="key" style="--k:#ff323c"></span>减弱 <b id="check-faded" class="num"></b></button>
+          <button class="key-item" type="button" data-tip="部位里颜色和丝袜差得远的地方，比如金边、手套、皮肤，不加纹理。如果丝袜本身被标出来（比如透出肤色的膝盖），可以关掉左边的“颜色排除”。"><span class="key" style="--k:#46a0ff"></span>颜色排除 <b id="check-excluded" class="num"></b></button>
+          <button class="key-item" type="button" data-tip="部位已经涂好，但还没画走向线，所以不生成纹理。"><span class="key" style="--k:#ffbe28"></span>没有走向线 <b id="check-nostroke" class="num"></b></button>
+        </span>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer class="status">
+  <span id="status-msg" class="msg" role="status"></span>
+  <span class="spacer"></span>
+  <span id="status-hint" class="hint"></span>
+  <span id="status-pos" class="num pos"></span>
+</footer>
+
+<div id="region-menu" class="menu" role="menu" hidden></div>
+<div id="export-menu" class="menu export-menu" role="menu" aria-label="导出什么" hidden></div>
+<div id="merge-menu" class="menu sub" role="menu" hidden></div>
+<div id="mirror-menu" class="menu sub" role="menu" hidden></div>
+<div id="tooltip" class="tip float" role="tooltip" hidden></div>
+
+<dialog id="confirm-open" class="dialog" aria-labelledby="confirm-open-title" aria-describedby="confirm-open-text">
+  <form method="dialog">
+    <h2 id="confirm-open-title">当前图的部位和走向线还没导出</h2>
+    <p id="confirm-open-text"></p>
+    <div class="actions">
+      <button class="btn" value="cancel">取消</button>
+      <button class="btn" value="discard">直接打开</button>
+      <button class="btn primary" value="export" autofocus>先导出丝袜引导.psd</button>
+    </div>
+  </form>
+</dialog>
+
+<input id="file-input" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.psd,.psb" hidden>
+<script type="module" src="/static/app.js"></script>
+</body>
+</html>

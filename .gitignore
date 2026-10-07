@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+out/
+# the sample picture some tests run on; not distributed (see tests/sample_data.py)
+tests/data/
+node_modules/
+# downloaded by install.bat
+models/
+.tools/
