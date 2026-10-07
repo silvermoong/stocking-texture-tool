@@ -8,7 +8,7 @@ Adds a realistic knit texture to the stockings in an illustration. Roughly paint
 
 <p align="center"><img src="docs/images/hook.png" width="820" alt="One picture before and after: the original left of a sliding divider, the textured result right of it"></p>
 
-<p align="center"><sub>Original left of the divider, processed right of it. The picture's own pixels, not scaled.</sub></p>
+<p align="center"><sub>Original left of the divider, processed right of it.</sub></p>
 
 Black or white stockings alike (original on the left, processed on the right):
 

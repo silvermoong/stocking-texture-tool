@@ -8,7 +8,7 @@
 
 <p align="center"><img src="docs/images/hook.png" width="820" alt="同一张图处理前后的对比：分界线左边是原图，右边是加了纹理的效果，分界线来回滑动"></p>
 
-<p align="center"><sub>分界线左边是原图，右边是处理后。原图像素，没有缩放。</sub></p>
+<p align="center"><sub>分界线左边是原图，右边是处理后。</sub></p>
 
 白丝黑丝都可以（左边原图，右边处理后）：
 
