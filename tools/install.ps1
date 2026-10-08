@@ -4,7 +4,10 @@
 # in models\), so deleting the folder and the shortcut removes the tool.
 #
 #   powershell -ExecutionPolicy Bypass -File tools\install.ps1 [-Torch auto|cuda|cpu] [-Source auto|official|github]
-#                                                               [-NoShortcut]
+#                                                               [-NoShortcut] [-NoUpdate]
+#
+# First it updates the code here to the newest on GitHub (unless -NoUpdate), and then runs the new install.ps1: see
+# "the newest code" below.
 #
 # Everything the install needs is listed in tools\deps.json (made by tools\make_deps.py): uv, Python, every package
 # wheel and both models, each pinned by size and SHA-256. They come, in order, from:
@@ -18,7 +21,8 @@
 param(
     [ValidateSet('auto', 'cuda', 'cpu')][string]$Torch = 'auto',
     [ValidateSet('auto', 'official', 'github')][string]$Source = 'auto',
-    [switch]$NoShortcut
+    [switch]$NoShortcut,
+    [switch]$NoUpdate
 )
 
 # Native programs (uv, curl, python) are checked by exit code: Windows PowerShell turns their stderr progress into
@@ -205,11 +209,161 @@ function Get-Files($files) {
     }
 }
 
+# ---------------------------------------------------------------- the newest code, from GitHub
+# Before installing, the code here is brought up to the newest on the default branch of this project's GitHub, and then
+# the new install.ps1 does the install (with -NoUpdate): the requirements, deps.json and this script may all have
+# changed. A git clone is fast-forwarded by git, which refuses rather than overwrite changes made here; a clone with no
+# upstream branch (a developer's own) is left alone. A downloaded ZIP is updated from GitHub's ZIP of the newest commit:
+# the files that differ are rewritten, and those the new version no longer has are deleted. Which commit a ZIP holds is
+# in tools\commit.txt, which GitHub fills in. When GitHub cannot be reached, the code that is here is installed.
+$Repo = if ($Deps.release -match 'github\.com/([^/]+/[^/]+)/') { $Matches[1] }
+
+# A file of the code, by its path in the repository, in this folder (never outside it).
+function Get-CodePath($rel) {
+    $p = [IO.Path]::GetFullPath((Join-Path $Root ($rel -replace '/', '\')))
+    if (-not $p.StartsWith($Root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "The update holds an unexpected path: $rel" }
+    return $p
+}
+
+function Test-Same($path, [byte[]]$bytes) {
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $false }
+    if ((Get-Item -LiteralPath $path).Length -ne $bytes.Length) { return $false }
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return [Convert]::ToBase64String($sha.ComputeHash($bytes)) -eq [Convert]::ToBase64String($sha.ComputeHash([IO.File]::ReadAllBytes($path))) }
+    finally { $sha.Dispose() }
+}
+
+# Writes a file of the new code unless this folder has it already; true when written.
+function Write-Code($rel, [byte[]]$bytes) {
+    $dest = Get-CodePath $rel
+    if (Test-Same $dest $bytes) { return $false }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) -ErrorAction Stop | Out-Null
+    [IO.File]::WriteAllBytes($dest, $bytes)
+    return $true
+}
+
+# True when the code here changed.
+function Update-Git {
+    if (-not (Get-Command git.exe -ErrorAction SilentlyContinue)) {
+        Note 'This folder is a git clone and git is not on PATH: update it with git pull'
+        return $false
+    }
+    $env:GIT_TERMINAL_PROMPT = '0'
+    $env:GCM_INTERACTIVE = 'never'
+    $up = & git -C $Root rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $up) { Note 'Not updating: this git clone has no upstream branch'; return $false }
+    & git -C $Root fetch --quiet | Out-Host
+    if ($LASTEXITCODE -ne 0) { Note "Could not fetch $up; installing the code that is here"; return $false }
+    $old = & git -C $Root rev-parse HEAD
+    & git -C $Root merge-base --is-ancestor '@{u}' HEAD
+    if ($LASTEXITCODE -eq 0) { Note "Up to date ($($old.Substring(0, 7)))"; return $false }
+    & git -C $Root merge --ff-only --quiet '@{u}' | Out-Host
+    if ($LASTEXITCODE -ne 0) { Note "Could not update to $up (see git's message above); installing the code that is here"; return $false }
+    Note "Updated $($old.Substring(0, 7)) -> $((& git -C $Root rev-parse HEAD).Substring(0, 7))"
+    return $true
+}
+
+# True when the code here changed.
+function Update-Zip {
+    if (-not $Repo) { return $false }
+    $mark = Join-Path $Root 'tools\commit.txt'
+    $old = ''
+    if ((Test-Path -LiteralPath $mark) -and ((Get-Content -LiteralPath $mark -Raw) -match '\b[0-9a-f]{40}\b')) { $old = $Matches[0] }
+    # the newest commit, from git's list of the repository's refs (GitHub's API allows few requests an hour)
+    $refs = & curl.exe -s --fail --connect-timeout 15 --max-time 60 "https://github.com/$Repo.git/info/refs?service=git-upload-pack"
+    if ($LASTEXITCODE -ne 0 -or ($refs -join "`n") -notmatch '([0-9a-f]{40}) HEAD') {
+        Note 'Could not reach GitHub; installing the code that is here'
+        return $false
+    }
+    $new = $Matches[1]
+    if ($new -eq $old) { Note "Up to date ($($new.Substring(0, 7)))"; return $false }
+
+    $tmp = Join-Path $Tools 'update'
+    New-Item -ItemType Directory -Force -Path $tmp -ErrorAction Stop | Out-Null
+    $zip = Join-Path $tmp 'code.zip'
+    Note "Downloading the new version ($($new.Substring(0, 7)))"
+    & curl.exe -L --fail --retry 3 --retry-delay 2 --connect-timeout 15 --speed-limit 10240 --speed-time 60 -# -o $zip `
+        "https://github.com/$Repo/archive/$new.zip"
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        Note 'The download failed; installing the code that is here'
+        return $false
+    }
+    $code = @{}                                     # path in the repository -> content; the ZIP has it all in one folder
+    $z = [IO.Compression.ZipFile]::OpenRead($zip)
+    try {
+        foreach ($e in $z.Entries) {
+            if (-not $e.Name) { continue }
+            $ms = New-Object IO.MemoryStream
+            $s = $e.Open()
+            try { $s.CopyTo($ms) } finally { $s.Dispose() }
+            $code[$e.FullName.Substring($e.FullName.IndexOf('/') + 1)] = $ms.ToArray()
+        }
+    } finally { $z.Dispose() }
+    if (-not $code.ContainsKey('tools/install.ps1')) { throw "the download from GitHub is not this tool's code" }
+
+    # commit.txt is written last: an update cut short is done again on the next run
+    $changed = 0
+    foreach ($rel in @($code.Keys | Where-Object { $_ -ne 'tools/commit.txt' })) { if (Write-Code $rel $code[$rel]) { $changed++ } }
+    # the files of the old version that the new one has not (renamed or deleted), with their folders when left empty
+    $removed = 0
+    if ($old) {
+        $treeFile = Join-Path $tmp 'tree.json'
+        & curl.exe -s -L --fail --connect-timeout 15 --max-time 60 -H 'Accept: application/vnd.github+json' -o $treeFile `
+            "https://api.github.com/repos/$Repo/git/trees/$($old)?recursive=1"
+        if ($LASTEXITCODE -eq 0) {
+            $tree = Get-Content -LiteralPath $treeFile -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($f in $tree.tree) {
+                if ($f.type -ne 'blob' -or $code.ContainsKey($f.path)) { continue }
+                $p = Get-CodePath $f.path
+                if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { continue }
+                Remove-Item -LiteralPath $p -Force -ErrorAction Stop
+                $removed++
+                $d = Split-Path -Parent $p
+                while ($d.Length -gt $Root.Length -and -not (Get-ChildItem -LiteralPath $d -Force | Select-Object -First 1)) {
+                    Remove-Item -LiteralPath $d -Force -ErrorAction Stop
+                    $d = Split-Path -Parent $d
+                }
+            }
+        } else {
+            Note 'Could not get the list of files the new version dropped; any such files stay here'
+        }
+    }
+    if ($code.ContainsKey('tools/commit.txt') -and (Write-Code 'tools/commit.txt' $code['tools/commit.txt'])) { $changed++ }
+    Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    if ($changed + $removed -eq 0) { Note "Up to date ($($new.Substring(0, 7)))"; return $false }
+    $from = if ($old) { $old.Substring(0, 7) } else { 'an unknown version' }
+    Note "Updated $from -> $($new.Substring(0, 7)): $changed files changed, $removed removed"
+    return $true
+}
+
 Write-Host 'Stocking Texture Tool: install' -ForegroundColor White
 Write-Host "Folder: $Root"
 # the deepest file the install writes is about 150 characters below this folder, and Windows stops at 260
 if ($Root.Length -gt 100) {
     Write-Host 'Note: this folder path is long, and some files may exceed the Windows path limit. If the install fails, move the folder somewhere shorter.' -ForegroundColor Yellow
+}
+
+if (-not $NoUpdate) {
+    Write-Host ''
+    Write-Host 'Checking for a newer version' -ForegroundColor Cyan
+    try {
+        $updated = if (Test-Path -LiteralPath (Join-Path $Root '.git')) { Update-Git } else { Update-Zip }
+    } catch {
+        Fail ("Updating failed: $($_.Exception.Message)`n" +
+              'Run install.bat again; or install.bat -NoUpdate installs the code that is here.')
+    }
+    if ($updated) {
+        Note 'Running the new installer'
+        Write-Host ''
+        $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath, '-NoUpdate')
+        foreach ($k in $PSBoundParameters.Keys) {
+            $v = $PSBoundParameters[$k]
+            if ($v -is [switch]) { if ($v) { $argv += "-$k" } } else { $argv += @("-$k", "$v") }
+        }
+        & (Get-Process -Id $PID).Path @argv
+        exit $LASTEXITCODE
+    }
 }
 
 # ---------------------------------------------------------------- 1. which torch: NVIDIA card or CPU

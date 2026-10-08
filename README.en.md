@@ -46,6 +46,7 @@ Anything that fails to download from GitHub is fetched from its original source 
 Double-click the desktop icon to open the tool, or drop a picture or PSD on it.
 
 - If the connection drops, run `install.bat` again; what has downloaded is kept.
+- **Update:** run `install.bat` again. It first brings the code up to the newest on GitHub (a ZIP copy gets its changed files replaced; a `git clone` is fast-forwarded with git, which won't overwrite files you changed), then installs what the new version needs. Without a connection to GitHub it installs the code you have. To skip the update: `install.bat -NoUpdate`.
 - After updating your graphics driver, run it again to switch from the CPU build to the GPU build.
 - To force the CPU build: `install.bat -Torch cpu`.
 - **Uninstall:** delete the folder and the desktop shortcut. Settings and the auto-saved work are in `%LOCALAPPDATA%\StockingTexture`; delete that too if you like.
@@ -229,7 +230,9 @@ It also uses PyTorch, Transformers, OpenCV, NumPy, SciPy, psd-tools, FastAPI and
 
 Some tests need a sample picture that is not distributed with the code; without it they are skipped. See [tests/sample_data.py](tests/sample_data.py).
 
-After changing a dependency's version (`requirements*.txt`), rebuild the install files package: `.venv\Scripts\python tools\make_deps.py deps-2`, upload what it makes to a new GitHub release `deps-2`, and commit the updated `tools/deps.json`.
+After changing a dependency's version (`requirements*.txt`), rebuild the install files package: `.venv\Scripts\python tools\make_deps.py deps-2`, upload what it makes to a new GitHub release `deps-2`, and then commit and push the updated `tools/deps.json`. Keep that order: `install.bat` gets users the new code at once, and downloads what the new `deps.json` lists.
+
+`tools/commit.txt` gets the commit written into it by GitHub when it makes the code ZIP (`export-subst` in `.gitattributes`); `install.bat` reads it to tell whether a ZIP copy needs updating. Leave it as it is.
 
 ## License
 

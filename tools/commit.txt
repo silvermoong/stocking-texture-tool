@@ -1,0 +1,3 @@
+# The commit this code is: GitHub writes it below when it makes the code ZIP (export-subst in .gitattributes), and
+# install.ps1 compares it with the newest commit on GitHub to tell whether to update. A git clone keeps the placeholder.
+$Format:%H$

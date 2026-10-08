@@ -2,3 +2,5 @@
 *.bat text eol=crlf
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+# GitHub's ZIP downloads get the commit written into this file, so install.bat can tell when a newer version is out
+tools/commit.txt export-subst

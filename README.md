@@ -46,6 +46,7 @@ GitHub 下载失败的文件，会改从各自的原始来源下载（PyPI、PyT
 装好后双击桌面图标打开。也可以把图片或 PSD 直接拖到图标上。
 
 - 中途断网了，重新运行 `install.bat` 即可，已经下载的部分不会重复下载。
+- **更新：** 再运行一次 `install.bat`。它会先把代码更新到 GitHub 上的最新版（下载 ZIP 的直接替换有变化的文件；`git clone` 的用 git 快进，不会覆盖你自己改过的文件），再补装新版需要的依赖和模型。连不上 GitHub 时照常安装手上的代码。不想更新：`install.bat -NoUpdate`。
 - 更新显卡驱动后再运行一次，会从 CPU 版换成显卡版。
 - 想强制用 CPU：`install.bat -Torch cpu`。
 - **卸载：** 删掉这个文件夹和桌面快捷方式。设置和自动保存的工作在 `%LOCALAPPDATA%\StockingTexture`，也可以一起删。
@@ -229,7 +230,9 @@ GitHub 下载失败的文件，会改从各自的原始来源下载（PyPI、PyT
 
 一部分测试要用一张样图，它不随仓库发布，没有时这些测试会自动跳过，见 [tests/sample_data.py](tests/sample_data.py)。
 
-改了依赖版本（`requirements*.txt`）之后，要重新打包安装文件包：`.venv\Scripts\python tools\make_deps.py deps-2`，把生成的文件上传到新的 GitHub Release `deps-2`，再提交更新后的 `tools/deps.json`。
+改了依赖版本（`requirements*.txt`）之后，要重新打包安装文件包：`.venv\Scripts\python tools\make_deps.py deps-2`，把生成的文件上传到新的 GitHub Release `deps-2`，再提交并推送更新后的 `tools/deps.json`。顺序不能反：用户运行 `install.bat` 时会立刻拿到新代码，并按新的 `deps.json` 下载。
+
+`tools/commit.txt` 由 GitHub 在生成代码 ZIP 时写入提交号（`.gitattributes` 里的 `export-subst`），`install.bat` 靠它判断 ZIP 版是否需要更新，不要改它。
 
 ## 许可
 
