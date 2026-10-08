@@ -33,7 +33,8 @@ def update(**kw):
     with _lock:
         s = _read()
         s.update(kw)
-        os.makedirs(DIR, exist_ok=True)
+        # the folder of this process's file (a temp folder for an --isolated server, which the system may clean)
+        os.makedirs(os.path.dirname(_FILE), exist_ok=True)
         tmp = _FILE + '.tmp'
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(s, f, ensure_ascii=False, indent=1)

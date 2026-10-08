@@ -534,10 +534,10 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     renderReset();
     flash(t('已全部恢复默认；想回去，点“撤销恢复默认”'));
   });
-  for (const b of document.querySelectorAll('.seg-btn')) {
+  for (const b of document.querySelectorAll('.seg-btn[data-zoom]')) {
     b.addEventListener('click', () => {
       L.zoom = +b.dataset.zoom;
-      for (const x of document.querySelectorAll('.seg-btn')) x.setAttribute('aria-checked', String(x === b));
+      for (const x of document.querySelectorAll('.seg-btn[data-zoom]')) x.setAttribute('aria-checked', String(x === b));
       requestCrop();
     });
   }
@@ -618,7 +618,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     params() { return L.params ? { ...L.params } : null; },
     enter() {
       L.active = true;
-      for (const b of document.querySelectorAll('.seg-btn')) b.setAttribute('aria-checked', String(+b.dataset.zoom === L.zoom));
+      for (const b of document.querySelectorAll('.seg-btn[data-zoom]')) b.setAttribute('aria-checked', String(+b.dataset.zoom === L.zoom));
       load().catch((e) => flash(e.message, true));
     },
     leave() { L.active = false; setPeek(false); },
