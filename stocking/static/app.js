@@ -1291,8 +1291,7 @@ function renderExport() {
   const blocked = exportBlocked(exportKind);
   main.disabled = !d || blocked !== null;
   main.title = !d ? '' : blocked
-    || t('{what} (Ctrl+E)：{where}，原文件不会被改动', { what: EXPORTS[exportKind].main,
-      where: d.export_folder ? t('存到 {folder}', { folder: d.export_folder }) : t('先选一个文件夹') });
+    || t('{what} (Ctrl+E)：选择保存位置和文件名，原文件不会被改动', { what: EXPORTS[exportKind].main });
   $('#btn-export-more').disabled = !d;
   if (!d) closeExportMenu();
 }
@@ -1307,15 +1306,12 @@ async function exportDoc(kind = exportKind, { remember = true } = {}) {
   exporting = true;
   $('#exported').hidden = true;
   try {
-    if (!S.doc.export_folder) {                 // dragged in: nowhere known to put the files yet
-      busy(t('在弹出的窗口里选择导出到哪个文件夹…'));
-      const st = await request('POST', `/api/doc/${id}/export/folder`);
-      busy(null);
-      if (!st || st.cancelled) return false;
-      applyState(st);
-    }
+    busy(t('在弹出的窗口里选择保存位置和文件名…'));
+    const to = await request('POST', `/api/doc/${id}/export/ask`, { kind });
+    busy(null);
+    if (!to || to.cancelled) return false;
     busy(EXPORTS[kind].doing);
-    const body = { kind };
+    const body = { kind, path: to.path };
     if (EXPORTS[kind].needsLook) body.params = lookUI.params();
     const res = await request('POST', `/api/doc/${id}/export`, body);
     busy(null);
@@ -1445,7 +1441,6 @@ async function openUpload(file) {
   fd.append('file', file);
   try {
     applyState(await request('POST', '/api/open/upload', fd));
-    flash(t('拖进来的文件不知道原始位置，导出时会让你选择保存位置'));
   } catch (e) {
     flash(e.message, true);
   } finally {

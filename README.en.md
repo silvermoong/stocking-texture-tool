@@ -182,9 +182,9 @@ On a small picture (832×1216, say) the course spacing soon reaches its lower li
 
 ### 7. Export
 
-Click Export image at the top right. The arrow beside it switches to the other two kinds, and the button remembers your last choice (Ctrl+E does the same). Files are saved next to the original; for a picture dropped on the window the tool doesn't know where that is, so the first export asks for a folder.
+Click Export image at the top right. The arrow beside it switches to the other two kinds, and the button remembers your last choice (Ctrl+E does the same). Each export opens a save window where you choose the folder and the file name. It starts next to the original, then in the folder you last saved to; the suggested names are below, numbered (2), (3)… when that name is taken, so exporting several variants in a row never overwrites one. Picking an existing file asks before replacing it.
 
-| Export | File | Use |
+| Export | Suggested name | Use |
 | --- | --- | --- |
 | Finished image | `name-finished.png` | Use as is |
 | Stockings only | `name-stockings-only.png` | The stockings alone, everything else transparent. Laid over the original it gives the finished image: one layer in Photoshop whose opacity or mask you can still change |

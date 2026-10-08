@@ -96,7 +96,7 @@ def test_messages_follow_the_language(english):
 
 
 def test_files_are_named_in_the_language_and_read_in_either(tmp_path, english):
-    t = {k: os.path.basename(export.target(str(tmp_path), 'x.png', k)) for k in export.KINDS}
+    t = {k: os.path.basename(export.suggest(str(tmp_path), 'x.png', k)) for k in export.KINDS}
     assert t == {k: f"x-{i18n.EN[export.NAMES[k]]}" for k in export.KINDS}
     for name in ('x-丝袜成品.png', f"x-{i18n.EN['丝袜成品.png']}", f"x-{i18n.EN['丝袜引导.psd']}", 'x-丝袜纹理.png'):
         assert export.base_name(name) == 'x', name

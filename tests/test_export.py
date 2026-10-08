@@ -1,6 +1,6 @@
-"""Export: one file of the kind asked for. The finished picture is the render; the stockings-only PNG laid over the
-art gives it back and holds nothing else; the guides PSD reopens as it was written; the user's own file is never
-written."""
+"""Export: one file of the kind asked for, to the file the user named. The finished picture is the render; the
+stockings-only PNG laid over the art gives it back and holds nothing else; the guides PSD reopens as it was written;
+the save dialog offers a name no file has yet; the user's own file is never written."""
 import hashlib
 import os
 import shutil
@@ -44,14 +44,30 @@ def _seg_dist(P, Q):
     return np.hypot(*(P[:, None] - (a[None] + t[..., None] * ab[None])).transpose(2, 0, 1)).min(1).max()
 
 
-def test_base_names_and_the_source_is_never_a_target(tmp_path):
+def test_suggested_names_never_take_an_earlier_export_or_the_source(tmp_path):
     assert export.base_name('sample.png') == 'sample'
     assert export.base_name('x-丝袜引导.psd') == 'x' and export.base_name('x-丝袜成品.png') == 'x'
     assert export.base_name('x-仅丝袜.png') == 'x' and export.base_name('x-丝袜纹理.png') == 'x'
     assert export.base_name('-丝袜引导.psd') == '-丝袜引导'
     src = str(tmp_path / 'x-丝袜引导.psd')
-    assert [os.path.basename(export.target(str(tmp_path), 'x-丝袜引导.psd', k, source=src)) for k in export.KINDS] == \
+    assert [os.path.basename(export.suggest(str(tmp_path), 'x-丝袜引导.psd', k, source=src)) for k in export.KINDS] == \
         ['x-丝袜成品.png', 'x-仅丝袜.png', 'x-丝袜引导 (2).psd']
+    (tmp_path / 'x-丝袜成品.png').write_bytes(b'')
+    (tmp_path / 'x-丝袜成品 (2).png').write_bytes(b'')
+    assert os.path.basename(export.suggest(str(tmp_path), 'x.png', 'png')) == 'x-丝袜成品 (3).png'
+
+
+def test_the_named_file_gets_the_kinds_extension_and_is_never_the_source(tmp_path):
+    d = str(tmp_path)
+    assert export.destination(os.path.join(d, '方案A'), 'png') == os.path.join(d, '方案A.png')
+    assert export.destination(os.path.join(d, '方案A.PNG'), 'cutout') == os.path.join(d, '方案A.PNG')
+    assert export.destination(os.path.join(d, '方案A.v2'), 'guides') == os.path.join(d, '方案A.v2.psd')
+    with pytest.raises(ValueError, match='原文件'):
+        export.destination(os.path.join(d, 'x'), 'guides', source=os.path.join(d, 'x.psd'))
+    with pytest.raises(ValueError, match='文件夹不存在'):
+        export.destination(os.path.join(d, 'nope', 'a.png'), 'png')
+    with pytest.raises(ValueError, match='不认识'):
+        export.destination(os.path.join(d, 'a.jpg'), 'jpg')
 
 
 def _read_rgba(p):
@@ -64,12 +80,12 @@ def test_the_finished_picture_and_the_stockings_alone(solved, tmp_path, style):
     stockings, and transparent (and empty) wherever the picture is the art's own."""
     s = look.scene_from_doc(solved, disparity=lambda: None)
     q = look.clean_params({'style': style, 'sparkle_depth': 0, 'sparkle_bright': 100})
-    png = _read_png(export.export(solved, s, q, str(tmp_path), 'png')['file'])
-    assert sorted(os.listdir(tmp_path)) == ['sample-guides-丝袜成品.png']
+    png = _read_png(export.export(solved, s, q, str(tmp_path / '方案A'), 'png')['file'])
+    assert sorted(os.listdir(tmp_path)) == ['方案A.png']
     assert np.array_equal(png, cv2.cvtColor(s.render(q)[0], cv2.COLOR_BGR2RGB))
     assert (png != solved.art).any()
-    cut = _read_rgba(export.export(solved, s, q, str(tmp_path), 'cutout')['file'])
-    assert sorted(os.listdir(tmp_path)) == ['sample-guides-丝袜成品.png', 'sample-guides-仅丝袜.png']
+    cut = _read_rgba(export.export(solved, s, q, str(tmp_path / '方案A-仅丝袜.png'), 'cutout')['file'])
+    assert sorted(os.listdir(tmp_path)) == ['方案A-仅丝袜.png', '方案A.png']
     a = cut[..., 3:].astype(float) / 255
     over = cut[..., :3] * a + solved.art * (1 - a)
     assert np.abs(over - png).max() <= 1
@@ -80,8 +96,8 @@ def test_the_finished_picture_and_the_stockings_alone(solved, tmp_path, style):
 
 
 def test_guides_psd_reopens_as_written(solved, tmp_path):
-    res = export.export(solved, None, None, str(tmp_path), 'guides')
-    assert sorted(os.listdir(tmp_path)) == ['sample-guides-丝袜引导.psd']
+    res = export.export(solved, None, None, str(tmp_path / 'g.psd'), 'guides')
+    assert sorted(os.listdir(tmp_path)) == ['g.psd']
     d2 = Document.open(res['file'])
     try:
         assert np.array_equal(d2.art, solved.art)
@@ -104,7 +120,10 @@ def test_export_never_writes_the_source(tmp_path):
     before = hashlib.sha256(src.read_bytes()).hexdigest()
     d = Document.open(str(src))
     try:
-        res = export.export(d, None, None, str(tmp_path), 'guides')
+        for named in (src, tmp_path / 'x-丝袜引导'):            # the source, or a name that becomes it with .psd
+            with pytest.raises(ValueError, match='原文件'):
+                export.export(d, None, None, str(named), 'guides')
+        res = export.export(d, None, None, export.suggest(str(tmp_path), d.name, 'guides', source=d.path), 'guides')
         assert os.path.basename(res['file']) == 'x-丝袜引导 (2).psd'
         assert hashlib.sha256(src.read_bytes()).hexdigest() == before
     finally:
@@ -114,17 +133,66 @@ def test_export_never_writes_the_source(tmp_path):
 @needed
 def test_a_file_in_use_is_reported_and_nothing_half_written(tmp_path):
     d = Document.open(PNG)
+    out = str(tmp_path / 'sample-丝袜成品.png')
     try:
         s = look.scene_from_doc(d, disparity=lambda: None)
-        res = export.export(d, s, look.clean_params({}), str(tmp_path))
+        res = export.export(d, s, look.clean_params({}), out)
         before = (tmp_path / 'sample-丝袜成品.png').read_bytes()
         with open(res['file'], 'rb'):                       # held open, as Photoshop or a viewer might
             with pytest.raises(ValueError, match='占用'):
-                export.export(d, s, look.clean_params({}), str(tmp_path))
+                export.export(d, s, look.clean_params({}), out)
         assert (tmp_path / 'sample-丝袜成品.png').read_bytes() == before
         assert not [n for n in os.listdir(tmp_path) if '导出中' in n]
         with pytest.raises(ValueError, match='文件夹不存在'):
-            export.export(d, s, look.clean_params({}), str(tmp_path / 'nope'))
+            export.export(d, s, look.clean_params({}), str(tmp_path / 'nope' / 'a.png'))
+    finally:
+        d.close()
+
+
+def test_each_export_asks_for_a_file_and_offers_a_new_name(monkeypatch, tmp_path):
+    """Exporting asks for the file in the system's save dialog. It opens next to the source, then where the last
+    export went, offering a name no file has yet; what the user names is written (with the kind's extension), and a
+    dialog closed without a name writes nothing."""
+    from fastapi.testclient import TestClient
+    from stocking import server, settings
+    monkeypatch.setattr(settings, '_FILE', str(tmp_path / 'settings.json'))
+    art, out = tmp_path / 'art', tmp_path / 'out'
+    art.mkdir()
+    out.mkdir()
+    src = art / 'a.png'
+    cv2.imencode('.png', np.full((40, 60, 3), 120, np.uint8))[1].tofile(str(src))
+    d = Document.open(str(src))
+    monkeypatch.setattr(server, '_doc', d)
+    offered, answers = [], []
+
+    def ask(kind, suggested):
+        offered.append(suggested)
+        return answers.pop(0)
+
+    monkeypatch.setattr(server, '_ask_save_path', ask)
+    c = TestClient(server.app)
+    url = f'/api/doc/{d.id}/export'
+    try:
+        answers.append(None)
+        assert c.post(f'{url}/ask', json={'kind': 'guides'}).json() == {'cancelled': True}
+        assert offered[-1] == str(art / 'a-丝袜引导.psd')
+        assert os.listdir(art) == ['a.png']
+
+        answers.append(str(out / '方案A'))
+        to = c.post(f'{url}/ask', json={'kind': 'guides'}).json()
+        assert to == {'path': str(out / '方案A.psd')}
+        r = c.post(url, json={'kind': 'guides', 'path': to['path']}).json()
+        assert (r['file'], r['folder']) == (str(out / '方案A.psd'), str(out))
+        assert settings.get('export_dir') == str(out)
+
+        c.post(url, json={'kind': 'guides', 'path': str(out / 'a-丝袜引导.psd')}).raise_for_status()
+        answers.append(None)
+        c.post(f'{url}/ask', json={'kind': 'guides'})
+        assert offered[-1] == str(out / 'a-丝袜引导 (2).psd')
+        assert sorted(os.listdir(out)) == ['a-丝袜引导.psd', '方案A.psd']
+
+        res = c.post(url, json={'kind': 'guides', 'path': str(tmp_path / 'nope' / 'b.psd')})
+        assert res.status_code == 400 and '文件夹不存在' in res.json()['detail']
     finally:
         d.close()
 

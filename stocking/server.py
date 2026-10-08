@@ -147,7 +147,6 @@ def set_document(doc):
 
 def state_of(doc):
     st = doc.state()
-    st['export_folder'] = export_folder(doc)
     svc = sam.service
     if svc.status == 'unavailable':
         st['sam'] = {'state': 'error', 'error': svc.error}
@@ -681,60 +680,74 @@ _export_lock = threading.Lock()
 EXPORT_WAIT = 180                   # s: longest an export waits for solves and the depth model
 
 
-def _ask_folder(initial):
+def _ask_save_path(kind, suggested):
     import tkinter as tk
     from tkinter import filedialog
+    title = {'png': tr('导出成品图'), 'cutout': tr('导出仅丝袜'), 'guides': tr('导出丝袜引导.psd')}[kind]
+    types = [(tr('Photoshop 文件'), '*.psd')] if kind == 'guides' else [(tr('PNG 图片'), '*.png')]
     with _dialog_lock:
         root = tk.Tk()
         root.withdraw()
         root.attributes('-topmost', True)
         try:
-            p = filedialog.askdirectory(parent=root, title=tr('选择导出到哪个文件夹'), initialdir=initial, mustexist=True)
+            # asks before replacing a file that is already there
+            p = filedialog.asksaveasfilename(parent=root, title=title, initialdir=os.path.dirname(suggested),
+                                             initialfile=os.path.basename(suggested), filetypes=types,
+                                             defaultextension=export.EXTS[kind])
         finally:
             root.destroy()
     return os.path.normpath(p) if p else None
 
 
 def export_folder(d):
-    """Where the files go: next to the source; for a file dragged in (no known location), the folder chosen for it."""
-    return os.path.dirname(d.path) if d.path else getattr(d, 'export_dir', None)
+    """The folder the save dialog opens in: where this document last exported to, else next to the source, else
+    (a file dragged in, whose location is unknown) where the last export of any document went."""
+    return (getattr(d, 'export_dir', None) or (os.path.dirname(d.path) if d.path else None)
+            or settings.get('export_dir') or settings.get('last_dir') or os.path.expanduser('~'))
 
 
-@app.post('/api/doc/{doc_id}/export/folder')
-def choose_export_folder(doc_id: str):
-    """Ask where a dragged-in file's exports go; remembered for this document."""
+def _check_exportable(d, kind):
+    if kind not in export.KINDS:
+        raise ValueError(tr('不认识的导出内容'))
+    if kind != 'guides' and not any(r['strokes'] > 0 and r['status'] != 'empty' for r in d.state()['regions']):
+        raise ValueError(tr('还没有能出纹理的部位：先给部位画走向线'))
+
+
+class KindIn(BaseModel):
+    kind: str = 'png'                   # export.KINDS: 成品图, 仅丝袜, 丝袜引导.psd
+
+
+@app.post('/api/doc/{doc_id}/export/ask')
+def ask_export_path(doc_id: str, body: KindIn):
+    """Ask where to save and under what name, in the system's save dialog. Returns {'path'} or {'cancelled'}."""
     d = doc_for(doc_id)
-    p = _ask_folder(export_folder(d) or settings.get('export_dir') or settings.get('last_dir'))
+    _check_exportable(d, body.kind)
+    p = _ask_save_path(body.kind, export.suggest(export_folder(d), d.name, body.kind, source=d.path))
     if not p:
         return {'cancelled': True}
-    d.export_dir = p
-    settings.update(export_dir=p)
-    return state_of(d)
+    return {'path': export.destination(p, body.kind, source=d.path)}
 
 
 class ExportIn(BaseModel):
     kind: str = 'png'                   # export.KINDS: 成品图, 仅丝袜, 丝袜引导.psd
+    path: str                           # the file to write, as chosen in the save dialog (export/ask)
     params: dict | None = None          # the look being shown; None = the document's saved look
 
 
 @app.post('/api/doc/{doc_id}/export')
 def export_doc(doc_id: str, body: ExportIn):
-    """Write the one file asked for. The pictures wait until every region is solved (and the depth model is done,
-    if the look needs it); the guides PSD holds only what the user drew, so it goes at once."""
+    """Write the one file asked for, to the path chosen for it. The pictures wait until every region is solved (and
+    the depth model is done, if the look needs it); the guides PSD holds only what the user drew, so it goes at
+    once."""
     d = doc_for(doc_id)
-    if body.kind not in export.KINDS:
-        raise ValueError(tr('不认识的导出内容'))
-    folder = export_folder(d)
-    if not folder:
-        raise ValueError(tr('先选择导出到哪个文件夹'))
+    _check_exportable(d, body.kind)
+    path = export.destination(body.path, body.kind, source=d.path)
     notes = []
     with _export_lock:
         if body.kind == 'guides':
-            res = export.export(d, None, None, folder, 'guides')
+            res = export.export(d, None, None, path, 'guides')
             d.mark_guides_saved()
         else:
-            if not any(r['strokes'] > 0 and r['status'] != 'empty' for r in d.state()['regions']):
-                raise ValueError(tr('还没有能出纹理的部位：先给部位画走向线'))
             q = look.clean_params(body.params if body.params is not None else _base_look(d))
             if body.params is not None:
                 d.set_look(q)
@@ -749,11 +762,13 @@ def export_doc(doc_id: str, body: ExportIn):
                     time.sleep(0.2)
                 if getattr(d, 'disparity', None) is None:
                     notes.append(tr('深度模型不可用，“按深度”的亮点没有导出'))
-            res = export.export(d, scene_for(d), q, folder, body.kind)
+            res = export.export(d, scene_for(d), q, path, body.kind)
             missing = [r['name'] for r in d.state()['regions'] if r['status'] in ('nostroke', 'error')]
             if missing:
                 notes.append(tr('{names}没有走向线，没有纹理', names=tr('、').join(missing)))
-        d.last_export = res['file']
+        folder = os.path.dirname(res['file'])
+        d.last_export, d.export_dir = res['file'], folder
+        settings.update(export_dir=folder)
         return {'kind': body.kind, 'file': res['file'], 'folder': folder, 'seconds': res['seconds'], 'notes': notes}
 
 

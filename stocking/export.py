@@ -1,13 +1,15 @@
-"""Export: one file per export, of the kind the user picks, next to the source. The user's own file
-is never written.
+"""Export: one file per export, of the kind the user picks, to the file the user names in a save dialog. The
+user's own file is never written.
 
   png     <name>-丝袜成品.png   the finished picture (成品图)
   cutout  <name>-仅丝袜.png     the stockings alone, everything else transparent: laid over the art it gives the
                                finished picture
   guides  <name>-丝袜引导.psd   the guides (regions, 走向, 亮点, 隔开), which reopen in the tool or Photoshop
 
-The names follow the page's language (English: -finished.png, -stockings-only.png, -stocking-guides.psd); either
-language's suffix is stripped from a source that is one of our exports.
+Those are the names the dialog suggests, numbered ' (2)', ' (3)' … past any file already there, so exporting a
+second variant never takes the first one's place unless the user picks that file. The names follow the page's
+language (English: -finished.png, -stockings-only.png, -stocking-guides.psd); either language's suffix is stripped
+from a source that is one of our exports.
 
 Each file is written beside its final name and then moved over it, so a failure (a file open in another program,
 a full disk) never leaves a half-written file behind, and an earlier export stays intact.
@@ -23,6 +25,7 @@ from .i18n import both, tr
 
 KINDS = ('png', 'cutout', 'guides')
 NAMES = {'png': '丝袜成品.png', 'cutout': '仅丝袜.png', 'guides': '丝袜引导.psd'}   # in Chinese; written via tr()
+EXTS = {k: os.path.splitext(n)[1] for k, n in NAMES.items()}
 EARLIER = (psd_io.TEXTURE_MARK,)                                    # 丝袜纹理: what earlier exports were named
 
 
@@ -36,15 +39,36 @@ def base_name(filename):
     return stem
 
 
-def target(folder, filename, kind, source=None):
-    """Where an export of `kind` goes in `folder`. A path that is the source itself gets ' (2)'."""
+def _same(a, b):
+    return os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def suggest(folder, filename, kind, source=None):
+    """The file the save dialog offers for an export of `kind` in `folder`: <name>-<kind's name>, numbered ' (2)',
+    ' (3)' … past any file already there (an earlier export) and past the source."""
     p = os.path.join(folder, f'{base_name(filename)}-{tr(NAMES[kind])}')
-    src = os.path.normcase(os.path.abspath(source)) if source else None
     stem, ext = os.path.splitext(p)
     i = 2
-    while src is not None and os.path.normcase(os.path.abspath(p)) == src:
+    while os.path.exists(p) or (source and _same(p, source)):
         p = f'{stem} ({i}){ext}'
         i += 1
+    return p
+
+
+def destination(path, kind, source=None):
+    """The file an export of `kind` the user named `path` is written to: `path`, with the kind's extension added
+    when it has another. Raises ValueError with a message for the user when its folder is missing or it is the
+    source."""
+    if kind not in KINDS:
+        raise ValueError(tr('不认识的导出内容：{kind}', kind=kind))
+    p = os.path.abspath(path)
+    if os.path.splitext(p)[1].lower() != EXTS[kind]:
+        p += EXTS[kind]
+    folder = os.path.dirname(p)
+    if not os.path.isdir(folder):
+        raise ValueError(tr('文件夹不存在：{folder}', folder=folder))
+    if source and _same(p, source):
+        raise ValueError(tr('“{file}”是正在编辑的原文件，不能覆盖它；换一个文件名', file=os.path.basename(p)))
     return p
 
 
@@ -89,16 +113,12 @@ def stocking_layer(art_rgb, out_rgb, alpha):
     return np.dstack([np.clip(np.round(rgb), 0, 255), a8]).astype(np.uint8)
 
 
-def export(doc, scene, params, folder, kind='png'):
-    """Write one file of `kind` (KINDS) to `folder`. png and cutout render with `params` (look.clean_params) on
-    `scene`; guides need neither. Returns {'file', 'seconds', 'sparkles_ready'}. Raises ValueError with a message for
-    the user."""
+def export(doc, scene, params, path, kind='png'):
+    """Write one file of `kind` (KINDS) to `path` (see destination), replacing any file there. png and cutout render
+    with `params` (look.clean_params) on `scene`; guides need neither. Returns {'file', 'seconds', 'sparkles_ready'}.
+    Raises ValueError with a message for the user."""
     t0 = time.perf_counter()
-    if kind not in KINDS:
-        raise ValueError(tr('不认识的导出内容：{kind}', kind=kind))
-    if not os.path.isdir(folder):
-        raise ValueError(tr('文件夹不存在：{folder}', folder=folder))
-    path = target(folder, doc.name, kind, source=doc.path)
+    path = destination(path, kind, source=doc.path)
     ready = True
     if kind == 'guides':
         with doc.lock:
