@@ -1,0 +1,505 @@
+{
+ "name": "deps-1",
+ "release": "https://github.com/silvermoong/stocking-texture-tool/releases/download/deps-1/",
+ "python": "3.12.15",
+ "uv": "0.12.23",
+ "groups": {
+  "base": {
+   "zip": {
+    "name": "stt-deps-1-base.zip",
+    "size": 653432086,
+    "sha256": "f828d9ce05dafe8b4a4c3bd986c382bc07586c1db8ebbc80f2a344f073ab4310"
+   },
+   "assets": [
+    {
+     "name": "stt-deps-1-base.zip",
+     "size": 653432086,
+     "sha256": "f828d9ce05dafe8b4a4c3bd986c382bc07586c1db8ebbc80f2a344f073ab4310"
+    }
+   ]
+  },
+  "cpu": {
+   "zip": {
+    "name": "stt-deps-1-torch-cpu.zip",
+    "size": 118724846,
+    "sha256": "26243a024973dfbbb1cc2d6429483d8c85f5e49160213bc848a65667a1a2592b"
+   },
+   "assets": [
+    {
+     "name": "stt-deps-1-torch-cpu.zip",
+     "size": 118724846,
+     "sha256": "26243a024973dfbbb1cc2d6429483d8c85f5e49160213bc848a65667a1a2592b"
+    }
+   ]
+  },
+  "cuda": {
+   "zip": {
+    "name": "stt-deps-1-torch-cuda.zip",
+    "size": 2762774747,
+    "sha256": "ae1f54d61fbd743f36fe46262224267a5ee413df8ec839df332c9d3bb75533ca"
+   },
+   "assets": [
+    {
+     "name": "stt-deps-1-torch-cuda.zip.001",
+     "size": 1992294400,
+     "sha256": "8786ce19bd04341e291cecea56601e75c02d48bedc14b8692e161b68db79f5af"
+    },
+    {
+     "name": "stt-deps-1-torch-cuda.zip.002",
+     "size": 770480347,
+     "sha256": "57cf66fc7d9659190a2cfdb51189ca2dad2a2c53284e54fdfaa825eb104563bb"
+    }
+   ]
+  }
+ },
+ "files": [
+  {
+   "path": "uv/uv-0.12.23-py3-none-win_amd64.whl",
+   "group": "base",
+   "size": 18138726,
+   "sha256": "fb8a4117a5224d73abe2204a1e744ae34b544f1b9a0b761576851deaa7215c12",
+   "url": "https://files.pythonhosted.org/packages/af/fd/816f4e8a76197312ec8037369e5b5c8a5ebde7aa118b6250259e031d3444/uv-0.12.23-py3-none-win_amd64.whl"
+  },
+  {
+   "path": "python/20261003/cpython-3.12.15+20261003-x86_64-pc-windows-msvc-install_only_stripped.tar.gz",
+   "group": "base",
+   "size": 22011023,
+   "sha256": "6fba7f2ae506facf41d457ea8293c7497910a675c69a4e954875169410a50402",
+   "url": "https://releases.astral.sh/github/python-build-standalone/releases/download/20261003/cpython-3.12.15%2B20261003-x86_64-pc-windows-msvc-install_only_stripped.tar.gz"
+  },
+  {
+   "path": "wheels/annotated_doc-0.0.5-py3-none-any.whl",
+   "group": "base",
+   "size": 5302,
+   "sha256": "117bac03a25ede5df5440e855b32d556049ca169ead221505badf432fed4b101",
+   "url": "https://files.pythonhosted.org/packages/3e/30/e900b21425a860e195f32e37657aa1f7c7f2b1bfb26f03ca209b90933c06/annotated_doc-0.0.5-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/annotated_types-0.8.0-py3-none-any.whl",
+   "group": "base",
+   "size": 13427,
+   "sha256": "f072f4d804ea359e4eaf198b1af7a8b0943881a87f31bb764f8bf219bb9419e0",
+   "url": "https://files.pythonhosted.org/packages/99/91/8acff4f5e50511b911bbccb72b8628a49c68ce14148cd9f6431094859a90/annotated_types-0.8.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/anyio-4.15.1-py3-none-any.whl",
+   "group": "base",
+   "size": 132079,
+   "sha256": "6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101",
+   "url": "https://files.pythonhosted.org/packages/12/b8/4bd346e22b28902df4d651910f5242c28d84e4a5c2435ca5c3f797ed7e2e/anyio-4.15.1-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/attrs-26.1.0-py3-none-any.whl",
+   "group": "base",
+   "size": 67548,
+   "sha256": "c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309",
+   "url": "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/certifi-2026.7.22-py3-none-any.whl",
+   "group": "base",
+   "size": 136983,
+   "sha256": "62f22742b58a1a33014a2b6b706588a8d7e2a88ae7bd1a6ebe8c992928483775",
+   "url": "https://files.pythonhosted.org/packages/0b/a7/71ac2cff56fec219ed242bb11b8efb69fcc4bec75db06fb7bfe35de520e6/certifi-2026.7.22-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/click-8.5.0-py3-none-any.whl",
+   "group": "base",
+   "size": 125251,
+   "sha256": "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360",
+   "url": "https://files.pythonhosted.org/packages/58/50/6c0d534c5f134586a8e1ba4e330569e32f057e33372ae556463212fb4cd3/click-8.5.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/colorama-0.4.6-py2.py3-none-any.whl",
+   "group": "base",
+   "size": 25335,
+   "sha256": "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6",
+   "url": "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl"
+  },
+  {
+   "path": "wheels/contourpy-1.4.0-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 234083,
+   "sha256": "6e697d94e69f499ff6bebb899cae97a58d5d14f0e1fe9568b43a0248d2f9af8c",
+   "url": "https://files.pythonhosted.org/packages/50/a9/dab08786bb4d77ef9a046b3c1be923be4e73c5d07d91f5a54e8ea9b09e41/contourpy-1.4.0-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/fastapi-0.142.2-py3-none-any.whl",
+   "group": "base",
+   "size": 144409,
+   "sha256": "bd5f4d81f1e93a88bcd77caf4dfe3c2dbffc3805407a0007e9a114c18b3a670b",
+   "url": "https://files.pythonhosted.org/packages/a0/b6/78aaf9141fb46742928c113f3cf6ef2259d538cb02b604b7656c1dc9883c/fastapi-0.142.2-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/filelock-4.0.12-py3-none-any.whl",
+   "group": "base",
+   "size": 111732,
+   "sha256": "5f17ee83ecee8a6f3e389c75822fb70a1c2f0506b99438a6dffa1d56793588c8",
+   "url": "https://files.pythonhosted.org/packages/da/a1/b047e1c486a2c66283633b7dbb73872ca16ca1ce6a426f70d4d037fc8e1c/filelock-4.0.12-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/fsspec-2026.9.0-py3-none-any.whl",
+   "group": "base",
+   "size": 221738,
+   "sha256": "8dd6e646e99ea382bd85f97a45e6b526a442d79423a7dc673f1e2756d05fcb5f",
+   "url": "https://files.pythonhosted.org/packages/6c/c0/a98505f18594f1bce828bb159cec0fcf9860562f1a2c85913409fc8f3d9e/fsspec-2026.9.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/h11-0.16.0-py3-none-any.whl",
+   "group": "base",
+   "size": 37515,
+   "sha256": "63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86",
+   "url": "https://files.pythonhosted.org/packages/04/4b/29cac41a4d98d144bf5f6d33995617b185d14b22401f75ca86f384e87ff1/h11-0.16.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/hf_xet-1.7.0-cp38-abi3-win_amd64.whl",
+   "group": "base",
+   "size": 3822644,
+   "sha256": "2b7bb5727889b0f2436dbaaad8fc4c3e66b8240d992716989e0c086b4278b1bc",
+   "url": "https://files.pythonhosted.org/packages/4d/59/b35106dfa71b6eef605dc88bd038fe99c7f86fb132a15b60d0bf2f235b2c/hf_xet-1.7.0-cp38-abi3-win_amd64.whl"
+  },
+  {
+   "path": "wheels/httpcore-1.0.9-py3-none-any.whl",
+   "group": "base",
+   "size": 78784,
+   "sha256": "2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55",
+   "url": "https://files.pythonhosted.org/packages/7e/f5/f66802a942d491edb555dd61e3a9961140fd64c90bce1eafd741609d334d/httpcore-1.0.9-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/httptools-0.8.0-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 90918,
+   "sha256": "cd96f29b4bab1d42fa6e3d008711c75e0f79e94e06827330160e3a304227f150",
+   "url": "https://files.pythonhosted.org/packages/05/0b/4240efeb672751ee5b9b380cb0e3fdc050bc05f68adc7a8aefc4fcd9a69a/httptools-0.8.0-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/httpx-0.28.1-py3-none-any.whl",
+   "group": "base",
+   "size": 73517,
+   "sha256": "d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad",
+   "url": "https://files.pythonhosted.org/packages/2a/39/e50c7c3a983047577ee07d2a9e53faf5a69493943ec3f6a384bdc792deb2/httpx-0.28.1-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/huggingface_hub-1.33.0-py3-none-any.whl",
+   "group": "base",
+   "size": 846435,
+   "sha256": "04e434b06e100eddbce9a6e817d72693a7884b10a79bd67ab48080d5c07eb899",
+   "url": "https://files.pythonhosted.org/packages/fc/16/963096d224b80909432dc16561a615fd33d2d13beef3ce4c63fa25e40867/huggingface_hub-1.33.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/idna-3.20-py3-none-any.whl",
+   "group": "base",
+   "size": 69583,
+   "sha256": "ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c",
+   "url": "https://files.pythonhosted.org/packages/58/a2/bb081bab032533a855d44de1d56f8e8426114ff1ba5d1f07a438a0a654f8/idna-3.20-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/jinja2-3.1.6-py3-none-any.whl",
+   "group": "base",
+   "size": 134899,
+   "sha256": "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67",
+   "url": "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/markdown_it_py-4.2.0-py3-none-any.whl",
+   "group": "base",
+   "size": 91687,
+   "sha256": "9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a",
+   "url": "https://files.pythonhosted.org/packages/b3/81/4da04ced5a082363ecfa159c010d200ecbd959ae410c10c0264a38cac0f5/markdown_it_py-4.2.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/markupsafe-3.0.4-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 14303,
+   "sha256": "11935df9bf455ed0c04eb87bcd720f02b1fe5e02128a9430f23aed6f93336fc7",
+   "url": "https://files.pythonhosted.org/packages/3f/bf/62495e180b7000aaf30000fff849e933f74264638057176cf46852500adc/markupsafe-3.0.4-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/mdurl-0.1.2-py3-none-any.whl",
+   "group": "base",
+   "size": 9979,
+   "sha256": "84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8",
+   "url": "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/mpmath-1.3.0-py3-none-any.whl",
+   "group": "base",
+   "size": 536198,
+   "sha256": "a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c",
+   "url": "https://files.pythonhosted.org/packages/43/e3/7d92a15f894aa0c9c4b49b8ee9ac9850d6e63b03c9c32c0367a13ae62209/mpmath-1.3.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/networkx-3.7-py3-none-any.whl",
+   "group": "base",
+   "size": 2142205,
+   "sha256": "e3fd2c13a7814cee3746340d8d7f8598a67f16a58bf47fb7f8793fab6efca1b0",
+   "url": "https://files.pythonhosted.org/packages/7e/cd/fe58041e9011f307c490e3e17dd48cc516448f7c698a3f2d9d9d65d7e6a8/networkx-3.7-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/numpy-2.5.3-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 12567828,
+   "sha256": "0a59a421a32580a009e8a1751345bf829631b990dc1794b80514ab722b435def",
+   "url": "https://files.pythonhosted.org/packages/3c/a1/accf6d4f0c80c5d9ba9735d6b1550e444180599f34dec69ca01360f717ad/numpy-2.5.3-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/opencv_python_headless-5.0.0.93-cp37-abi3-win_amd64.whl",
+   "group": "base",
+   "size": 43825962,
+   "sha256": "829717b6a95554f273e49e357cee3b3a2a26b6f4842fbc1bed2b45bdd8f87e0e",
+   "url": "https://files.pythonhosted.org/packages/b8/88/763b967f7efd7226b82c9fae16d560cba049b1f0c036647e65c610fd636e/opencv_python_headless-5.0.0.93-cp37-abi3-win_amd64.whl"
+  },
+  {
+   "path": "wheels/opentelemetry_api-1.45.1-py3-none-any.whl",
+   "group": "base",
+   "size": 60256,
+   "sha256": "b31553efa588ae44bc306f863c785c5333a9ecc091248c6ee68b4b6c87fdedfb",
+   "url": "https://files.pythonhosted.org/packages/1e/41/f7dcf80b81ee8e71c1a2b59f14208bc723edbd89ed027a73b175abf6348e/opentelemetry_api-1.45.1-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/packaging-26.3-py3-none-any.whl",
+   "group": "base",
+   "size": 129956,
+   "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+   "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/pillow-12.3.0-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 7227137,
+   "sha256": "a2b55dd6b2a4c4b7d87ffa56bdb33fdc5fdb9a462173861a7bc097f17d91cb09",
+   "url": "https://files.pythonhosted.org/packages/45/89/da2f7971a317f83d807fdd4065c0af40208e59e692cc43d315a71a0e96d1/pillow-12.3.0-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/psd_tools-1.24.0-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 689657,
+   "sha256": "f43134cd0ab7ad963be7240676d21acca7cc6d16c6bbac28cdbcf44695305128",
+   "url": "https://files.pythonhosted.org/packages/e3/3f/f351fa454e46be01327003d85394f02850b5b2dcd923d3e2f14b32b1fd21/psd_tools-1.24.0-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/pydantic-2.13.5-py3-none-any.whl",
+   "group": "base",
+   "size": 472589,
+   "sha256": "346a034f080da3755d8e9cb5e00e8b07de1d39e4f6e2c87d8ab7cafa0b269a73",
+   "url": "https://files.pythonhosted.org/packages/eb/47/c95ffc2009878c7aac0c5e08528022dcb885933252a88b5f170058014464/pydantic-2.13.5-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/pydantic_core-2.46.5-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 2043140,
+   "sha256": "5e81740c09e310f5aa5cbd3e434a01c154d4bef93241c7877b39f211d2b78ba8",
+   "url": "https://files.pythonhosted.org/packages/cf/c9/4c19f41b84cf6b622a72fbeed7665b25d47a187d68d47d0d430c07f23268/pydantic_core-2.46.5-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/pygments-2.21.0-py3-none-any.whl",
+   "group": "base",
+   "size": 1250147,
+   "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9",
+   "url": "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/python_dotenv-1.2.4-py3-none-any.whl",
+   "group": "base",
+   "size": 23266,
+   "sha256": "42269a8a5b3fd54ffa6f3d84b18abed50064717576b4ecf03dc4a55d8aa04fdc",
+   "url": "https://files.pythonhosted.org/packages/60/d1/38f3a3405989a89ac18390803e70c6ad7c7760da4f9b83cbeca0c44a0c72/python_dotenv-1.2.4-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/python_multipart-0.0.32-py3-none-any.whl",
+   "group": "base",
+   "size": 30042,
+   "sha256": "ff6d3f776f16878c894e52e107296ffc890e913c611b1a4ec6c44e2821fe2e23",
+   "url": "https://files.pythonhosted.org/packages/e1/04/e8135ebd1ad02c56ec633277529b2602ff99ff634be76cdba5744cf554fd/python_multipart-0.0.32-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/pyyaml-6.0.3-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 154003,
+   "sha256": "5fcd34e47f6e0b794d17de1b4ff496c00986e1c83f7ab2fb8fcfe9616ff7477b",
+   "url": "https://files.pythonhosted.org/packages/86/bf/899e81e4cce32febab4fb42bb97dcdf66bc135272882d1987881a4b519e9/pyyaml-6.0.3-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/regex-2026.9.29-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 280334,
+   "sha256": "fdd88ed5e20b1bcdd234421e454962c971aa44b653bdb7f1ea9ef683e90fb649",
+   "url": "https://files.pythonhosted.org/packages/93/19/489bc8db91196381c935752df01ba3f607140daece33b78d88573f028e64/regex-2026.9.29-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/rich-15.0.0-py3-none-any.whl",
+   "group": "base",
+   "size": 310654,
+   "sha256": "33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb",
+   "url": "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/safetensors-0.8.0-cp310-abi3-win_amd64.whl",
+   "group": "base",
+   "size": 355540,
+   "sha256": "096ec1a98435df7beb08853bb5aa9081a84f23d0adc67ed1a0a10550f608373f",
+   "url": "https://files.pythonhosted.org/packages/1b/6d/3fba214c1e5e0f69991677ec3bc17023f0421776975e1de0c682dca475e2/safetensors-0.8.0-cp310-abi3-win_amd64.whl"
+  },
+  {
+   "path": "wheels/scipy-1.18.1-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 36658278,
+   "sha256": "5e4d44984abc0020154ea81b247adeddcc3ac5527b975ff798bd1ba0adc513c2",
+   "url": "https://files.pythonhosted.org/packages/39/e7/979fd14e75008623df31ba70d6bb144700f68feadcea042021c06a05bf82/scipy-1.18.1-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/segment_anything-1.0-py3-none-any.whl",
+   "group": "base",
+   "size": 36560,
+   "sha256": "86f67d417a915823c3302098effe9008b688945772517310956bb49de0e7f02e",
+   "url": "https://files.pythonhosted.org/packages/75/77/8e0c16abf151a1dd076b562febc0da2ecf1132b0b41826087af96f101f42/segment_anything-1.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/setuptools-81.0.0-py3-none-any.whl",
+   "group": "base",
+   "size": 1062021,
+   "sha256": "fdd925d5c5d9f62e4b74b30d6dd7828ce236fd6ed998a08d81de62ce5a6310d6",
+   "url": "https://files.pythonhosted.org/packages/e1/e3/c164c88b2e5ce7b24d667b9bd83589cf4f3520d97cad01534cd3c4f55fdb/setuptools-81.0.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/shellingham-1.5.4-py2.py3-none-any.whl",
+   "group": "base",
+   "size": 9755,
+   "sha256": "7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686",
+   "url": "https://files.pythonhosted.org/packages/e0/f9/0595336914c5619e5f28a1fb793285925a8cd4b432c9da0a987836c7f822/shellingham-1.5.4-py2.py3-none-any.whl"
+  },
+  {
+   "path": "wheels/starlette-1.7.0-py3-none-any.whl",
+   "group": "base",
+   "size": 78980,
+   "sha256": "67f8e99895493dd2911a03f11314af6ceebeae4e704bb9f43dfc6a9db151c93e",
+   "url": "https://files.pythonhosted.org/packages/4e/d6/1ec1b290f9e0fb067899b61e1d37a30c923068bad260b216dbe37a7d2967/starlette-1.7.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/sympy-1.14.0-py3-none-any.whl",
+   "group": "base",
+   "size": 6299353,
+   "sha256": "e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5",
+   "url": "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/tokenizers-0.23.2-cp310-abi3-win_amd64.whl",
+   "group": "base",
+   "size": 2863236,
+   "sha256": "2e96f5699d5249c9c64aa8412e044f727aae3a4098cf830f9901ec1afc361cde",
+   "url": "https://files.pythonhosted.org/packages/db/f7/0a69ac6b82dbccf3f71add938a161c497952749294b8dd6dfe03a819dc40/tokenizers-0.23.2-cp310-abi3-win_amd64.whl"
+  },
+  {
+   "path": "wheels/torch-2.11.0+cpu-cp312-cp312-win_amd64.whl",
+   "group": "cpu",
+   "size": 114469197,
+   "sha256": "1abeaa46fa7532ed35ed79146f4de5d7a9d4b30462c98052ea4ddfe781ea3eca",
+   "url": "https://download.pytorch.org/whl/cpu/torch-2.11.0%2Bcpu-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/torchvision-0.26.0+cpu-cp312-cp312-win_amd64.whl",
+   "group": "cpu",
+   "size": 4255267,
+   "sha256": "52aa8401850a9792e71a8a1e65ac004e2b23622a6b6fd278cd11179efbefc65b",
+   "url": "https://download.pytorch.org/whl/cpu/torchvision-0.26.0%2Bcpu-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/tqdm-4.70.1-py3-none-any.whl",
+   "group": "base",
+   "size": 80199,
+   "sha256": "c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73",
+   "url": "https://files.pythonhosted.org/packages/a7/03/921a3d3c75785aca9ebfbfcabfbc3a1be12e2ab5265deb026d55a5a3f83e/tqdm-4.70.1-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/transformers-5.19.0-py3-none-any.whl",
+   "group": "base",
+   "size": 12599123,
+   "sha256": "afcd2dd5f603ed28c1e1fcb00a338ccbb4ef5f878ed289635df8b58187afb518",
+   "url": "https://files.pythonhosted.org/packages/b9/59/1e7f1212c215c73690ae6cab4678efe1555ff985953e145d88cc212859b0/transformers-5.19.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/typer-0.27.3-py3-none-any.whl",
+   "group": "base",
+   "size": 123312,
+   "sha256": "e50022f28b82a86313e54501317a1db64bf8f8d036ff8cfe5ca7e47675454aff",
+   "url": "https://files.pythonhosted.org/packages/07/ea/2e31b67051e91a133189e9c000c222502ddc6969856416de0d095de4c0b0/typer-0.27.3-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/typing_extensions-4.16.0-py3-none-any.whl",
+   "group": "base",
+   "size": 45571,
+   "sha256": "481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8",
+   "url": "https://files.pythonhosted.org/packages/49/d3/b8441a820a491ddfc024b0b0cf0393375b75ea13866d9c66727e54c2fc80/typing_extensions-4.16.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/typing_inspection-0.4.4-py3-none-any.whl",
+   "group": "base",
+   "size": 14750,
+   "sha256": "65b8397ba37ccbce054456aaccddfc91e6e3083c92824df348d96ca832f3f147",
+   "url": "https://files.pythonhosted.org/packages/67/81/4add07e5172b7ac40d8ed5ff580409a7801a4fe26d529bdd915401dabfbe/typing_inspection-0.4.4-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/uvicorn-0.54.0-py3-none-any.whl",
+   "group": "base",
+   "size": 87427,
+   "sha256": "505bdb0f318731d45f1f712071fc781a8981f6847a31c902c9f5e652d4f67faf",
+   "url": "https://files.pythonhosted.org/packages/38/0c/b54a4fdd7f90a3af8b02ebc9ce6712c2c208b7926a2f7bad95c33ebbe943/uvicorn-0.54.0-py3-none-any.whl"
+  },
+  {
+   "path": "wheels/watchfiles-1.3.0-cp310-abi3-win_amd64.whl",
+   "group": "base",
+   "size": 290643,
+   "sha256": "1acabde19b67e673274e89a04d613b7fb1f122e2c4b8ec9a581e59c149264b61",
+   "url": "https://files.pythonhosted.org/packages/48/a1/1c4a1b3c8030cd03206232612be8a6e8799093490c220b0fcb935d02b75a/watchfiles-1.3.0-cp310-abi3-win_amd64.whl"
+  },
+  {
+   "path": "wheels/websockets-17.2-cp312-cp312-win_amd64.whl",
+   "group": "base",
+   "size": 218528,
+   "sha256": "faa763b677e96f1beccc6b4d7e8c079dfeed2f249f57a19debc321b519ee64ec",
+   "url": "https://files.pythonhosted.org/packages/c6/2a/90008411c652dcfae34345a2169f4becd066a4ba71eebfa8dd801e0445e1/websockets-17.2-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/torch-2.11.0+cu128-cp312-cp312-win_amd64.whl",
+   "group": "cuda",
+   "size": 2753189216,
+   "sha256": "7c78215c3af4f62e63f2b2e360f1722fc719b0853c7ac22666483d9810613a4c",
+   "url": "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "wheels/torchvision-0.26.0+cu128-cp312-cp312-win_amd64.whl",
+   "group": "cuda",
+   "size": 9585013,
+   "sha256": "8c0d1c4fbb2c9a4d5d41d0aaa87da20e525bcb2a154ce405725b0be59456804b",
+   "url": "https://download.pytorch.org/whl/cu128/torchvision-0.26.0%2Bcu128-cp312-cp312-win_amd64.whl"
+  },
+  {
+   "path": "models/sam_vit_b_01ec64.pth",
+   "group": "base",
+   "size": 375042383,
+   "sha256": "ec2df62732614e57411cdcf32a23ffdf28910380d03139ee0f4fcbe91eb8c912",
+   "url": "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
+  },
+  {
+   "path": "models/Depth-Anything-V2-Small-hf/config.json",
+   "group": "base",
+   "size": 950,
+   "sha256": "c56698d3643dde1f83ea2212759e6b31a22b8f827246a36dd007ee8a22b3ff75",
+   "url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf/resolve/5426e4f0f36572d16453bbda7a8389317b1bef99/config.json"
+  },
+  {
+   "path": "models/Depth-Anything-V2-Small-hf/preprocessor_config.json",
+   "group": "base",
+   "size": 775,
+   "sha256": "d41175c0d889477ca8fc67191e540faef14baf6275157b3fdecf78469e6bbf84",
+   "url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf/resolve/5426e4f0f36572d16453bbda7a8389317b1bef99/preprocessor_config.json"
+  },
+  {
+   "path": "models/Depth-Anything-V2-Small-hf/model.safetensors",
+   "group": "base",
+   "size": 99173660,
+   "sha256": "3152477ce0d8d6978d76b995120de97cb5b928701fd0f817769f59e249a16b70",
+   "url": "https://huggingface.co/depth-anything/Depth-Anything-V2-Small-hf/resolve/5426e4f0f36572d16453bbda7a8389317b1bef99/model.safetensors"
+  }
+ ]
+}

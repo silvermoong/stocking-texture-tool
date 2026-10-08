@@ -27,7 +27,7 @@ Black or white stockings alike (original on the left, processed on the right):
 
 ## Install
 
-Windows 10 (1803 or later) or Windows 11, with an internet connection for the install. An NVIDIA card (RTX 20 series or newer, driver 570 or later) makes it much faster but is not required.
+Windows 10 (1803 or later) or Windows 11. An NVIDIA card (RTX 20 series or newer, driver 570 or later) makes it much faster but is not required.
 
 1. Get this repository: **Code → Download ZIP** at the top right and unzip it, or
 
@@ -39,14 +39,26 @@ Windows 10 (1803 or later) or Windows 11, with an internet connection for the in
 
    Keep the folder's full path short (under 100 characters), for example `D:\stocking-texture-tool`.
 
-The installer downloads its own Python 3.12, so you don't need Python installed, and it leaves any Python you have alone. It checks your graphics card, installs the matching build of PyTorch, downloads two models (about 470 MB together) and puts a "Stocking Texture Tool" shortcut on the desktop. The GPU build downloads about 3 GB the first time and takes about 5 GB installed.
+The installer checks your graphics card and downloads what it needs from this project's [install files package](https://github.com/silvermoong/stocking-texture-tool/releases/tag/deps-1) on GitHub: its own Python 3.12, all the packages, the PyTorch build for your card and two models. Then it puts a "Stocking Texture Tool" shortcut on the desktop. You don't need Python installed, and any Python you have is left alone. The GPU build downloads about 3.3 GB, the CPU build about 740 MB; the GPU build takes about 5 GB installed.
+
+Anything that fails to download from GitHub is fetched from its original source instead (PyPI, PyTorch, Hugging Face and so on).
 
 Double-click the desktop icon to open the tool, or drop a picture or PSD on it.
 
-- If the connection drops, run `install.bat` again; nothing is downloaded twice.
+- If the connection drops, run `install.bat` again; what has downloaded is kept.
 - After updating your graphics driver, run it again to switch from the CPU build to the GPU build.
 - To force the CPU build: `install.bat -Torch cpu`.
 - **Uninstall:** delete the folder and the desktop shortcut. Settings and the auto-saved work are in `%LOCALAPPDATA%\StockingTexture`; delete that too if you like.
+
+### Installing offline
+
+If the install files download too slowly, or the computer has no internet connection, download them somewhere else first:
+
+1. On the [install files package](https://github.com/silvermoong/stocking-texture-tool/releases/tag/deps-1) page, download `stt-deps-1-base.zip`, plus one PyTorch build:
+   - NVIDIA card: `stt-deps-1-torch-cuda.zip.001` and `.002` (both)
+   - any other PC: `stt-deps-1-torch-cpu.zip`
+2. Put them in a `deps` folder next to `install.bat`. Or keep them in the same folder as the code zip, and extract the code where it lies.
+3. Double-click `install.bat`; it needs no internet connection.
 
 ## How to use it
 
@@ -185,11 +197,13 @@ It also uses PyTorch, Transformers, OpenCV, NumPy, SciPy, psd-tools, FastAPI and
 ## Development
 
 ```
-.venv\Scripts\python -m pip install -r requirements-dev.txt
+.tools\uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
 .venv\Scripts\python -m pytest
 ```
 
 Some tests need a sample picture that is not distributed with the code; without it they are skipped. See [tests/sample_data.py](tests/sample_data.py).
+
+After changing a dependency's version (`requirements*.txt`), rebuild the install files package: `.venv\Scripts\python tools\make_deps.py deps-2`, upload what it makes to a new GitHub release `deps-2`, and commit the updated `tools/deps.json`.
 
 ## License
 

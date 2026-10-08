@@ -27,7 +27,7 @@
 
 ## 安装
 
-需要 Windows 10（1803 以上）或 Windows 11，安装时要联网。有 NVIDIA 显卡（RTX 20 系或更新、驱动 570 以上）会快很多，没有也能用。
+需要 Windows 10（1803 以上）或 Windows 11。有 NVIDIA 显卡（RTX 20 系或更新、驱动 570 以上）会快很多，没有也能用。
 
 1. 下载这个仓库：点右上角 **Code → Download ZIP** 解压，或者
 
@@ -39,14 +39,26 @@
 
    文件夹的完整路径不要太长（100 个字符以内），比如放在 `D:\stocking-texture-tool`。
 
-安装程序会自己下载一个独立的 Python 3.12，电脑上不需要事先装 Python，也不会动你已有的 Python。它会检测显卡、装对应版本的 PyTorch，下载两个模型（共约 470 MB），最后在桌面建一个「丝袜纹理工具」快捷方式。显卡版第一次要下载约 3 GB，装完占约 5 GB。
+安装程序会检测显卡，从本项目 GitHub 上的[安装文件包](https://github.com/silvermoong/stocking-texture-tool/releases/tag/deps-1)下载需要的文件：一个独立的 Python 3.12、全部依赖、对应显卡的 PyTorch 和两个模型。最后在桌面建一个「丝袜纹理工具」快捷方式。电脑上不需要事先装 Python，也不会动你已有的 Python。显卡版要下载约 3.3 GB，CPU 版约 740 MB，装完显卡版约占 5 GB。
+
+GitHub 下载失败的文件，会改从各自的原始来源下载（PyPI、PyTorch、Hugging Face 等）。
 
 装好后双击桌面图标打开。也可以把图片或 PSD 直接拖到图标上。
 
-- 中途断网了，重新运行 `install.bat` 即可，已经下载的不会重复下载。
+- 中途断网了，重新运行 `install.bat` 即可，已经下载的部分不会重复下载。
 - 更新显卡驱动后再运行一次，会从 CPU 版换成显卡版。
 - 想强制用 CPU：`install.bat -Torch cpu`。
 - **卸载：** 删掉这个文件夹和桌面快捷方式。设置和自动保存的工作在 `%LOCALAPPDATA%\StockingTexture`，也可以一起删。
+
+### 离线安装
+
+安装文件包下载太慢，或者安装的电脑不能联网时，先在别处把文件下好：
+
+1. 打开[安装文件包](https://github.com/silvermoong/stocking-texture-tool/releases/tag/deps-1)，下载 `stt-deps-1-base.zip`，再按显卡选一种 PyTorch：
+   - NVIDIA 显卡：`stt-deps-1-torch-cuda.zip.001` 和 `.002`，两个都要
+   - 其他电脑：`stt-deps-1-torch-cpu.zip`
+2. 把这些文件放进 `install.bat` 旁边的 `deps` 文件夹。也可以和代码 zip 放在同一个文件夹，在原地解压代码。
+3. 双击 `install.bat`，全程不用联网。
 
 ## 使用
 
@@ -185,11 +197,13 @@
 ## 开发
 
 ```
-.venv\Scripts\python -m pip install -r requirements-dev.txt
+.tools\uv pip install --python .venv\Scripts\python.exe -r requirements-dev.txt
 .venv\Scripts\python -m pytest
 ```
 
 一部分测试要用一张样图，它不随仓库发布，没有时这些测试会自动跳过，见 [tests/sample_data.py](tests/sample_data.py)。
+
+改了依赖版本（`requirements*.txt`）之后，要重新打包安装文件包：`.venv\Scripts\python tools\make_deps.py deps-2`，把生成的文件上传到新的 GitHub Release `deps-2`，再提交更新后的 `tools/deps.json`。
 
 ## 许可
 
