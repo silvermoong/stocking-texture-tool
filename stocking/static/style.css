@@ -201,14 +201,18 @@ body.no-doc .step-body > :not(.step-head), body.no-doc .step h2 { opacity: .4; }
 
 /* tools: the chosen one is filled with the colour of the region it works on (chalk when none is chosen) */
 .tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-.tool {
+.tool, .tool-btn {
   display: flex; align-items: baseline; justify-content: center; gap: 5px; height: 32px; padding: 6px 0 0;
   border-radius: 3px; background: var(--raised); font-size: 13px; white-space: nowrap;
 }
 .tool kbd { font: 11px var(--din); color: var(--muted-raised); }
-.tool:hover { background: var(--hover); }
+.tool:hover, .tool-btn:hover { background: var(--hover); }
 .tool[aria-checked="true"] { background: var(--rc, var(--chalk)); color: var(--on-chalk); font-weight: 700; }
 .tool[aria-checked="true"] kbd { color: var(--on-chalk); }
+/* 走向's row: its two tools, then 镜像 (an action beside them, not a tool), all three the same width */
+.tool-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.tool-row .tools { grid-column: span 2; grid-template-columns: repeat(2, 1fr); }
+.tool-btn[aria-disabled="true"], .tool-btn[aria-disabled="true"]:hover { background: var(--raised); color: var(--faint); cursor: default; }
 
 .slider { display: grid; grid-template-columns: auto 1fr 30px; align-items: center; gap: 10px; margin-top: 12px; }
 .slider .num { text-align: right; }
@@ -216,9 +220,6 @@ body.no-doc .step-body > :not(.step-head), body.no-doc .step h2 { opacity: .4; }
 .check:has(input:disabled) { color: var(--faint); cursor: default; }
 .shows { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 12px; margin-top: 14px; }
 .shows .lead { grid-row: 1 / span 2; color: var(--muted); }
-.mirror { display: flex; margin-top: 8px; }
-.mirror .btn { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
-.btn[aria-disabled="true"], .btn[aria-disabled="true"]:hover { background: none; color: var(--faint); cursor: default; }
 
 /* menus (a region's ···, and 合并到's list): float over everything */
 .menu {

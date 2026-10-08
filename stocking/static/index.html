@@ -75,14 +75,13 @@
     <div class="step-num" aria-hidden="true">2</div>
     <div class="step-body">
       <div class="step-head"><h2>走向</h2></div>
-      <div class="tools" role="radiogroup" aria-label="走向工具">
-        <button class="tool" data-tool="pen" role="radio" aria-keyshortcuts="P" title="走向：沿一道横纹画线，右键删除线">走向<kbd aria-hidden="true" translate="no">P</kbd></button>
-        <button class="tool" data-tool="wall" role="radio" aria-keyshortcuts="W" title="隔开：沿两块丝袜的交界画线，横纹不会穿过它。一块挡住另一块的会自动找到（虚线），贴在一起的（比如大腿压着小腿）要自己画；右键删除隔开线">隔开<kbd aria-hidden="true" translate="no">W</kbd></button>
+      <div class="tool-row">
+        <div class="tools" role="radiogroup" aria-label="走向工具">
+          <button class="tool" data-tool="pen" role="radio" aria-keyshortcuts="P" title="走向：沿一道横纹画线，右键删除线">走向<kbd aria-hidden="true" translate="no">P</kbd></button>
+          <button class="tool" data-tool="wall" role="radio" aria-keyshortcuts="W" title="隔开：沿两块丝袜的交界画线，横纹不会穿过它。一块挡住另一块的会自动找到（虚线），贴在一起的（比如大腿压着小腿）要自己画；右键删除隔开线">隔开<kbd aria-hidden="true" translate="no">W</kbd></button>
+        </div>
+        <button id="btn-mirror" class="tool-btn" type="button" aria-disabled="true">镜像</button>
       </div>
-      <div class="mirror">
-        <button id="btn-mirror" class="btn" type="button" aria-disabled="true">镜像到…</button>
-      </div>
-      <p class="note">腿弯折、两块丝袜贴在一起时，横纹如果从交界处连了过去，用隔开（W）沿交界画一条线。</p>
       <div class="shows">
         <span class="lead">显示</span>
         <label class="check"><input type="checkbox" id="show-strokes" checked>走向线</label>

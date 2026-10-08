@@ -92,7 +92,7 @@ Step 2, Direction: choose Direction (P) and draw a line along one course of the 
 
 - A line may cross a hand or hair; the courses carry on underneath.
 - Right-click or Delete removes the line under the pointer. Each line re-solves only its own region, in a second or two.
-- **Mirror:** once the left leg is done, click Mirror onto “Right leg” and the right leg gets a flipped copy of its lines, which you can then edit as usual.
+- **Mirror:** once the left leg is done, select it and click Mirror; the right leg gets a flipped copy of its lines, which you can then edit as usual.
 
 With direction lines drawn on both legs, the thin white lines are the solved courses:
 

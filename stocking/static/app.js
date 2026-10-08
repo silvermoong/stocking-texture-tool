@@ -1650,7 +1650,6 @@ function renderMirror() {
   const r = currentRegion();
   const blocked = S.doc ? mirrorBlocked(r) : '';
   const p = S.doc && r ? mirrorPartner(r) : null;
-  b.textContent = p ? t('镜像到“{name}”', { name: p.name }) : t('镜像到…');
   b.setAttribute('aria-disabled', String(blocked !== null));
   if (p || blocked !== null) {
     b.removeAttribute('aria-haspopup');
@@ -1659,7 +1658,9 @@ function renderMirror() {
     b.setAttribute('aria-haspopup', 'menu');
     b.setAttribute('aria-expanded', String(!$('#mirror-menu').hidden));
   }
-  setTip(b, blocked || (r && t('把“{name}”的走向线左右翻转，按两边的轮廓对齐画过去，替换那边原来的走向线。镜像出来的线可以照常修改。', { name: r.name })));
+  setTip(b, blocked || (r && (p
+    ? t('把“{name}”的走向线左右翻转，按两边的轮廓对齐画到“{into}”上，替换它原来的走向线。镜像出来的线可以照常修改。', { name: r.name, into: p.name })
+    : t('把“{name}”的走向线左右翻转，按两边的轮廓对齐画过去，替换那边原来的走向线。镜像出来的线可以照常修改。', { name: r.name }))));
   if (blocked !== null) closeMirrorMenu();
 }
 
