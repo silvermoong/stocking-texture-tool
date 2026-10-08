@@ -58,7 +58,7 @@ If the install files download too slowly, or the computer has no internet connec
 1. On the [install files package](https://github.com/silvermoong/stocking-texture-tool/releases/tag/deps-1) page, download `stt-deps-1-base.zip`, plus one PyTorch build:
    - NVIDIA card: `stt-deps-1-torch-cuda.zip.001` and `.002` (both)
    - any other PC: `stt-deps-1-torch-cpu.zip`
-2. Put them in a `deps` folder next to `install.bat`. Or keep them in the same folder as the code zip, and extract the code where it lies.
+2. Make a folder named `deps` next to `install.bat` and put the downloaded files in it as they are. **Don't unzip or rename them**: the installer joins, checks and unpacks them itself.
 3. Double-click `install.bat`; it needs no internet connection.
 
 ## How to use it

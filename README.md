@@ -58,7 +58,7 @@ GitHub 下载失败的文件，会改从各自的原始来源下载（PyPI、PyT
 1. 打开[安装文件包](https://github.com/silvermoong/stocking-texture-tool/releases/tag/deps-1)，下载 `stt-deps-1-base.zip`，再按显卡选一种 PyTorch：
    - NVIDIA 显卡：`stt-deps-1-torch-cuda.zip.001` 和 `.002`，两个都要
    - 其他电脑：`stt-deps-1-torch-cpu.zip`
-2. 把这些文件放进 `install.bat` 旁边的 `deps` 文件夹。也可以和代码 zip 放在同一个文件夹，在原地解压代码。
+2. 在 `install.bat` 旁边新建一个 `deps` 文件夹，把下载的文件原样放进去。**不用解压，也不要改文件名**，安装程序会自己拼接、校验和解压。
 3. 双击 `install.bat`，全程不用联网。
 
 ## 使用
