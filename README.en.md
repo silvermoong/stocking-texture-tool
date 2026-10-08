@@ -68,7 +68,7 @@ Drop a PNG, JPG or PSD on the window, or press Ctrl+O. A PSD is read as its flat
 
 ### 2. Paint the regions
 
-![The Guides page: a region per leg, with direction lines drawn and the solved courses as thin white lines](docs/images/guides-page-en.jpg)
+![The Guides page: the left and right leg each painted as a region, in blue and orange](docs/images/regions-page-en.jpg)
 
 Step 1, Regions, on the left. There are two to start with, Left leg and Right leg.
 
@@ -78,9 +78,7 @@ Step 1, Regions, on the left. There are two to start with, Left leg and Right le
 
 Give each side of a crease its own region: left and right thigh, crotch, left and right breast. It works beyond legs too, for instance a top split into collar, left chest and right chest:
 
-![A turtleneck top in three regions, collar, left chest and right chest, each with its direction lines; the thin white lines are the solved courses](docs/images/torso-courses.jpg)
-
-The thin white lines are the solved courses, curving over the chest.
+![A turtleneck top split into three regions: collar, left chest and right chest](docs/images/torso-regions.jpg)
 
 ### 3. Draw direction lines
 
@@ -96,11 +94,31 @@ Step 2, Direction: choose Direction (P) and draw a line along one course of the 
 - Right-click or Delete removes the line under the pointer. Each line re-solves only its own region, in a second or two.
 - **Mirror:** once the left leg is done, click Mirror onto “Right leg” and the right leg gets a flipped copy of its lines, which you can then edit as usual.
 
+With direction lines drawn on both legs, the thin white lines are the solved courses:
+
+![The Guides page: a few direction lines on each leg, and the solved courses as thin white lines](docs/images/guides-page-en.jpg)
+
+The top works the same way, its courses curving over the chest:
+
+![The three regions of the turtleneck, each with its direction lines, and the courses curving over the chest](docs/images/torso-courses.jpg)
+
 ### 4. A folded leg
 
-A leg bent double, its thigh resting on its calf, still needs only one region, with no seam at the knee. But the courses must not run across the line where thigh and calf touch: draw a Divider (W) along it, and the courses go round its ends instead.
+A leg bent double, its thigh resting on its calf, still needs only one region, with no seam at the knee. Draw a direction line on the thigh and one on the calf, then deal with the join and the knee in the two steps below.
 
-![Left: no divider line, the courses run across the join; right: with a divider line](docs/images/fold-divider.jpg)
+With just the two direction lines, the thigh's courses run straight on into the calf:
+
+![No divider line: one direction line each on thigh and calf, and the thigh's courses run on into the calf](docs/images/fold-step1.jpg)
+
+**Thigh and calf each go their own way:** draw a Divider (W) along the line where thigh and calf touch. The courses part there, so the thigh and the calf can have direction lines running different ways.
+
+![With a divider line: the courses of thigh and calf part at the join](docs/images/fold-step2.jpg)
+
+**A smooth turn at the knee:** draw one more line on the knee, an arc roughly through its middle, curving as the knee bends. The courses follow it round the knee, joining the thigh's direction to the calf's smoothly.
+
+![An arc on the knee: the courses follow it round the knee, and the thigh's and calf's directions join smoothly](docs/images/fold-step3.jpg)
+
+Processed:
 
 ![The folded leg, processed](docs/images/fold-finished.png)
 
