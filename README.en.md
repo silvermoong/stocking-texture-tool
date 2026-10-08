@@ -118,9 +118,17 @@ With just the two direction lines, the thigh's courses run straight on into the 
 
 ![An arc on the knee: the courses follow it round the knee, and the thigh's and calf's directions join smoothly](docs/images/fold-step3.jpg)
 
-Processed:
+After these three steps (Fine lines style, at the picture's own pixels):
 
-![The folded leg, processed](docs/images/fold-finished.png)
+![The folded leg, processed: the knee and the join of thigh and calf](docs/images/fold-finished.png)
+
+Original on the left, processed on the right. At the knee, the courses follow the arc round it:
+
+![The knee, original left and processed right: the courses follow the arc round the knee](docs/images/fold-knee.png)
+
+At the join of thigh and calf, the courses run different ways on either side:
+
+![The join of thigh and calf, original left and processed right: the courses run different ways on either side](docs/images/fold-junction.png)
 
 Within one region, where one stretch of stocking lies in front of another with a clear step in depth, the tool tries to find the divider line itself and shows it dashed; right-click one that is wrong to delete it. Where two stretches touch, it usually can't tell, so draw those yourself.
 
