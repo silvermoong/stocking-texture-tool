@@ -157,7 +157,7 @@ Density 70% / 100% / 130%: how close the courses are
 
 ![Density](docs/images/slider-density.png)
 
-Strength 50% / 100% / 160%: how visible the texture is. Auto by default, from the stockings' lightness; turn it up by hand for dark clothes
+Strength 50% / 100% / 160%: how visible the texture is; it leaves the sparkles alone (they have their own sliders below). Auto by default, from the stockings' lightness; turn it up by hand for dark clothes
 
 ![Strength](docs/images/slider-strength.png)
 

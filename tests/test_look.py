@@ -195,6 +195,26 @@ def test_even_sparkles_spread_everywhere(fx, style):
     assert min(shares) > 0.5 * max(shares)
 
 
+@pytest.mark.parametrize('style', look.STYLES)
+def test_strength_leaves_sparkles_alone(fx, style):
+    """强度 scales the texture only: a sparkle lifts its pixel by the same ratio at any strength."""
+    s = scene(fx)
+    rect = (300, 320, 812, 832)
+
+    def lift(strength):
+        p = dict(OFF, style=style, strength=strength, strength_auto=False)
+        base = s.render(p, rect)[0].astype(float).sum(axis=2)
+        out = s.render(dict(p, sparkle_even=100), rect)[0].astype(float)
+        hit = (out.sum(axis=2) != base) & (base > 90) & (out.max(axis=2) < 250)
+        return hit, np.where(hit, out.sum(axis=2) / np.maximum(base, 1) - 1, 0)
+
+    hit_lo, lo = lift(30)
+    hit_hi, hi = lift(200)
+    both = hit_lo & hit_hi
+    assert both.sum() > 200
+    assert abs(np.median(lo[both]) / np.median(hi[both]) - 1) < 0.1
+
+
 def test_removed_bulge_setting_is_ignored_and_nothing_waits_for_depth(fx):
     """起伏松紧 is gone: an old saved 'bulge' is dropped, and while depth is still being estimated a style without
     depth sparkles renders final (nothing is waiting for it)."""

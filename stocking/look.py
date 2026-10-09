@@ -39,9 +39,10 @@ STRENGTH_REF = 33.2
 # the dark fixture's stockings at 100% (matching it looked too sparse spread over everything; the user set the old
 # 300% as the new 100%).
 EVEN_SPARKLES = {'lines': 0.36, 'grain': 0.81, 'knit': 0.81, 'loops': 0.81, 'oily': 0.81}
-# How each style scatters them: chance per pixel (times the weight), strength range (times the style's strength),
-# colour (B, G, R gain; None = neutral light) and the random draws used. 斜单线's warm single-pixel glints and
-# 加濑风's white flecks are the reference renders'; the other styles take 加濑风's flecks.
+# How each style scatters them: chance per pixel (times the weight), brightness range (strength leaves it alone:
+# 强度 scales the texture only, the 亮点 sliders the sparkles), colour (B, G, R gain; None = neutral light) and the
+# random draws used. 斜单线's warm single-pixel glints and 加濑风's white flecks are the reference renders'; the other
+# styles take 加濑风's flecks.
 SPARKLE_RECIPES = {
     'lines': dict(density=0.045, r_lo=0.18, r_hi=0.55, tint=(0.95, 1.0, 1.08), draws='lines'),
     'grain': dict(density=0.014, r_lo=0.12, r_hi=0.38, tint=None, draws='grain'),
@@ -469,7 +470,7 @@ class Scene:
         if weight is not None:
             r = SPARKLE_RECIPES[q['style']]
             u1, u2 = self.randoms('lines') if r['draws'] == 'lines' else self.randoms('grain')[2:]
-            out = knit.add_sparkles(out, weight, None, density=r['density'], r_lo=r['r_lo'] * s, r_hi=r['r_hi'] * s,
+            out = knit.add_sparkles(out, weight, None, density=r['density'], r_lo=r['r_lo'], r_hi=r['r_hi'],
                                     tint=r['tint'], draws=(u1[sl], u2[sl]))
         out = out[y0 - Y0:y1 - Y0, x0 - X0:x1 - X0]
         info = dict(g, style=q['style'], sparkles_ready=ready)
