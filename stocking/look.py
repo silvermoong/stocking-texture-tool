@@ -1,9 +1,9 @@
 """From solved courses to the finished texture: style, density, tilt, strength, sparkles; full renders and crops.
 
 斜单线 (earlier called 单线亮点) and 加濑风 call the knit renderers exactly as the reference renders the presets were
-tuned on did (tests/verify.py), with their seed and draw order, so default settings reproduce those renders. 细线 and
-针织 are the tool's own (knit.render_thread / render_loops; 细线 replaced the reference's knit after it was compared
-with a drawing of real knit stockings). The
+tuned on did (tests/verify.py), with their seed and draw order, so default settings reproduce those renders. 细线,
+针织 and 线圈 are the tool's own (knit.render_thread / render_loops / render_coil; 细线 replaced the reference's knit
+after it was compared with a drawing of real knit stockings). The
 random fields (sparkles, grain) are drawn once per image at full size, and every image-wide map a style needs is taken
 from the whole image, so a crop is pixel-identical to the same area of the full render: the live 100% preview shows
 exactly what the export will hold.
@@ -21,9 +21,14 @@ SEED = 20261005
 BASE_PERIOD = 4.6           # px per course at 100% density on a 1280x1920 image
 MIN_PERIOD = 3.2            # below this most of a curved surface sits in the anti-moire fade
 REF_AREA = 1280 * 1920
+# Skin visibility (线圈): the Lab direction of skin (60 degrees from a* toward b*), the smoothing in px at REF_AREA, and
+# the spread (5th to 95th percentile, in Lab units) over which a region's colour counts as showing skin at all.
+SKIN_AXIS = (0.5, 0.866)
+SEE_SIGMA = 10.0
+SEE_SPAN = (4.0, 9.0)
 # period -> fade band and wale ratio of the earlier deliveries (普通, 密, 更密); interpolated in between
 BANDS = np.array([(3.4, 0.30, 0.36, 1.8), (3.7, 0.29, 0.35, 1.6), (4.6, 0.27, 0.34, 1.25)])
-STYLES = ('knit', 'loops', 'lines', 'grain', 'oily')    # 细线, 针织, 斜单线, 加濑风, 油光
+STYLES = ('knit', 'loops', 'coil', 'lines', 'grain', 'oily')    # 细线, 针织, 线圈, 斜单线, 加濑风, 油光
 EXPERIMENTAL_STYLES = ('oily',)                     # shown as 试验 in the panel
 SPARKLE_STYLES = STYLES                            # every style scatters sparkles (亮点), by the same settings
 LEGACY_STYLES = {'p_oily': 'oily'}                  # saved by an early version
@@ -38,7 +43,7 @@ STRENGTH_REF = 33.2
 # Sparkle weight of the 'even' source at 100%, per style: three times the mean weight the depth source gives over
 # the dark fixture's stockings at 100% (matching it looked too sparse spread over everything; the user set the old
 # 300% as the new 100%).
-EVEN_SPARKLES = {'lines': 0.36, 'grain': 0.81, 'knit': 0.81, 'loops': 0.81, 'oily': 0.81}
+EVEN_SPARKLES = {'lines': 0.36, 'grain': 0.81, 'knit': 0.81, 'loops': 0.81, 'coil': 0.81, 'oily': 0.81}
 # How each style scatters them: chance per pixel (times the weight), brightness range (strength leaves it alone:
 # 强度 scales the texture only, the 亮点 sliders the sparkles), colour (B, G, R gain; None = neutral light) and the
 # random draws used. 斜单线's warm single-pixel glints and 加濑风's white flecks are the reference renders'; the other
@@ -48,6 +53,7 @@ SPARKLE_RECIPES = {
     'grain': dict(density=0.014, r_lo=0.12, r_hi=0.38, tint=None, draws='grain'),
     'knit': dict(density=0.014, r_lo=0.12, r_hi=0.38, tint=None, draws='grain'),
     'loops': dict(density=0.014, r_lo=0.12, r_hi=0.38, tint=None, draws='grain'),
+    'coil': dict(density=0.014, r_lo=0.12, r_hi=0.38, tint=None, draws='grain'),
     'oily': dict(density=0.014, r_lo=0.12, r_hi=0.38, tint=None, draws='grain'),
 }
 RENDER_KEYS = ('style', 'density', 'tilt', 'strength', 'sparkle_depth', 'sparkle_bright',
@@ -216,6 +222,32 @@ def relief(disp, R, down=4):
     return out
 
 
+def skin_visibility(src_bgr, R, alpha, scale=1.0):
+    """(see, trust), each 0..1 per pixel (0 outside the regions): how much skin shows through the stocking.
+
+    The painting says it in colour: where the knit is open the skin's warm yellow-red comes through the black or
+    white yarn. The measure is the Lab chroma along the skin's hue (a* and b*, mostly b*), smoothed over about 10 px
+    (at 1280 x 1920) so the knit itself is not in it, then stretched between the region's own 5th and 95th
+    percentile: the lightest stockings and the darkest sit at the same 0..1. trust says whether that stretch means
+    anything: a region whose colour hardly varies (a flat swatch) has no skin to read, and 线圈 draws its flat
+    texture there instead."""
+    lab = cv2.cvtColor(src_bgr, cv2.COLOR_BGR2LAB).astype(np.float32) - 128
+    skin = lab[..., 1] * SKIN_AXIS[0] + lab[..., 2] * SKIN_AXIS[1]
+    see = np.zeros(R.shape, np.float32)
+    trust = np.zeros(R.shape, np.float32)
+    sigma = SEE_SIGMA * scale
+    for i in np.unique(R[R > 0]):
+        m = (R == i) & (alpha > 0.5)
+        if m.sum() < 64:
+            continue
+        mf = m.astype(np.float32)
+        sm = cv2.GaussianBlur(skin * mf, (0, 0), sigma) / np.maximum(cv2.GaussianBlur(mf, (0, 0), sigma), 1e-6)
+        lo, hi = np.percentile(sm[m], [5, 95])
+        see[m] = np.clip((sm[m] - lo) / max(hi - lo, 1e-6), 0, 1)
+        trust[m] = knit.sstep(SEE_SPAN[0], SEE_SPAN[1], hi - lo)
+    return see, trust
+
+
 def highlight(src_bgr, R, down=4):
     """0..1 per region: how much brighter each point is painted than the region's own surroundings.
 
@@ -302,6 +334,16 @@ class Scene:
             if 'wide' not in self._stretch:
                 self._stretch['wide'] = knit.wide_luma(self.src)
             return self._stretch['wide']
+
+    def see_map(self):
+        """skin_visibility (see, trust) of the whole image, cached: crops slice it, so they match the whole render."""
+        with self._lock:
+            maps = self._stretch.get('see')
+        if maps is None:
+            maps = skin_visibility(self.src, self.R, self.alpha, float(np.sqrt(self.w * self.h / REF_AREA)))
+            with self._lock:
+                self._stretch['see'] = maps
+        return maps
 
     def oily_maps(self):
         """oily.oily_maps of the whole image (油光's tone, glint and translucency maps), cached: crops slice it."""
@@ -450,7 +492,12 @@ class Scene:
         src, R, V, A, alpha = self.src[sl], self.R[sl], self.V[sl], self.A[sl], self.alpha[sl]
         p, s = g['period'], q['strength'] / 100.0
         weight, ready = self.sparkle_weight(q, q['style'], sl)
-        if q['style'] in ('knit', 'loops'):
+        if q['style'] == 'coil':
+            gn, gc = self.randoms('grain')[:2]
+            see, trust = self.see_map()
+            out, _ = knit.render_coil(src, R, V / p + 0.37 * R, A / (p * g['wale_ratio']), alpha, self.wide_luma()[sl],
+                                      see[sl], trust[sl], (gn[sl], gc[sl]), amp=s, f_lo=g['f_lo'], f_hi=g['f_hi'])
+        elif q['style'] in ('knit', 'loops'):
             draw = knit.render_thread if q['style'] == 'knit' else knit.render_loops
             out, _ = draw(src, R, V / p + 0.37 * R, A / (p * g['wale_ratio']), alpha, self.wide_luma()[sl],
                           amp=(0.10 if q['style'] == 'knit' else 0.12) * s, f_lo=g['f_lo'], f_hi=g['f_hi'])

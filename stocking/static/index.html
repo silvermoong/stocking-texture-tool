@@ -94,11 +94,22 @@
  </div>
 
  <div class="side-pane look-only" id="pane-look" role="tabpanel" aria-labelledby="tab-look">
+  <section class="group" id="preset-section">
+    <h2 id="preset-title">预设</h2>
+    <div class="preset-row">
+      <select id="preset-select" aria-labelledby="preset-title"></select>
+      <button id="btn-preset-save" class="btn small" type="button">保存</button>
+      <button id="btn-preset-delete" class="btn small" type="button" title="删除选中的预设">删除</button>
+    </div>
+    <p class="sub preset-note"><span id="preset-note"></span> <button id="btn-preset-undo" class="text-btn small" type="button" hidden></button></p>
+  </section>
+
   <section class="group">
     <h2>样式</h2>
     <div class="styles" role="radiogroup" aria-label="样式">
       <button class="opt" data-style="knit" role="radio">细线</button>
       <button class="opt" data-style="loops" role="radio">针织</button>
+      <button class="opt" data-style="coil" role="radio">线圈</button>
       <button class="opt" data-style="lines" role="radio">斜单线</button>
       <button class="opt" data-style="grain" role="radio">加濑风</button>
       <button class="opt" data-style="oily" role="radio"
@@ -282,6 +293,32 @@
       <button class="btn" value="cancel">取消</button>
       <button class="btn" value="discard">直接打开</button>
       <button class="btn primary" value="export" autofocus>先导出丝袜引导.psd</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="preset-dialog" class="dialog" aria-labelledby="preset-dialog-title">
+  <form id="preset-form" method="dialog">
+    <h2 id="preset-dialog-title">保存预设</h2>
+    <label class="dialog-field">
+      <span>预设名</span>
+      <input id="preset-name" type="text" maxlength="40" autocomplete="off" spellcheck="false">
+    </label>
+    <p id="preset-dialog-note" class="dialog-note" role="status"></p>
+    <div class="actions">
+      <button id="btn-preset-cancel" class="btn" type="button">取消</button>
+      <button id="btn-preset-ok" class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="preset-delete" class="dialog" aria-labelledby="preset-delete-title" aria-describedby="preset-delete-text">
+  <form method="dialog">
+    <h2 id="preset-delete-title">删除预设</h2>
+    <p id="preset-delete-text"></p>
+    <div class="actions">
+      <button class="btn" value="cancel" autofocus>取消</button>
+      <button class="btn" value="delete">删除</button>
     </div>
   </form>
 </dialog>

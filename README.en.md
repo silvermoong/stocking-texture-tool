@@ -18,7 +18,8 @@ Black or white stockings alike (original on the left, processed on the right):
 
 - **A few lines texture a whole leg.** Draw 1–3 lines per region to say which way the knit runs; the courses fill the region, evenly spaced on screen. Where a hand or hair lies over the leg, they carry on underneath.
 - **One click selects a leg.** Pick uses Segment Anything, with a Small / Medium / Large range to choose from after each click.
-- **Five styles:** Fine lines, Knit, Slanted lines, Kase and Glossy (Beta). Each can add sparkles where the yarn catches the light.
+- **Six styles:** Fine lines, Knit, Coil, Slanted lines, Kase and Glossy (Beta). Each can add sparkles where the yarn catches the light.
+- **Presets:** save a tuned style, density, tilt, strength and sparkles, and load them in one click on another image.
 - **Black or white stockings.** Strength follows the stockings' lightness: the same texture stands out about twice as much on white, so it is turned down there automatically.
 - **No moiré.** Where the courses get close to a pixel apart the texture fades out by itself, and Show problems marks where that happens.
 - **Mirror in one click.** Finish the left leg and the right one follows.
@@ -147,6 +148,7 @@ Switch to the Texture page at the top. The settings are on the left; Whole shows
 | --- | --- |
 | Fine lines (default) | Skin shows through a thin gap between wide threads: pink lines on light stockings, warm bright lines on dark ones |
 | Knit | Columns of V-shaped stitch loops, like the reinforced sole of a stocking |
+| Coil | Neat plain knit: every loop drawn the way real plain knit is built, all the same, in straight rows and columns. It varies the way the artist's drawings do, with how much skin shows through: clear loops where the colour shows skin, a fine rough grain and weaker contrast where it does not. Handy as an underlay for painting. Not in the picture above |
 | Slanted lines | Fine slanting lines, leaning opposite ways on the two legs in a chevron |
 | Kase | A fine, grainy knit |
 | Glossy (Beta) | Sheer, shiny stockings: skin showing where the surface faces you, darker edges, a glint along the light. Best on plain black stockings with clear highlights; results can vary from picture to picture |
@@ -170,6 +172,8 @@ Sparkles (Evenly) 0% / 100% / 300%
 ![Sparkles](docs/images/slider-sparkles.png)
 
 Sparkles come from several sources that mix: By depth puts them where the body bulges toward you (knees, the fronts of the legs), By highlights on the highlights the artist painted, and Evenly everywhere, for sequinned or glitter stockings.
+
+**Presets** (top of the panel): save a tuned style, density, tilt, strength and sparkles, and load them in one click on other images. Pick one in the list to load it; after tweaking, Save writes the current settings into the selected preset. To make a new one, pick “Save as new preset…” at the bottom of the list and give it a name (Save does the same when no preset is selected); Delete removes the selected one. Presets are kept on this computer, not with the image; if Strength is on Auto, it is set again from this image's stockings when you load. Loading replaces the current settings; click Undo load to go back. Regions and direction lines belong to each image and are not part of a preset.
 
 **Color exclusion** (on by default): parts of a region whose color is far from the stocking's (gold trim, gloves, bare skin) get no texture. Now and then a sheer knee showing skin gets excluded too; turn it off then.
 

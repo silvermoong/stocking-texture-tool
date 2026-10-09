@@ -135,18 +135,16 @@ def wide_luma(src):
 
 def _rip(name):
     if name not in _RIPS:
-        _RIPS[name] = tiles.ripmap({'thread': tiles.thread_gap_tile, 'loops': tiles.loops_gap_tile}[name]())
+        make = {'thread': tiles.thread_gap_tile, 'loops': tiles.loops_gap_tile, 'coil': tiles.coil_gap_tile}[name]
+        _RIPS[name] = tiles.ripmap(make())
     return _RIPS[name]
 
 
-def render_gaps(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, dark=(0.03, 0.30)):
-    """A knit drawn as the gaps between its yarn, where the skin shows through: rip is a ripmap of a tiles.*_gap_tile
-    (one course by one wale, positive in the gaps).
-
-    The gaps take the skin's colour: on light stockings they darken toward pink, on dark ones they lighten toward a
-    warm tone. phi: course phase in cycles; u: wale phase in cycles; wide: wide_luma() of the whole image (cropped
-    like src), so a crop renders exactly like the same area of the whole. Returns (out BGR uint8, gate).
-    """
+def gap_factor(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, dark=(0.03, 0.30),
+               pol_band=(0.40, 0.70)):
+    """What render_gaps multiplies src by, as float32 HxWx3, and the gate. amp: a number, or an HxW array of
+    amplitudes. pol_band: the local lightness (wide) between which the gaps turn from lighter to darker than the
+    stocking."""
     same = _same_region(reg)
 
     def footprint(f):
@@ -157,11 +155,23 @@ def render_gaps(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, d
     keep = (1 - sstep(f_lo, f_hi, fv)) * same
     m = tiles.sample(rip, u, phi, footprint(u), fv) * keep
     gate = sstep(dark[0], dark[1], _luma(src, 1.5)) * alpha
-    pol = (1 - 2 * sstep(0.40, 0.70, wide))[..., None].astype(np.float32)   # +1 on dark stockings, -1 on light
+    pol = (1 - 2 * sstep(pol_band[0], pol_band[1], wide))[..., None].astype(np.float32)   # +1 dark stockings, -1 light
     to_dark = np.array([1.25, 1.1, 0.6], np.float32)                 # B, G, R: the gap as a pink line
     to_light = np.array([0.75, 0.95, 1.25], np.float32)              # the gap as a warm light line
     tint = (1 - pol) / 2 * to_dark + (1 + pol) / 2 * to_light
-    f = 1 + np.float32(amp) * (gate * m).astype(np.float32)[..., None] * pol * tint
+    a = np.float32(amp) if np.ndim(amp) == 0 else np.asarray(amp, np.float32)[..., None]
+    return 1 + a * (gate * m).astype(np.float32)[..., None] * pol * tint, gate
+
+
+def render_gaps(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, dark=(0.03, 0.30)):
+    """A knit drawn as the gaps between its yarn, where the skin shows through: rip is a ripmap of a tiles.*_gap_tile
+    (one course by one wale, positive in the gaps).
+
+    The gaps take the skin's colour: on light stockings they darken toward pink, on dark ones they lighten toward a
+    warm tone. phi: course phase in cycles; u: wale phase in cycles; wide: wide_luma() of the whole image (cropped
+    like src), so a crop renders exactly like the same area of the whole. Returns (out BGR uint8, gate).
+    """
+    f, gate = gap_factor(src, reg, phi, u, alpha, wide, rip, amp, f_lo, f_hi, dark)
     res = src.astype(np.float32) * f
     return np.clip(np.round(res), 0, 255).astype(np.uint8), gate
 
@@ -175,6 +185,50 @@ def render_thread(src, reg, phi, u, alpha, wide, amp=0.10, **kw):
 def render_loops(src, reg, phi, u, alpha, wide, amp=0.12, **kw):
     """针织: columns of V-shaped stitch loops, as on a stocking's reinforced sole. See render_gaps."""
     return render_gaps(src, reg, phi, u, alpha, wide, _rip('loops'), amp, **kw)
+
+
+# 线圈 varies with how much skin shows through the stocking (see, 0..1: look.skin_visibility). Two drawings of black
+# stockings by the one artist were cut into windows and every window measured; against see the two agree to within
+# 0.01 in each bin. (Predicting the same texture from the painting's brightness, from the depth or from the facing
+# the guide lines give came out worse, and did not carry over from one drawing to the other.) Where no skin shows
+# the texture is a rough grain at a relative contrast of 0.07; where it does, the lattice takes over and the contrast
+# climbs to 0.19. SEE_LATTICE is the lattice's share of the texture: how regular it is (its autocorrelation at the
+# cell spacing), rescaled to 0..1. The loops' height also changes along those legs, but with position and not with
+# any of these, and the tool spaces its courses evenly by design, so that is not modelled.
+SEE_AT = (0.0, 0.075, 0.225, 0.375, 0.525, 0.675, 0.825, 0.95, 1.0)
+SEE_CONTRAST = (0.070, 0.070, 0.072, 0.092, 0.108, 0.131, 0.146, 0.178, 0.190)
+SEE_LATTICE = (0.0, 0.0, 0.28, 0.56, 0.76, 0.85, 0.95, 1.0, 1.0)
+# Relative contrast (the std of the high-passed lightness over its mean, measured as on the drawings) of the tile at
+# amplitude 1 and of the grain at amplitude 1, rendered at the drawings' own cell size (3.7 x 5.9 px, density 124%).
+LATTICE_UNIT = 0.424
+GRAIN_UNIT = 0.97
+COIL_FLAT = 0.12            # lattice amplitude where the colour says nothing about skin: what 线圈 drew before it varied
+COIL_DARK = (0.02, 0.10)    # the texture is a ratio, so near-black needs little fading
+COIL_POL = (0.55, 0.80)     # lightness where the windows stop being lighter than the stocking: the skin's own, higher
+
+
+def coil_gains(see, trust):
+    """Lattice and grain amplitudes (float32, per pixel) at 100% strength for a skin-visibility map and its trust."""
+    c = np.interp(see, SEE_AT, SEE_CONTRAST)
+    share = np.interp(see, SEE_AT, SEE_LATTICE)
+    lat = np.sqrt(share) * c / LATTICE_UNIT
+    grain = np.sqrt(1 - share) * c / GRAIN_UNIT
+    return (trust * lat + (1 - trust) * COIL_FLAT).astype(np.float32), (trust * grain).astype(np.float32)
+
+
+def render_coil(src, reg, phi, u, alpha, wide, see, trust, noise, amp=1.0, chroma=0.35, **kw):
+    """线圈: plain knit drawn loop by loop from its yarn path, every loop the same so the rows and columns run
+    straight (see tiles.coil_gap_tile), over a fine grain, in the proportions the skin showing through (see) sets:
+    see 0..1 and trust 0..1 are look.skin_visibility's, noise is (g, gc) of grain_noise, amp the strength (1 = 100%).
+    Returns (out BGR uint8, gate). Other arguments: see gap_factor."""
+    lat, grain = coil_gains(see, trust)
+    kw.setdefault('dark', COIL_DARK)
+    f, gate = gap_factor(src, reg, phi, u, alpha, wide, _rip('coil'), amp * lat, pol_band=COIL_POL, **kw)
+    g, gc = noise
+    ggate = sstep(COIL_DARK[0], COIL_DARK[1], _luma(src, 1.5)) * alpha
+    f = f + (amp * grain * ggate).astype(np.float32)[..., None] * (g[..., None] + chroma * gc)
+    res = src.astype(np.float32) * f
+    return np.clip(np.round(res), 0, 255).astype(np.uint8), np.maximum(gate, ggate)
 
 
 def grain_noise(rng, h, w, sigma=0.6):

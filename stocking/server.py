@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import depth, export, i18n, look, sam, session, settings
+from . import depth, export, i18n, look, presets, sam, session, settings
 from .i18n import tr
 from .document import IMAGE_EXTS, PSD_EXTS, Document
 from .version import code_version
@@ -591,6 +591,27 @@ def put_look(doc_id: str, body: dict):
     d.set_look(q)
     _want_depth(d, q)
     return look_info(d, q)
+
+
+class PresetIn(BaseModel):
+    name: str
+    params: dict
+
+
+@app.get('/api/look/presets')
+def get_presets():
+    """The saved look presets (per user, not per image): [{name, params}], params null for one that cannot be read."""
+    return {'presets': presets.listing()}
+
+
+@app.put('/api/look/presets')
+def put_preset(body: PresetIn):
+    return {'presets': presets.save(body.name, body.params)}
+
+
+@app.delete('/api/look/presets')
+def delete_preset(body: NameIn):
+    return {'presets': presets.delete(body.name)}
 
 
 @app.get('/api/doc/{doc_id}/render/crop')

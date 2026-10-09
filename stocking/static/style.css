@@ -78,7 +78,7 @@ body {
   overflow: hidden;
   user-select: none;
 }
-button, input { font: inherit; color: inherit; }
+button, input, select { font: inherit; color: inherit; }
 button { border: 0; cursor: pointer; }
 html { -webkit-tap-highlight-color: transparent; }
 button, label, input, a { touch-action: manipulation; }
@@ -272,6 +272,15 @@ body.no-doc .step-body > :not(.step-head), body.no-doc .step h2 { opacity: .4; }
 .dialog p { margin: 0; color: var(--muted); line-height: 1.6; }
 .dialog p { overflow-wrap: anywhere; }
 .dialog .actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 18px; }
+.dialog-field { display: grid; gap: 4px; margin-top: 12px; }
+.dialog-field span { font-size: 12px; color: var(--muted); }
+.dialog-field input {
+  height: 30px; padding: 0 8px; border: 1px solid var(--faint); border-radius: 3px; background: var(--chrome);
+  user-select: text;
+}
+.dialog .dialog-note { min-height: 1.6em; margin-top: 6px; font-size: 12px; }
+.dialog .dialog-note.warn { color: var(--warn); }
+.dialog .dialog-note.error { color: var(--error); }
 .tier[aria-checked="true"] { background: var(--chalk); color: var(--on-chalk); font-weight: 700; }
 
 /* stage */
@@ -324,6 +333,15 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .group > h2 { margin-bottom: 8px; }
 .group-head { display: flex; align-items: center; gap: 6px; height: 22px; margin-bottom: 8px; }
 .styles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+/* 预设: the saved settings, above 样式 */
+.preset-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px; }
+.preset-row select {
+  height: 28px; min-width: 0; padding: 0 6px; border: 0; border-radius: 3px; background: var(--raised);
+  text-overflow: ellipsis; cursor: pointer;
+}
+.preset-row select:hover:not(:disabled) { background: var(--hover); }
+.preset-row select:disabled { color: var(--faint); cursor: default; }
+.preset-note { overflow-wrap: anywhere; }
 .opt { height: 32px; border-radius: 3px; background: var(--raised); font-size: 13px; white-space: nowrap; }
 .opt:hover { background: var(--hover); }
 .opt[aria-checked="true"] { background: var(--chalk); color: var(--on-chalk); font-weight: 700; }

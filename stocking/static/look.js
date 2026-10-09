@@ -12,6 +12,7 @@ const REF_AREA = 1280 * 1920;
 const STYLE_NOTES = {
   knit: t('线与线之间的细缝透出肤色：浅色丝袜上是粉色细线，深色丝袜上是暖色亮线。'),
   loops: t('一列列 V 形线圈，像丝袜脚底加厚部分的织法。线圈小，密度调低一些更清楚。'),
+  coil: t('整齐的线圈针织，按画师原图的规律变化：透出肤色的亮处是清楚整齐的线圈，不透肤的暗处渐渐变成粗糙的细颗粒。适合画画时当底纹。线圈小，密度调低一些更清楚。'),
   lines: t('斜着走的细线，加暖色的单像素亮点。'),
   grain: t('细碎颗粒的针织底纹，加白色小亮点。'),
   oily: t('试验：半透明的油亮丝袜，反光按画面里画出的光影找，换一张图可能不稳定。'),
@@ -115,6 +116,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     cropRect: null,
     fitBusy: false,
     drag: null,
+    presets: [],           // the saved presets, as the server lists them: [{ name, params }], params null if unreadable
+    presetName: null,      // the preset these settings were loaded from or saved as; null for none
+    beforeLoad: null,      // { params, name } before the preset(s) just loaded: what 撤销载入 goes back to
   };
   const fitCv = $('#fit');
   const cropCv = $('#crop');
@@ -150,8 +154,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     return { raw, period: Math.max(raw, 3.2), clamped: raw < 3.2 };
   }
 
-  function set(changes, { immediate = true } = {}) {
+  function set(changes, { immediate = true, keepLoad = false } = {}) {
     if (L.beforeReset && changes !== L.beforeReset) { L.beforeReset = null; renderReset(); }   // a new change ends the undo window
+    if (L.beforeLoad && !keepLoad) L.beforeLoad = null;                                       // and 撤销载入's too
     Object.assign(L.params, changes);
     renderControls();
     if (immediate) requestCrop();
@@ -393,6 +398,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     for (const el of document.querySelectorAll('.look-only input[type="range"]')) fillRange(el);
     renderExclude();
     renderReset();
+    renderPresetState();
   }
 
   // 颜色排除 is a document setting (undoable, saved with the work), not a look parameter
@@ -430,6 +436,184 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       sn.className = 'note warn';
     } else sn.textContent = '';
   }
+
+  // ---------------------------------------------------------------- presets
+
+  // Saved settings, per user (the server keeps them with the other settings), picked from the list above 样式.
+  // L.presetName is the preset the settings were loaded from or saved as: 保存 updates it, 删除 deletes it, and tweaks
+  // are marked 已改动 against it. It goes with the image; 全部恢复默认 keeps it. The list's last entry, 保存为新预设…,
+  // asks for a name; with no preset selected 保存 does the same.
+  const presetSel = $('#preset-select');
+  const presetDlg = $('#preset-dialog');
+  const presetNameInput = $('#preset-name');
+  const presetDlgNote = $('#preset-dialog-note');
+
+  function presetOf(name) { return name ? L.presets.find((p) => p.name === name) : undefined; }
+
+  // Whether the settings differ from the preset. An automatic strength is worked out per image: its number does not count.
+  function presetModified(p) {
+    if (!p || !p.params || !L.params) return false;
+    return Object.keys(p.params).some((k) => !(k === 'strength' && p.params.strength_auto && L.params.strength_auto)
+      && L.params[k] !== p.params[k]);
+  }
+
+  function renderPresetList() {
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = L.presets.length ? t('选一个预设') : t('还没有预设');
+    const asNew = document.createElement('option');
+    asNew.textContent = t('保存为新预设…');
+    asNew.dataset.new = '1';
+    presetSel.replaceChildren(none, ...L.presets.map((p) => {
+      const o = document.createElement('option');
+      o.value = p.name;
+      o.textContent = p.params ? p.name : t('{name}（读不了）', { name: p.name });
+      o.translate = false;
+      return o;
+    }), ...(L.presets.length ? [document.createElement('hr')] : []), asNew);
+    renderPresetState();
+  }
+
+  function renderPresetState() {
+    const p = presetOf(L.presetName);
+    if (!p) L.presetName = null;                 // none, or deleted since
+    presetSel.value = p ? p.name : '';
+    presetSel.disabled = !L.params;
+    const modified = presetModified(p);
+    // an unreadable preset can be written over, which mends it
+    const save = $('#btn-preset-save');
+    save.disabled = !L.params || (!!p && !!p.params && !modified);
+    save.title = p ? t('用现在的设置更新“{name}”', { name: p.name }) : t('把现在的设置存成新预设');
+    $('#btn-preset-delete').disabled = !p;
+    const notes = [];
+    if (p && !p.params) notes.push(t('这个预设读不了（可能是新版本存的），可以删掉它。'));
+    else if (modified) notes.push(t('已改动（和“{name}”不同）。', { name: p.name }));
+    if (p && p.params && p.params.sparkle_painted > 0 && L.info && !L.info.has_sparkle_layer) {
+      notes.push(t('这张图没有“亮点”层，预设里按“亮点”层放亮点的那一项暂时不起作用。'));
+    }
+    $('#preset-note').textContent = notes.join(' ');
+    const undo = $('#btn-preset-undo');
+    undo.hidden = !L.beforeLoad && !modified;
+    undo.textContent = L.beforeLoad ? t('撤销载入') : t('还原');
+  }
+
+  async function loadPresets() {
+    L.presets = (await request('GET', '/api/look/presets')).presets;
+    renderPresetList();
+  }
+
+  // Loading replaces the settings, and look changes are not in any undo history: 撤销载入 goes back to what they were
+  // before the first of a run of loads, until some other change is made.
+  function applyPreset(name) {
+    const p = presetOf(name);
+    if (!p || !L.params) return;
+    const was = L.presetName;
+    L.presetName = name;
+    if (!p.params) {
+      renderPresetState();
+      flash(t('这个预设读不了（可能是新版本存的），可以删掉它。'), true);
+      return;
+    }
+    if (!L.beforeLoad) L.beforeLoad = { params: { ...L.params }, name: was };
+    const next = { ...p.params };
+    if (next.strength_auto && L.info) next.strength = L.info.strength_suggested;       // worked out for this image
+    set(next, { keepLoad: true });
+    flash(t('已载入预设“{name}”；想回去，点“撤销载入”', { name }));
+  }
+
+  // 撤销载入 while that window is open; after tweaks, 还原 loads the preset again.
+  function undoPreset() {
+    const b = L.beforeLoad;
+    if (!b) { applyPreset(L.presetName); return; }
+    L.beforeLoad = null;
+    L.presetName = b.name;
+    set(b.params);
+    flash(t('已撤销载入'));
+  }
+
+  function renderPresetDialog() {
+    const name = presetNameInput.value.trim();
+    const clash = !!presetOf(name);
+    $('#btn-preset-ok').disabled = !name;
+    presetDlgNote.className = clash ? 'dialog-note warn' : 'dialog-note';
+    presetDlgNote.textContent = clash ? t('已有同名预设，保存会覆盖它。') : '';
+  }
+
+  function openSavePreset() {
+    if (!L.params) return;
+    presetNameInput.value = '';
+    renderPresetDialog();
+    presetDlg.showModal();
+    presetNameInput.focus();
+  }
+
+  async function putPreset(name) {
+    L.presets = (await request('PUT', '/api/look/presets', { name, params: { ...L.params } })).presets;
+  }
+
+  async function savePreset() {
+    const name = presetNameInput.value.trim();
+    const docId = L.docId;
+    if (!name || !L.params) return;
+    try {
+      await putPreset(name);
+    } catch (e) {
+      presetDlgNote.className = 'dialog-note error';
+      presetDlgNote.textContent = e.message;
+      return;
+    }
+    presetDlg.close();
+    if (L.docId === docId) L.presetName = name;
+    renderPresetList();
+    flash(t('已保存预设“{name}”', { name }));
+  }
+
+  // 保存 with a preset selected: the settings go into it, no questions (the name is already chosen).
+  async function updatePreset() {
+    const name = L.presetName;
+    if (!presetOf(name) || !L.params) return;
+    try {
+      await putPreset(name);
+    } catch (e) {
+      flash(e.message, true);
+      return;
+    }
+    renderPresetList();
+    flash(t('已更新预设“{name}”', { name }));
+  }
+
+  async function deletePreset() {
+    const name = L.presetName;
+    if (!presetOf(name)) return;
+    const dlg = $('#preset-delete');
+    $('#preset-delete-text').textContent = t('预设“{name}”删除后找不回来。', { name });
+    dlg.returnValue = '';
+    dlg.showModal();
+    const choice = await new Promise((resolve) => dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }));
+    if (choice !== 'delete') return;
+    try {
+      L.presets = (await request('DELETE', '/api/look/presets', { name })).presets;
+    } catch (e) {
+      flash(e.message, true);
+      return;
+    }
+    renderPresetList();
+    flash(t('已删除预设“{name}”', { name }));
+  }
+
+  presetSel.addEventListener('change', () => {
+    if (presetSel.selectedOptions[0].dataset.new) {
+      renderPresetState();                       // the list shows the selected preset again while the name is asked
+      openSavePreset();
+    } else if (presetSel.value) applyPreset(presetSel.value);
+    else { L.presetName = null; renderPresetState(); }
+  });
+  $('#btn-preset-save').addEventListener('click', () => (presetOf(L.presetName) ? updatePreset() : openSavePreset()));
+  $('#btn-preset-delete').addEventListener('click', deletePreset);
+  $('#btn-preset-undo').addEventListener('click', undoPreset);
+  presetNameInput.addEventListener('input', renderPresetDialog);
+  $('#btn-preset-cancel').addEventListener('click', () => presetDlg.close());
+  $('#preset-form').addEventListener('submit', (e) => { e.preventDefault(); savePreset(); });
 
   // ---------------------------------------------------------------- lifecycle
 
@@ -547,7 +731,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   // (a control reached with the keyboard keeps Space for itself: it presses the control)
   window.addEventListener('keydown', (e) => {
     if (!L.active || e.code !== 'Space' || e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.target instanceof HTMLInputElement && e.target.type === 'text') return;
+    if ((e.target instanceof HTMLInputElement && e.target.type === 'text') || e.target instanceof HTMLSelectElement) return;
     const a = document.activeElement;
     if (a && a !== document.body && a !== cropCv && a.id !== 'stage' && focusByKeyboard()) return;
     if (a && a.closest && a.closest('dialog, .menu')) return;
@@ -620,6 +804,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       L.active = true;
       for (const b of document.querySelectorAll('.seg-btn[data-zoom]')) b.setAttribute('aria-checked', String(+b.dataset.zoom === L.zoom));
       load().catch((e) => flash(e.message, true));
+      loadPresets().catch((e) => flash(e.message, true));
     },
     leave() { L.active = false; setPeek(false); },
     onArt() { if (L.active) { drawFit(); drawCrop(); } },
@@ -628,9 +813,10 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
         L.docId = st ? st.id : null;
         L.coverageV = st ? st.coverage_v : null;
         Object.assign(L, { params: null, info: null, centre: null, fitImg: null, checkImg: null, cropImg: null,
-          beforeReset: null,
+          beforeReset: null, beforeLoad: null, presetName: null,
           cropCheckImg: null,
           cropRect: null });
+        renderPresetState();
         if (L.active && st) load().catch((e) => flash(e.message, true));
         return;
       }

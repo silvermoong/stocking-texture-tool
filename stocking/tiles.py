@@ -101,6 +101,59 @@ def loops_gap_tile(n=64):
     return _unit(-yarn)
 
 
+# Plain (single-jersey) knit drawn from its yarn path, in wale units: one wale is 1 across, courses are COURSE apart.
+# A loop is a closed ring of yarn: two legs meeting at the vertex of the V (in front), the head arc that closes the
+# V's top and the sinker that leaves the vertex for the next wale (both behind). The next course is pulled through
+# the head, so the V's stack in columns, vertex down. Munden: a relaxed loop holds 5.0-5.6 course spacings of yarn.
+# Peirce: even jammed, a loop is 16.7 yarn diameters. The proportions were fitted to the autocorrelation of the
+# reference drawings' texture at their own resolution (about 5.7 x 3.8 px a loop), inside those two limits.
+LOOP = dict(width=0.13, spread=0.355, leg=0.65, head=0.31, sag=0.04, foot=0.02)
+COURSE = 15 / 22
+OPACITY = 2.74           # optical depth of the yarn across its full width
+
+
+def loop_path(p=LOOP, course=COURSE):
+    """Centre lines of one loop as (k, 2) arrays of (u, v), v down, the V's vertex at (0.5, 0.8 * course)."""
+    vb = 0.8 * course
+    vertex = np.array([0.5, vb])
+    top_l, top_r = np.array([0.5 - p['spread'], vb - p['leg']]), np.array([0.5 + p['spread'], vb - p['leg']])
+    t = np.linspace(0, 1, 14)[:, None]
+
+    def arch(a, b, rise):                           # bulges by `rise` in v: negative is up
+        return a + (b - a) * t + np.array([0, rise]) * 4 * t * (1 - t)
+
+    sinker_v = vb + p['foot']
+    return {'leg_l': np.stack([vertex, top_l]), 'leg_r': np.stack([vertex, top_r]),
+            'head': arch(top_l, top_r, -p['head']), 'stub': np.stack([vertex, [0.5, sinker_v]]),
+            'sinker': arch(np.array([0.5, sinker_v]), np.array([1.5, sinker_v]), p['sag'])}
+
+
+def loop_length(p=LOOP, course=COURSE):
+    """Yarn in one loop, in wale units."""
+    return sum(float(np.hypot(*np.diff(pts, axis=0).T).sum()) for pts in loop_path(p, course).values())
+
+
+def coil_gap_tile(px=64):
+    """One course by one wale of plain knit seen from its face, positive in the gaps (where the skin shows). Every
+    loop is the same, so the rows and columns run dead straight. Yarn is a translucent tube: optical depth is the
+    chord each tube cuts through the ray, summed over every piece of yarn in front of the pixel. px: texels across
+    one wale. Zero mean, unit standard deviation."""
+    nu, nv = px, round(px * COURSE)
+    us = (np.arange(nu) + 0.5) / nu
+    vs = (np.arange(nv) + 0.5) / nv * COURSE
+    u, v = np.meshgrid(us, vs)
+    r = LOOP['width'] / 2
+    path = loop_path()
+    tau = np.zeros(u.shape)
+    for j in range(-2, 3):                          # loops of the neighbouring repeats reach into this one
+        for i in range(-1, 2):
+            for pts in path.values():
+                pts = pts + np.array([i, j * COURSE])
+                d = np.min([_segment_distance(u, v, *a, *b) for a, b in zip(pts[:-1], pts[1:])], axis=0)
+                tau += 2 * np.sqrt(np.clip(r * r - d * d, 0, None)) / LOOP['width']
+    return _unit(np.exp(-OPACITY * tau))
+
+
 def thread_gap_tile(n=48):
     """One course by one wale of a fine knit, as the gap between the threads (positive where the skin shows): wide
     threads, a thin gap between courses that wobbles a little with each loop, a fainter gap between wales.

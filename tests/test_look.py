@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import pytest
 
-from stocking import coverage, knit, look, oily
+from stocking import coverage, knit, look, oily, tiles
 from stocking import guide_fields as gf
 from stocking import psd_io
 
@@ -69,7 +69,7 @@ def _flat(rgb, h=240, w=240, freq=1.0):
     return look.Scene(art, REG, yy * freq, xx, np.ones((h, w), bool), np.ones((h, w)), ['左腿'])
 
 
-@pytest.mark.parametrize('style', ['knit', 'loops'])
+@pytest.mark.parametrize('style', ['knit', 'loops', 'coil'])
 @pytest.mark.parametrize('rgb, darker', [((223, 216, 226), True), ((62, 50, 58), False)])
 def test_thread_gaps_take_the_skin_colour(style, rgb, darker):
     """White stockings: thin pink lines between the threads; black ones: thin warm light lines."""
@@ -87,8 +87,9 @@ def test_thread_gaps_take_the_skin_colour(style, rgb, darker):
     assert (r > b) and (r > g)                                         # warmer than the stocking either way
 
 
-def test_loops_stand_in_columns():
-    """针织 repeats across the wales too (one column of V's per wale); 细线 barely does."""
+@pytest.mark.parametrize('style', ['loops', 'coil'])
+def test_loops_stand_in_columns(style):
+    """针织 and 线圈 repeat across the wales too (one column of loops per wale); 细线 barely does."""
     def peak_period(style):
         s = _flat((223, 216, 226))
         out, info = s.render(dict(OFF, style=style, strength=100, strength_auto=False))
@@ -97,9 +98,86 @@ def test_loops_stand_in_columns():
         spec = np.abs(np.fft.rfft(prof * np.hanning(prof.size)))
         k = np.argmax(spec[1:]) + 1
         return 1 / np.fft.rfftfreq(prof.size)[k], spec[k] / prof.size, info
-    period, amp, info = peak_period('loops')
+    period, amp, info = peak_period(style)
     assert abs(period - info['period'] * info['wale_ratio']) < 0.4
     assert amp > 3 * peak_period('knit')[1]
+
+
+def test_coil_is_every_loop_the_same():
+    """线圈 is for painting over: no loop wobbles, so the tile is one loop and mirror-symmetric about its wale."""
+    t = tiles.coil_gap_tile()
+    assert abs(t.mean()) < 1e-3 and abs(t.std() - 1) < 1e-3
+    assert np.array_equal(t, t[:, ::-1])
+
+
+def test_coil_shows_the_courses_as_seams_between_the_cells():
+    """A loop is a closed ring, so the courses show as seams between the loops. 针织's V's run on down each wale as
+    one stripe: 3% of its variance in the course lines, 81% in the wale lines. 线圈: 33% and 60%."""
+    s = _flat((100, 88, 96))
+    out, _ = s.render(dict(OFF, style='coil', strength=100, strength_auto=False))
+    lum = ((out.astype(float) - s.src.astype(float)) @ [0.114, 0.587, 0.299])[30:-30, 30:-30]
+    assert lum.mean(1).var() / lum.var() > 0.2
+    assert lum.mean(0).var() / lum.var() < 0.7
+
+
+def test_coil_loop_stays_inside_the_limits_of_a_real_plain_knit():
+    length = tiles.loop_length()
+    assert 5.0 <= length / tiles.COURSE <= 5.6                      # Munden: a relaxed loop holds 5.0-5.6 courses of yarn
+    assert tiles.LOOP['width'] <= length / 16.66                    # Peirce: even jammed, a loop is 16.7 yarn widths
+    assert 2 * tiles.LOOP['spread'] + tiles.LOOP['width'] <= 1.0    # neighbouring loops touch, they do not overlap
+
+
+def _warm_ramp(h=240, w=300):
+    """One stocking going from cool blue-grey on the left to warm brown-pink on the right: skin showing more and more."""
+    x = np.linspace(0, 1, w)[None, :] * np.ones((h, 1))
+    art = np.empty((h, w, 3), np.float32)
+    art[..., 0], art[..., 1], art[..., 2] = 60 + 85 * x, 70 + 25 * x, 80 - 20 * x          # R, G, B
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    return look.Scene(art.astype(np.uint8), np.ones((h, w), np.int8), yy, xx, np.ones((h, w), bool),
+                      np.ones((h, w)), ['左腿'])
+
+
+def test_skin_visibility_reads_the_warmth_of_the_painting():
+    see, trust = _warm_ramp().see_map()
+    assert trust.min() == 1.0
+    assert see[:, 10].max() < 0.1 and see[:, -10].min() > 0.85
+    assert np.all(np.diff(see[120, 15:-15]) > -0.01)                # warmer to the right, never back
+    # brightness alone is not skin: a flat swatch and a plain grey ramp have nothing to read
+    grey = np.empty((240, 300, 3), np.uint8)
+    grey[...] = (40 + 100 * np.linspace(0, 1, 300))[None, :, None].astype(np.uint8)
+    yy, xx = np.mgrid[0:240, 0:300].astype(np.float64)
+    ramp = look.Scene(grey, np.ones((240, 300), np.int8), yy, xx, np.ones((240, 300), bool), np.ones((240, 300)), ['左腿'])
+    assert _flat((90, 80, 100)).see_map()[1].max() == 0 and ramp.see_map()[1].max() == 0
+
+
+def test_coil_is_a_lattice_where_skin_shows_and_rough_grain_where_it_does_not():
+    """The artist's stockings (two drawings, same numbers): no skin, a rough grain at 0.07 relative contrast; skin
+    showing, the neat lattice at up to 0.19. On the ramp from cool to warm the courses are seams on the warm side only."""
+    s = _warm_ramp()
+    out, _ = s.render(dict(OFF, style='coil', strength=100, strength_auto=False))
+    d = ((out.astype(float) - s.src.astype(float)) @ [0.114, 0.587, 0.299])[20:-20]
+    base = (s.src.astype(float) @ [0.114, 0.587, 0.299])[20:-20]
+    cool, warm = slice(20, 90), slice(210, 280)
+    assert (d[:, warm] / base[:, warm]).std() > 1.5 * (d[:, cool] / base[:, cool]).std()
+    lines = [d[:, sl].mean(1).var() / d[:, sl].var() for sl in (cool, warm)]
+    assert lines[1] > 0.2 and lines[0] < 0.1
+
+
+def test_coil_amplitudes_reproduce_the_artists_contrast():
+    see = np.array(knit.SEE_AT, np.float32)
+    lat, grain = knit.coil_gains(see, np.ones_like(see))
+    assert np.allclose(np.hypot(lat * knit.LATTICE_UNIT, grain * knit.GRAIN_UNIT), knit.SEE_CONTRAST, rtol=0.01)
+    assert lat[0] == 0 and grain[0] > 0 and grain[-1] == 0          # grain without skin, the lattice alone with it
+    lat0, grain0 = knit.coil_gains(see, np.zeros_like(see))
+    assert np.all(lat0 == knit.COIL_FLAT) and not grain0.any()      # nothing to read: the flat texture it drew before
+
+
+def test_coil_crop_equals_the_same_area_of_the_whole():
+    s = _warm_ramp()
+    q = dict(OFF, style='coil', strength=100, strength_auto=False)
+    whole, _ = s.render(q)
+    crop, _ = s.render(q, rect=(37, 51, 151, 133))
+    assert np.array_equal(whole[51:133, 37:151], crop)
 
 
 def test_thread_fades_out_instead_of_aliasing():
@@ -109,7 +187,6 @@ def test_thread_fades_out_instead_of_aliasing():
 
 
 def test_tile_sampler():
-    from stocking import tiles
     t = np.arange(16, dtype=np.float32).reshape(4, 4)
     rip = tiles.ripmap(t)
     v, u = np.mgrid[0:4, 0:4]
