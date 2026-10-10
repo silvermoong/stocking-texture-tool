@@ -536,8 +536,8 @@ def _png(img, extra=None):
 
 
 def _want_depth(d, q):
-    """Start estimating depth once a setting needs it (按深度 sparkles), if opening the image has not already."""
-    needs = q['style'] in look.SPARKLE_STYLES and q['sparkle_depth'] > 0
+    """Start estimating depth once a setting needs it (按深度 sparkles, 摩尔纹效果), if opening the image has not already."""
+    needs = (q['style'] in look.SPARKLE_STYLES and q['sparkle_depth'] > 0) or look.moire_active(q)
     if needs and getattr(d, 'disparity', None) is None and not getattr(d, '_depth_started', False):
         d._depth_started = True
         depth.service.disparity_async(d)
@@ -775,14 +775,18 @@ def export_doc(doc_id: str, body: ExportIn):
             if not d.wait_idle(EXPORT_WAIT):
                 raise ValueError(tr('部位还在求解，稍等一下再导出'))
             _want_depth(d, q)
-            if q['style'] in look.SPARKLE_STYLES and q['sparkle_depth'] > 0:
+            by_depth = q['style'] in look.SPARKLE_STYLES and q['sparkle_depth'] > 0
+            if by_depth or look.moire_active(q):
                 end = time.monotonic() + EXPORT_WAIT
                 while getattr(d, 'disparity', None) is None and time.monotonic() < end:
                     if depth.service.status == 'unavailable' or getattr(d, 'depth_error', None):
                         break
                     time.sleep(0.2)
                 if getattr(d, 'disparity', None) is None:
-                    notes.append(tr('深度模型不可用，“按深度”的亮点没有导出'))
+                    if by_depth:
+                        notes.append(tr('深度模型不可用，“按深度”的亮点没有导出'))
+                    if look.moire_active(q):
+                        notes.append(tr('深度模型不可用，摩尔纹效果没有导出'))
             res = export.export(d, scene_for(d), q, path, body.kind)
             missing = [r['name'] for r in d.state()['regions'] if r['status'] in ('nostroke', 'error')]
             if missing:

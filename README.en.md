@@ -19,9 +19,10 @@ Black or white stockings alike (original on the left, processed on the right):
 - **A few lines texture a whole leg.** Draw 1–3 lines per region to say which way the knit runs; the courses fill the region, evenly spaced on screen. Where a hand or hair lies over the leg, they carry on underneath.
 - **One click selects a leg.** Pick uses Segment Anything, with a Small / Medium / Large range to choose from after each click.
 - **Six styles:** Fine lines, Knit, Coil, Slanted lines, Kase and Glossy (Beta). Each can add sparkles where the yarn catches the light.
-- **Presets:** save a tuned style, density, tilt, strength and sparkles, and load them in one click on another image.
+- **Presets:** save a tuned style, density, tilt, strength, sparkles and moiré effect, and load them in one click on another image.
 - **Black or white stockings.** Strength follows the stockings' lightness: the same texture stands out about twice as much on white, so it is turned down there automatically.
 - **No moiré.** Where the courses get close to a pixel apart the texture fades out by itself, and Show problems marks where that happens.
+- **A beta switch for when you do want moiré.** The rippling bands of light and dark that real stockings show worn in layers or photographed: turn on the Moiré effect switch, then use Strength for how strong the bands are and Area for how far they grow from one small ring. Off by default; the bands follow the bulges of the knees and thighs and leave the flat parts alone.
 - **Mirror in one click.** Finish the left leg and the right one follows.
 - **Three exports:** the finished image; a PNG of the stockings alone with everything else transparent (laid over the original it gives the finished image, handy as a Photoshop layer); and a guides PSD you can open again to keep working. Your own PSD is never written to.
 - Chinese and English interface.
@@ -140,18 +141,18 @@ Switch to the Texture page at the top. The settings are on the left; Whole shows
 
 ![The Texture page](docs/images/texture-page-en.jpg)
 
-**Styles**, left to right: Fine lines, Knit, Slanted lines, Kase, Glossy. Black stockings on top, white below (Glossy is meant for dark stockings, so the white row leaves it out):
+**Styles**, left to right: Fine lines, Knit, Coil, Slanted lines, Kase, Glossy. Black stockings on top, white below (Glossy is meant for dark stockings, so the white row leaves it out):
 
-![The five styles](docs/images/styles.png)
+![The six styles](docs/images/styles.png)
 
 | Style | Looks like |
 | --- | --- |
 | Fine lines (default) | Skin shows through a thin gap between wide threads: pink lines on light stockings, warm bright lines on dark ones |
 | Knit | Columns of V-shaped stitch loops, like the reinforced sole of a stocking |
-| Coil | Neat plain knit: every loop drawn the way real plain knit is built, all the same, in straight rows and columns. It varies the way the artist's drawings do, with how much skin shows through: clear loops where the colour shows skin, a fine rough grain and weaker contrast where it does not. Handy as an underlay for painting. Not in the picture above |
+| Coil | Neat plain knit: every loop drawn the way real plain knit is built, all the same, in straight rows and columns. It varies the way the artist's drawings do, with how much skin shows through: clear loops where the colour shows skin, a fine rough grain and weaker contrast where it does not. Handy as an underlay for painting |
 | Slanted lines | Fine slanting lines, leaning opposite ways on the two legs in a chevron |
 | Kase | A fine, grainy knit |
-| Glossy (Beta) | Sheer, shiny stockings: skin showing where the surface faces you, darker edges, a glint along the light. Best on plain black stockings with clear highlights; results can vary from picture to picture |
+| Glossy (Beta) | Sheer, shiny stockings: skin showing where the surface faces you, the edges of dark stockings going black, and one broad, soft, unbroken glint band along the light (the band's shape and the black edges follow product photos of glossy black tights; the glint is kept automatically to the middle of the leg as you see it, and a highlight the picture clearly paints elsewhere stays where it is). On dark stockings the glint runs the whole length of the leg: where the painted highlight dims or none is painted, a faint glint is added (along the painted highlight, or down the middle of the leg where there is none), and the pieces of a leg that a ribbon or hair cuts across line up too. Best on plain black stockings; results can vary from picture to picture |
 
 **Sliders**, each on the same patch of thigh:
 
@@ -173,7 +174,15 @@ Sparkles (Evenly) 0% / 100% / 300%
 
 Sparkles come from several sources that mix: By depth puts them where the body bulges toward you (knees, the fronts of the legs), By highlights on the highlights the artist painted, and Evenly everywhere, for sequinned or glitter stockings.
 
-**Presets** (top of the panel): save a tuned style, density, tilt, strength and sparkles, and load them in one click on other images. Pick one in the list to load it; after tweaking, Save writes the current settings into the selected preset. To make a new one, pick “Save as new preset…” at the bottom of the list and give it a name (Save does the same when no preset is selected); Delete removes the selected one. Presets are kept on this computer, not with the image; if Strength is on Auto, it is set again from this image's stockings when you load. Loading replaces the current settings; click Undo load to go back. Regions and direction lines belong to each image and are not part of a preset.
+**Moiré effect** (Beta; off by default): rings of light and dark like ripples on water, as moiré shows on real stockings worn in layers or photographed. A sliding switch in the panel turns it on, and only then do its two sliders appear: Strength is how deep the light and dark go; Area starts as one small ring on top of each bulge and spreads outward, gaining rings as it grows, and all the way up covers the whole bulge. The bands follow the bulges the depth model finds, rings round each knee, thigh or breast and none on the flat parts (at full Area about six tenths of the stocking carries bands, the rest is flat); each ring is a fixed step of height, so the higher a bulge the more rings it holds, and where they go and how close they run is not yours to set. Turning the switch off folds the sliders away and removes the effect; turn it on again and the sliders are where you left them. It works with all six styles. It is added on purpose; the texture itself still never causes moiré.
+
+![The Texture page with the Moiré effect switched on: Strength and Area appear under the switch, and the Detail shows concentric bands on the thighs and knees](docs/images/moire-page-en.jpg)
+
+Area 35% / 50% / 70% / 100% (Strength 100%; top left, top right, bottom left, bottom right), the same patch of thigh: the bands start as one ring, spread outward and gain rings
+
+![Area from 35% to 100%: the bands on the thigh grow from a faint ring into concentric rings](docs/images/moire-area.png)
+
+**Presets** (top of the panel): save a tuned style, density, tilt, strength, sparkles and moiré effect, and load them in one click on other images. Pick one in the list to load it; after tweaking, Save writes the current settings into the selected preset. To make a new one, pick “Save as new preset…” at the bottom of the list and give it a name (Save does the same when no preset is selected); Delete removes the selected one. Presets are kept on this computer, not with the image; if Strength is on Auto, it is set again from this image's stockings when you load. Loading replaces the current settings; click Undo load to go back. Regions and direction lines belong to each image and are not part of a preset.
 
 **Color exclusion** (on by default): parts of a region whose color is far from the stocking's (gold trim, gloves, bare skin) get no texture. Now and then a sheer knee showing skin gets excluded too; turn it off then.
 
@@ -214,7 +223,7 @@ The tool saves your work as you go: close it and it opens where you left off. Be
 - **Where the courses come from:** the directions of your lines are interpolated smoothly over the region into a direction field, and a least-squares solve turns it into a coordinate whose gradient is 1 everywhere. The courses are its contour lines, so they are evenly spaced on screen and follow your lines. Holes left by hands and hair are filled in for the solve, so the courses are continuous underneath them.
 - **Following the body:** the texture multiplies the painted image, so all the artist's light and shade stays; the gaps in Fine lines and Knit take their color from how light the stocking is around them, so they change naturally where skin shows through; By depth sparkles go where the body bulges.
 - **No moiré:** every stripe fades out before its local frequency nears the pixel limit; small patterns like stitch loops are sampled from pre-averaged multi-level tiles, which average to grey rather than alias when dense; sparkles are random single pixels.
-- **The depth model** finds where one stretch of stocking lies in front of another, and places the By depth sparkles.
+- **The depth model** finds where one stretch of stocking lies in front of another, and places the By depth sparkles and the moiré effect's bands.
 
 ## Third-party components
 

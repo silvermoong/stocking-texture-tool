@@ -218,6 +218,22 @@ body.no-doc .step-body > :not(.step-head), body.no-doc .step h2 { opacity: .4; }
 .slider .num { text-align: right; }
 .check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .check:has(input:disabled) { color: var(--faint); cursor: default; }
+/* 滑动开关: a checkbox (kept for the keyboard and screen readers) drawn as a track with a sliding thumb */
+.switch { position: relative; flex: none; width: 34px; height: 18px; margin-left: auto; }
+.switch input { position: absolute; inset: 0; z-index: 1; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.switch-track { position: absolute; inset: 0; border-radius: 9px; background: var(--hover); pointer-events: none; }
+.switch-track::after {
+  content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--muted);
+}
+.switch:hover input:not(:checked) + .switch-track { background: var(--faint); }
+.switch input:checked + .switch-track { background: var(--chalk); }
+.switch input:checked + .switch-track::after { transform: translateX(16px); background: var(--on-chalk); }
+.switch input:focus-visible { outline: none; }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--chalk); outline-offset: 2px; }
+.switch-label { cursor: pointer; }
+@media (prefers-reduced-motion: no-preference) {
+  .switch-track, .switch-track::after { transition: background-color .15s, transform .15s; }
+}
 .shows { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px 12px; margin-top: 14px; }
 .shows .lead { grid-row: 1 / span 2; color: var(--muted); }
 

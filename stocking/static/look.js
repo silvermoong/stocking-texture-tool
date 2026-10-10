@@ -15,7 +15,7 @@ const STYLE_NOTES = {
   coil: t('整齐的线圈针织，按画师原图的规律变化：透出肤色的亮处是清楚整齐的线圈，不透肤的暗处渐渐变成粗糙的细颗粒。适合画画时当底纹。线圈小，密度调低一些更清楚。'),
   lines: t('斜着走的细线，加暖色的单像素亮点。'),
   grain: t('细碎颗粒的针织底纹，加白色小亮点。'),
-  oily: t('试验：半透明的油亮丝袜，反光按画面里画出的光影找，换一张图可能不稳定。'),
+  oily: t('试验：半透明的油亮丝袜，反光按画面里画出的光影找，深色丝袜上反光会延续到整条腿（画里没画或变暗的地方自动补一条淡淡的光线），换一张图可能不稳定。'),
 };
 
 // Stage layout. 细节 is a square; one live render fills at most BUDGET image px (measured: ~65 ms for 细线,
@@ -132,7 +132,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       strength: p.strength, strength_auto: p.strength_auto,
       sparkle_depth: p.sparkle_depth, sparkle_bright: p.sparkle_bright, sparkle_painted: p.sparkle_painted,
       sparkle_even: p.sparkle_even,
-      sparkle_link: p.sparkle_link });
+      sparkle_link: p.sparkle_link, moire_on: p.moire_on, moire: p.moire, moire_area: p.moire_area });
     for (const [k, v] of Object.entries(extra || {})) q.set(k, v);
     return q.toString();
   }
@@ -392,6 +392,12 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       setVal($(`#sparkle-${k}-val`), p[`sparkle_${k}`], '%');
     }
     $('#btn-sparkle-link').setAttribute('aria-pressed', String(!!p.sparkle_link));
+    $('#moire-on').checked = !!p.moire_on;
+    $('#moire-fields').hidden = !p.moire_on;
+    $('#moire').value = p.moire;
+    setVal($('#moire-val'), p.moire, '%');
+    $('#moire-area').value = p.moire_area;
+    setVal($('#moire-area-val'), p.moire_area, '%');
     $('#btn-check').setAttribute('aria-pressed', String(L.showCheck));
     $('#check-legend').hidden = !L.showCheck;
     $('#peek-hint').hidden = L.showCheck;
@@ -435,6 +441,15 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       sn.textContent = t('深度模型不可用：{error}。按深度的亮点先不显示，按画面亮部的照常。', { error: i.depth_error || t('未知错误') });
       sn.className = 'note warn';
     } else sn.textContent = '';
+    // 摩尔纹效果 needs the depth model too: it draws nothing until the model has run
+    const mn = $('#moire-note');
+    const moireOn = !!L.params.moire_on && L.params.moire > 0;
+    mn.className = 'note';
+    if (moireOn && i.depth !== 'ready' && i.depth !== 'error') mn.textContent = t('正在估算深度（第一次要几秒）…');
+    else if (moireOn && i.depth === 'error') {
+      mn.textContent = t('深度模型不可用：{error}。摩尔纹效果先不显示。', { error: i.depth_error || t('未知错误') });
+      mn.className = 'note warn';
+    } else mn.textContent = '';
   }
 
   // ---------------------------------------------------------------- presets
@@ -656,6 +671,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   $('#sparkle-bright').addEventListener('input', (e) => setAmount('sparkle_bright', +e.target.value));
   $('#sparkle-painted').addEventListener('input', (e) => set({ sparkle_painted: +e.target.value }));
   $('#sparkle-even').addEventListener('input', (e) => set({ sparkle_even: +e.target.value }));
+  $('#moire-on').addEventListener('change', (e) => set({ moire_on: e.target.checked }));
+  $('#moire').addEventListener('input', (e) => set({ moire: +e.target.value }));
+  $('#moire-area').addEventListener('input', (e) => set({ moire_area: +e.target.value }));
   $('#btn-sparkle-link').addEventListener('click', toggleLink);
   $('#exclude').addEventListener('change', (e) => {
     const doc = getDoc();
@@ -697,7 +715,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   const resetBtn = $('#btn-look-reset');
   function renderReset() {
     resetBtn.textContent = L.beforeReset ? t('撤销恢复默认') : t('全部恢复默认');
-    resetBtn.title = L.beforeReset ? t('回到恢复默认之前的设置') : t('样式、密度、斜度、强度和亮点都回到默认值');
+    resetBtn.title = L.beforeReset ? t('回到恢复默认之前的设置') : t('样式、密度、斜度、强度、亮点和摩尔纹效果都回到默认值');
   }
   resetBtn.addEventListener('click', () => {
     if (L.beforeReset) {
@@ -713,7 +731,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     set({ style: 'knit', density: 100, tilt: 32,
       strength: L.info ? L.info.strength_suggested : 100, strength_auto: true,
       sparkle_depth: layer ? 0 : 100,
-      sparkle_bright: layer ? 0 : 100, sparkle_painted: layer ? 100 : 0, sparkle_even: 0, sparkle_link: true });
+      sparkle_bright: layer ? 0 : 100, sparkle_painted: layer ? 100 : 0, sparkle_even: 0, sparkle_link: true,
+      moire_on: false, moire: 100, moire_area: 100 });
     L.beforeReset = before;
     renderReset();
     flash(t('已全部恢复默认；想回去，点“撤销恢复默认”'));

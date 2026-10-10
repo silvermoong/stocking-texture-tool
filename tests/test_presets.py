@@ -26,6 +26,15 @@ def test_a_preset_is_the_cleaned_settings_and_keeps_an_automatic_strength_out():
     assert presets.listing()[1]['params']['strength'] == 45
 
 
+def test_a_preset_keeps_the_moire_settings_and_one_saved_before_them_reads_as_off():
+    presets.save('水波', {'style': 'knit', 'moire_on': True, 'moire': 60, 'moire_area': 35})
+    (p,) = presets.listing()
+    assert (p['params']['moire_on'], p['params']['moire'], p['params']['moire_area']) == (True, 60, 35)
+    settings.update(**{presets.KEY: {'旧': {k: v for k, v in look.DEFAULTS.items() if not k.startswith('moire')}}})
+    old = presets.listing()[0]['params']
+    assert (old['moire_on'], old['moire'], old['moire_area']) == (False, 100, 100)
+
+
 def test_saving_over_a_name_replaces_it_in_place_and_delete_removes_it():
     presets.save('甲', {'style': 'knit'})
     presets.save('乙', {'style': 'loops'})

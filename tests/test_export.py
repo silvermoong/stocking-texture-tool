@@ -197,6 +197,30 @@ def test_each_export_asks_for_a_file_and_offers_a_new_name(monkeypatch, tmp_path
         d.close()
 
 
+def test_exporting_the_moire_without_the_depth_model_says_so(solved, monkeypatch, tmp_path):
+    """The 摩尔纹效果 is drawn from the depth model's bulge. Where the model is not there the picture is exported
+    without it, and the export says so (as it does for the by-depth sparkles)."""
+    from fastapi.testclient import TestClient
+    from stocking import depth, server, settings
+    monkeypatch.setattr(settings, '_FILE', str(tmp_path / 'settings.json'))
+    monkeypatch.setattr(server, '_doc', solved)
+    monkeypatch.setattr(depth.service, 'status', 'unavailable')
+    monkeypatch.setattr(solved, '_depth_started', True, raising=False)           # so no model run is started
+    monkeypatch.setattr(solved, 'look', solved.look)                              # put the saved look back afterwards
+    c = TestClient(server.app)
+    url = f'/api/doc/{solved.id}/export'
+    plain = {'style': 'knit', 'sparkle_depth': 0, 'sparkle_link': False}
+    with_moire = c.post(url, json={'kind': 'png', 'path': str(tmp_path / 'a.png'),
+                                   'params': dict(plain, moire_on=True, moire=60)}).json()
+    assert with_moire['notes'] == ['深度模型不可用，摩尔纹效果没有导出']
+    without = c.post(url, json={'kind': 'png', 'path': str(tmp_path / 'b.png'), 'params': plain}).json()
+    assert without['notes'] == []
+    assert np.array_equal(_read_png(with_moire['file']), _read_png(without['file']))      # none of the effect was drawn
+    switched_off = c.post(url, json={'kind': 'png', 'path': str(tmp_path / 'c.png'),
+                                     'params': dict(plain, moire_on=False, moire=60)}).json()
+    assert switched_off['notes'] == []                                                    # off: nothing to say
+
+
 def _dense(Q, step=1.0, trim=0.0):
     """Points every `step` px along the polyline Q (a chord cutting across a curve shows up in them), leaving out
     `trim` px at each end."""

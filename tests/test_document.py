@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from stocking import guide_fields as gf
+from stocking import look
 from stocking import psd_io
 from stocking.document import Document
 
@@ -251,6 +252,111 @@ def test_document_keeps_a_strip_showing_between_strands_of_hair():
         ref = gf.solve_region(full, alpha)[0]
         inner = cv2.erode(strip.astype(np.uint8), np.ones((5, 5), np.uint8)).astype(bool)
         assert np.percentile(np.abs(V - ref)[inner], 99) < 3.0                # px: the leg's own courses, carried on
+    finally:
+        d.close()
+
+
+def _ribboned_leg(slant=0.0):
+    """A leg 240 px wide, dark with a highlight along x = 205 on its upper part, and a ribbon across it that the selection
+    leaves out (rows 500 to 530, falling by slant rows per px to the right): the ankle and foot below it are 260 rows, too
+    short to be a limb alone. Strokes on both sides of the ribbon. (art, region, [strokes])"""
+    h, w = 800, 400
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    fade = np.clip((330 - yy) / 70, 0, 1)
+    art = np.repeat((30 + 100 * np.exp(-((xx - 205) / 28.0) ** 2) * fade)[..., None], 3, axis=2).astype(np.uint8)
+    region = np.zeros((h, w), bool)
+    region[20:790, 60:300] = True
+    region[(yy >= 500 + slant * (xx - 60)) & (yy < 530 + slant * (xx - 60))] = False
+    return art, region, [[(80, y), (280, y)] for y in (100, 250, 400, 620, 720)]
+
+
+def test_document_hands_out_what_the_solver_carried_the_courses_across():
+    """A ribbon the selection leaves out: the solver's courses run on under it (one sheet over both pieces), and
+    filled_map hands out those pixels, by region (but for the two columns at each side, where the closing by a disk does
+    not reach); the regions' own fields are as ever, none on them."""
+    art, region, strokes = _ribboned_leg()
+    d = Document(art, 'synthetic.png')
+    try:
+        with d.lock:
+            d._new_region('右腿', region)
+            d._touch()
+        for pts in strokes:
+            d.add_stroke(pts)
+        assert d.wait_idle(60)
+        fill = d.filled_map()
+        REG, V0, NX, NY, A0 = d.fields()
+        gap = np.zeros(region.shape, bool)
+        gap[500:530, 60:300] = True
+        assert list(fill) == [1] and fill[1][500:530, 64:296].all() and fill[1][gap].mean() > 0.98 and not fill[1][~gap].any()
+        assert not V0[gap].any() and not A0[gap].any()
+    finally:
+        d.close()
+
+
+def test_a_divider_across_the_ribbon_keeps_the_pieces_apart():
+    """The user draws a 隔开 line across the leg through the ribbon (a wall: the stockings do not run on across it): the
+    band along it is not filled in, so the pieces are not joined and the foot, too short alone, has no glint."""
+    art, region, strokes = _ribboned_leg()
+    d = Document(art, 'synthetic.png')
+    try:
+        with d.lock:
+            d._new_region('右腿', region)
+            d._touch()
+        for pts in strokes:
+            d.add_stroke(pts)
+        assert d.wait_idle(60)
+        joined = look.scene_from_doc(d, disparity=lambda: None).oily_maps()[1]
+        d.add_divider([(40, 515), (330, 515)])
+        assert d.wait_idle(60)
+        fill = d.filled_map()
+        assert not fill[1][512:518, 70:290].any() and fill[1][500:530].sum() < 0.85 * 30 * 236       # the wall's band is no connector
+        apart = look.scene_from_doc(d, disparity=lambda: None).oily_maps()[1]
+        assert joined[560:780].max() > 0.3 and apart[560:780].max() < 0.05
+    finally:
+        d.close()
+
+
+def test_the_scene_carries_a_glint_on_down_the_foot_below_a_ribbon():
+    """End to end, through the document: the foot below the ribbon is too short to be a limb alone and had no glint; with the
+    filled-in ribbon it is one limb with the leg, and the glint goes on down it, along the leg's."""
+    art, region, strokes = _ribboned_leg()
+    d = Document(art, 'synthetic.png')
+    try:
+        with d.lock:
+            d._new_region('右腿', region)
+            d._touch()
+        for pts in strokes:
+            d.add_stroke(pts)
+        assert d.wait_idle(60)
+        scene = look.scene_from_doc(d, disparity=lambda: None)
+        assert scene.fill is not None
+        core = scene.oily_maps()[1]
+        alone = look.Scene(art, scene.REG, scene.V, scene.A, scene.R > 0, scene.alpha, scene.names, cut=scene.cut).oily_maps()[1]
+        foot = core[560:780, 60:300]
+        assert (foot.max(1) > 0.3).all() and np.abs(foot.argmax(1) + 60 - 205).max() <= 6
+        assert alone[560:780].max() < 0.05 and not core[500:530].any()
+    finally:
+        d.close()
+
+
+def test_the_scene_keeps_the_glint_in_line_across_a_ribbon_at_a_slant():
+    """A ribbon across the leg at a slant (it falls 60 rows over the leg's width): near it only part of each course is in
+    sight, and the limb's middle, taken from what is, swerved toward the side that is: the glint was 35 px off the leg's
+    above the ribbon and 20 below it. The ribbon's edge is no outline: above and below it the glint is along x = 205, as
+    painted higher up, and shows."""
+    art, region, strokes = _ribboned_leg(slant=0.25)
+    d = Document(art, 'synthetic.png')
+    try:
+        with d.lock:
+            d._new_region('右腿', region)
+            d._touch()
+        for pts in strokes:
+            d.add_stroke(pts)
+        assert d.wait_idle(60)
+        core = look.scene_from_doc(d, disparity=lambda: None).oily_maps()[1]
+        for r0, r1 in ((340, 526), (574, 780)):
+            sub = core[r0:r1, 60:300]
+            assert (sub.max(1) > 0.15).all() and np.abs(sub.argmax(1) + 60 - 205).max() <= 3, (r0, r1)
     finally:
         d.close()
 

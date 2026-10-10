@@ -113,7 +113,7 @@
       <button class="opt" data-style="lines" role="radio">斜单线</button>
       <button class="opt" data-style="grain" role="radio">加濑风</button>
       <button class="opt" data-style="oily" role="radio"
-              title="试验样式：正对的地方透出肤色、边缘发暗，亮的一侧整片泛光，光照最亮处一条窄反光带着柔和的光晕。适合有明显高光的纯色黑丝。">油光<span class="exp-tag">试验</span></button>
+              title="试验样式：正对的地方透出肤色、深色丝袜的边缘发黑，亮的一侧整片泛光，光照最亮处是一条连续的反光带：细而亮的芯，外面一片宽而柔的光，随腿的粗细变宽变窄。深色丝袜上这条反光会一直延续到整条腿：画里高光变暗或没画的地方，会自动补一条淡淡的光线，被丝带、头发隔开的同一条腿也接得上。适合纯色黑丝。">油光<span class="exp-tag">试验</span></button>
     </div>
     <p id="style-note" class="note"></p>
   </section>
@@ -185,6 +185,32 @@
     <p id="sparkle-note" class="note"></p>
   </section>
 
+  <section class="group" id="moire-section">
+    <div class="group-head">
+      <h2><label class="switch-label" for="moire-on">摩尔纹效果<span class="exp-tag">试验</span></label></h2>
+      <button class="info-btn" aria-expanded="false" aria-controls="moire-info" aria-label="摩尔纹效果说明">?</button>
+      <span class="switch"><input type="checkbox" role="switch" id="moire-on"><span class="switch-track"></span></span>
+    </div>
+    <div id="moire-info" class="info-pop" role="note" hidden>
+      <p>给丝袜加上一圈圈水波似的明暗条纹，像现实里的丝袜叠穿、拍照时出现的摩尔纹。默认关，打开开关才有。</p>
+      <p><b>强度</b>：条纹的明暗有多深。</p>
+      <p><b>面积</b>：从每个鼓起处顶上的一小圈开始，一圈圈往外扩，环数也跟着变多；拉满就是整个鼓起的地方都有。</p>
+      <p>条纹顺着身体鼓起的地方走：膝盖、大腿、胸顶各围成一圈圈，平的地方没有。位置由深度模型估出的起伏决定，鼓得越高，环越多。</p>
+      <p>这是特意加上的效果。纹理本身不会出摩尔纹，这一点不变；关掉开关，效果就没了。</p>
+    </div>
+    <div id="moire-fields" hidden>
+      <div class="field">
+        <div class="field-head"><label for="moire">强度</label><span id="moire-val" class="val num"></span></div>
+        <input id="moire" type="range" min="0" max="100" step="1" value="100">
+      </div>
+      <div class="field">
+        <div class="field-head"><label for="moire-area">面积</label><span id="moire-area-val" class="val num"></span></div>
+        <input id="moire-area" type="range" min="0" max="100" step="1" value="100">
+      </div>
+      <p id="moire-note" class="note"></p>
+    </div>
+  </section>
+
   <section class="group exclude">
     <div class="field-head">
       <label class="check"><input type="checkbox" id="exclude" checked>颜色排除</label>
@@ -195,7 +221,7 @@
       <p>薄丝袜透出肤色的地方（膝盖、脚尖）偏暖，有时会被误当成皮肤排除掉。这时关掉它，部位里每一处都加纹理。点细节上方的“标出问题”可以看到哪里被排除了（蓝色）。</p>
     </div>
     <p id="exclude-note" class="note"></p>
-    <button id="btn-look-reset" class="text-btn" title="样式、密度、斜度、强度和亮点都回到默认值">全部恢复默认</button>
+    <button id="btn-look-reset" class="text-btn" title="样式、密度、斜度、强度、亮点和摩尔纹效果都回到默认值">全部恢复默认</button>
   </section>
  </div>
 </aside>

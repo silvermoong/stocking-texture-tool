@@ -1139,6 +1139,28 @@ class Document:
                     out[y0:y1, x0:x1] |= s.cut & inp.mc
             return out
 
+    def filled_map(self):
+        """{region index (1..n by list position): bool mask} of what the solver filled in beside each region with a
+        current solve (guide_fields.fill_occlusions: a ribbon, a hand, a band of hair across a limb, which the courses
+        run on under), where no painted region is, less the bands along its walls. It says which pieces of a region
+        the stockings run on between (Scene: the 油光's glints are one across it); it is no stocking itself."""
+        with self.lock:
+            REG, prep = self._prepare()
+            out = {}
+            for i, r in enumerate(self.regions, 1):
+                inp = prep.get(r.id)
+                s = self._solve_for(r.id, inp) if inp is not None else None
+                if s is None or s.fields is None:
+                    continue
+                y0, y1, x0, x1 = inp.box
+                gap = gf.fill_occlusions(inp.mc) & ~inp.mc & (REG[y0:y1, x0:x1] == 0)
+                if s.cut is not None:
+                    gap &= ~s.cut
+                if gap.any():
+                    out[i] = np.zeros((self.h, self.w), bool)
+                    out[i][y0:y1, x0:x1] = gap
+            return out
+
     def fields(self):
         """Full-image (REG, V, NX, NY, A) from the current solves, with solve_guides' conventions:
         REG = 1..n by list position, 0 where a region has no up-to-date solve."""

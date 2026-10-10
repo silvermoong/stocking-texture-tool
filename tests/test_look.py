@@ -301,6 +301,11 @@ def test_removed_bulge_setting_is_ignored_and_nothing_waits_for_depth(fx):
     assert info['sparkles_ready'] and np.array_equal(out, scene(fx).render(dict(OFF, style='knit'))[0])
 
 
+def test_removed_centre_slider_is_ignored():
+    """居中 was a slider for a while and is automatic now: a setting or a preset saved with it reads without it."""
+    assert 'centre' not in look.clean_params({'style': 'oily', 'centre': 60})
+
+
 def test_densest_point_and_fade(fx):
     s = scene(fx)
     x, y = s.densest()
@@ -490,9 +495,225 @@ def test_oily_glint_on_the_lit_side_and_texture_only_on_the_stockings(fx):
     out, _ = s.render(dict(OFF, style='oily'))
     off = alpha == 0
     assert np.array_equal(out[off], s.src[off])
-    tone, core, band, tail, facing, centre = s.oily_maps()
+    tone, core, band, tail, facing, centre, zone = s.oily_maps()
     m = alpha > 0.5
     lift = out.astype(float).mean(2) - s.src.astype(float).mean(2)
     crest, shade = m & (core > 0.5), m & (tone < -0.6)
     assert crest.sum() > 200 and shade.sum() > 200
     assert np.median(lift[crest]) > 20 and np.median(lift[shade]) < 0
+
+
+# ---------------------------------------------------------------- 摩尔纹效果
+
+def _dome(h=600, w=400, rgb=(120, 100, 104), ready=True, heights=(1.0,)):
+    """Bulging stockings on a plain picture: an elliptical region for each height, side by side, courses across them,
+    and a dome of disparity over each that high (nearest in the middle), so the depth model's bulge has a known shape.
+    Returns (scene, disparity, holder): the scene sees the disparity once holder['disp'] is set (at once, unless ready
+    is False)."""
+    n = len(heights)
+    yy, xx = np.mgrid[0:h, 0:w * n].astype(np.float64)
+    REG = np.zeros((h, w * n), np.int8)
+    disp = np.zeros((h, w * n), np.float32)
+    for k, top in enumerate(heights):
+        u = ((xx - (k + 0.5) * w) / (0.42 * w)) ** 2 + ((yy - h / 2) / (0.42 * h)) ** 2
+        REG[u < 1] = k + 1
+        disp += (np.clip(1 - u, 0, None) * top).astype(np.float32)
+    art = np.empty((h, w * n, 3), np.uint8)
+    art[...] = rgb
+    holder = {'disp': disp if ready else None}
+    s = look.Scene(art, REG, yy, xx, REG > 0, (REG > 0).astype(np.float32), ['左腿', '右腿', '胯部'][:n],
+                   disparity=lambda: holder['disp'])
+    return s, disp, holder
+
+
+def _rings(f, col):
+    """How many times the bands change sign down one column: two for each ring."""
+    c = f[:, col]
+    return int((np.diff(np.sign(c[np.abs(c) > 0.5])) != 0).sum())
+
+
+def test_moire_is_a_switch_that_is_off_by_default_over_two_sliders():
+    assert look.DEFAULTS['moire_on'] is False and look.clean_params({})['moire_on'] is False
+    assert [look.clean_params({'moire_on': v})['moire_on'] for v in (True, 'true', '1', False, 'false', '0')] == [
+        True, True, True, False, False, False]                                    # from a query string, too
+    assert look.DEFAULTS['moire'] == 100 and look.clean_params({})['moire'] == 100     # the strength it has once on
+    assert look.clean_params({'moire': 140})['moire'] == 100 and look.clean_params({'moire': -5})['moire'] == 0
+    assert look.clean_params({'moire': '35'})['moire'] == 35                      # from a query string
+    assert look.DEFAULTS['moire_area'] == 100 and look.clean_params({})['moire_area'] == 100     # the whole bulge
+    assert look.clean_params({'moire_area': 140})['moire_area'] == 100 and look.clean_params({'moire_area': -5})['moire_area'] == 0
+    assert look.clean_params({'moire_area': '35'})['moire_area'] == 35
+    assert all(k in look.RENDER_KEYS for k in ('moire_on', 'moire', 'moire_area'))
+
+
+def test_the_moire_is_drawn_only_with_the_switch_on_and_the_sliders_keep_their_values():
+    on = lambda **kw: look.moire_active(look.clean_params(dict({'moire_on': True}, **kw)))
+    assert on() and on(moire=40) and not on(moire=0)                              # on, but no strength: nothing to draw
+    assert not look.moire_active(look.clean_params({}))                           # the switch is off by default
+    off = look.clean_params({'moire_on': False, 'moire': 35, 'moire_area': 20})
+    assert not look.moire_active(off) and off['moire'] == 35 and off['moire_area'] == 20     # off keeps what was set
+    s, disp, _ = _dome()
+    p = dict(OFF, style='knit')
+    plain, _ = s.render(p)
+    assert np.array_equal(s.render(dict(p, moire_on=False, moire=100, moire_area=100))[0], plain)
+    assert not np.array_equal(s.render(dict(p, moire_on=True, moire=100))[0], plain)
+    assert np.array_equal(s.render(dict(p, moire_on=True, moire=0))[0], plain)
+
+
+def test_moire_bands_follow_the_bulge_and_add_no_light():
+    """Rings round the dome, none on the flat of the region or off it, and a sine so that light and dark bands cancel."""
+    s, disp, _ = _dome()
+    phase, slope, gate = s.moire_maps()
+    f = look.moire_fringes(phase, slope, 1.0)
+    inside = s.R > 0
+    assert f.shape == s.R.shape and f.dtype == np.float32 and np.abs(f).max() <= 1
+    assert f.min() < -0.95 and f.max() > 0.95
+    assert (f[~inside] == 0).all()
+    flat = inside & (phase < 0.3)
+    assert flat.sum() > 40000 and (f[flat] == 0).all()                    # the lowest 40% of a region has no bulge
+    assert abs(f[inside].mean()) < 0.05
+    assert _rings(f, s.w // 2) >= 16                                      # a deep dome: many rings each side of the crown
+    assert np.allclose(s.moire_map(1.0), f)                               # a light stocking: the texture's gate is open
+    dark, _, _ = _dome(rgb=(6, 5, 5))
+    assert np.abs(dark.moire_map(1.0)).max() < 0.01                       # a near-black one gets no bands, like no texture
+
+
+def test_moire_grows_from_a_small_light_disc_on_the_crown():
+    """面积: nothing at 0, then a small light disc on the crown that spreads outward, the first dark ring appearing
+    round it and more rings after that."""
+    s, _, _ = _dome(heights=(1.0, 4.0))                  # the first dome stands a quarter as high: a few rings, not a dozen
+    phase, slope, _ = s.moire_maps()
+    left = s.R == 1
+    cx, cy = s.w // 4, s.h // 2
+    assert not look.moire_fringes(phase, slope, 0.0).any()
+
+    def reach(a):
+        yy, xx = np.nonzero((np.abs(look.moire_fringes(phase, slope, a)) > 0.5) & left)
+        return float(np.hypot(xx - cx, yy - cy).max()) if len(xx) else 0.0
+
+    small = look.moire_fringes(phase, slope, 0.2)
+    assert (small[left] > 0.5).any() and not (small[left] < -0.5).any()           # a light disc, no ring yet
+    assert small[cy, cx] > 0.5                                                    # on the crown
+    areas = [0.2, 0.3, 0.5, 0.8, 1.0]
+    reaches = [reach(a) for a in areas]
+    assert 0 < reaches[0] < 0.6 * reaches[-1] and reaches == sorted(reaches)      # it spreads, never shrinks
+    counts = [_rings(look.moire_fringes(phase, slope, a), cx) for a in areas]
+    assert counts == sorted(counts) and counts[0] == 0 and counts[-1] >= 8        # and rings join it
+
+
+def test_a_taller_bulge_holds_more_rings_whatever_its_size():
+    """The count follows the height: in one picture a dome four times as high gets about four times the rings, while a
+    dome twice as wide and as long, as high as before, holds the same number: its rings are just bigger."""
+    s, _, _ = _dome(heights=(1.0, 4.0))
+    phase, slope, _ = s.moire_maps()
+    top = lambda i: float(np.percentile(phase[s.R == i], 99))
+    assert 3.5 < top(2) / top(1) < 4.5
+    f = look.moire_fringes(phase, slope, 1.0)
+    assert _rings(f, 3 * s.w // 4) > 2 * _rings(f, s.w // 4)
+    small, big = _dome(), _dome(h=1200, w=800)
+    assert abs(float(big[0].moire_maps()[0].max()) / float(small[0].moire_maps()[0].max()) - 1) < 0.05
+
+
+def test_moire_bands_too_fine_for_the_pixels_fade_away():
+    """5 bands over a ramp 20 px wide would be 0.25 cycles/px, as fine as the courses at their limit: they fade out
+    (as does everything finer than look.MOIRE_FADE); over 200 px they are 0.025 cycles/px and stay at full strength."""
+    xx = np.tile(np.arange(400, dtype=np.float32), (120, 1))
+
+    def bands(width):
+        phase = 5 * np.clip((xx - 100) / width, 0, 1)
+        gy, gx = np.gradient(phase)
+        return look.moire_fringes(phase, np.hypot(gx, gy).astype(np.float32), 1.0)
+
+    steep, gentle = bands(20), bands(200)
+    assert np.abs(steep[10:-10, 105:115]).max() < 0.02
+    assert np.abs(gentle[10:-10, 100:300]).max() > 0.95
+
+
+def test_moire_smoothing_stays_inside_each_region():
+    R = np.zeros((40, 80), np.int8)
+    R[:, :40], R[:, 40:] = 1, 2
+    out = look._smooth_within_regions(np.where(R == 1, 1.0, 0.0).astype(np.float32), R, 3.0)
+    assert np.allclose(out[:, :40], 1) and np.allclose(out[:, 40:], 0)       # nothing bleeds across the border
+    R[10:20, 10:20] = 0                                                      # a hole (a hand): not counted either
+    out = look._smooth_within_regions(np.where(R == 1, 1.0, 0.0).astype(np.float32), R, 3.0)
+    assert np.allclose(out[R == 1], 1) and (out[R == 0] == 0).all()
+
+
+def test_moire_lays_light_and_texture_contrast_over_the_render():
+    src = np.full((4, 4, 3), 100, np.uint8)
+    on, off = np.ones((4, 4), np.float32), -np.ones((4, 4), np.float32)
+
+    def gives(out, want):                                                    # to the nearest level
+        return np.abs(out.astype(float) - want).max() <= 0.5001
+
+    assert gives(look.apply_moire(src, src, on, 1.0, 1.0), 100 * (1 + look.MOIRE_LIGHT))
+    assert gives(look.apply_moire(src, src, off, 1.0, 1.0), 100 * (1 - look.MOIRE_LIGHT))
+    assert gives(look.apply_moire(src, src, on, 1.0, 0.4), 100 * (1 + 0.4 * look.MOIRE_LIGHT))       # light stockings: less
+    assert gives(look.apply_moire(src, src, on, 0.5, 1.0), 100 * (1 + 0.5 * look.MOIRE_LIGHT))       # half the slider
+    dim = np.full((4, 4, 3), 90, np.uint8)                                   # a texture that dims the stocking by 10
+    assert gives(look.apply_moire(dim, src, on, 1.0, 0.0), 100 - 10 * (1 + look.MOIRE_TEXTURE))
+    assert gives(look.apply_moire(dim, src, off, 1.0, 0.0), 100 - 10 * (1 - look.MOIRE_TEXTURE))
+    assert np.array_equal(look.apply_moire(dim, src, on, 0.0, 1.0), dim)     # amount 0: the render itself
+
+
+@pytest.mark.parametrize('style', look.STYLES)
+def test_moire_goes_over_every_style_on_the_stockings_only(style):
+    """Any style: the stocking gets bands (no lighter on average), nothing off it changes, and a crop is the same
+    area of the whole render, sparkles and all."""
+    s, disp, _ = _dome()
+    plain, _ = s.render(dict(OFF, style=style))
+    out, info = s.render(dict(OFF, style=style, moire_on=True, moire=100))
+    assert info['moire_ready']
+    inside = s.R > 0
+    assert np.array_equal(out[~inside], plain[~inside])
+    assert np.array_equal(s.render(dict(OFF, style=style, moire_on=False, moire=100))[0], plain)       # the switch is off
+    light = lambda im: cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).astype(float)[inside].mean()
+    assert abs(light(out) / light(plain) - 1) < 0.01
+    assert np.abs(out.astype(int) - plain.astype(int)).max() > 10
+    p = dict(OFF, style=style, moire_on=True, moire=70, moire_area=60, sparkle_even=60)
+    whole, _ = s.render(p)
+    for rect in [(100, 150, 300, 400), (0, 0, 64, 64), (330, 540, 400, 600)]:
+        x0, y0, x1, y1 = rect
+        assert np.array_equal(s.render(p, rect)[0], whole[y0:y1, x0:x1]), rect
+
+
+def test_moire_area_sets_how_far_the_rings_reach_in_the_render():
+    s, disp, _ = _dome(heights=(1.0, 4.0))
+    p = dict(OFF, style='knit', moire_on=True, moire=100)
+    plain, _ = s.render(dict(p, moire_on=False))
+    assert np.array_equal(s.render(dict(p, moire_area=0))[0], plain)               # no area, no rings
+    small, wide = s.render(dict(p, moire_area=25))[0], s.render(dict(p, moire_area=100))[0]
+    changed = lambda im: (np.abs(im.astype(int) - plain.astype(int)).max(2) > 3) & (s.R == 1)    # the lower dome
+    assert 0 < changed(small).sum() < changed(wide).sum()
+    assert np.array_equal(s.render(dict(p, moire_area=25))[0], small)              # asking again after another area
+
+
+def test_moire_waits_for_the_depth_model():
+    """Without the bulge there are no bands: the render is the plain one and says it is not final, so it is not kept
+    and the next one has them."""
+    s, disp, holder = _dome(ready=False)
+    p = dict(OFF, style='knit', moire_on=True, moire=100)
+    plain, _ = s.render(dict(p, moire_on=False))
+    out, info = s.render(p)
+    assert not info['moire_ready'] and info['sparkles_ready'] and np.array_equal(out, plain)
+    assert s.moire_maps() is None and s.moire_map(1.0) is None and s.sparkle_map('depth') is None
+    holder['disp'] = disp
+    out, info = s.render(p)
+    assert info['moire_ready'] and (out != plain).any()
+    assert s.render(dict(p, moire_on=False))[1]['moire_ready']                # nothing waits when the effect is off
+
+
+def test_the_depth_model_is_started_for_the_moire(monkeypatch):
+    import types
+    from stocking import server
+    started = []
+    monkeypatch.setattr(server.depth.service, 'disparity_async', started.append)
+    q = lambda **kw: look.clean_params(dict({'sparkle_depth': 0, 'sparkle_link': False}, **kw))
+    d = types.SimpleNamespace()
+    server._want_depth(d, q())
+    server._want_depth(d, q(moire=40))                                       # the switch is off
+    server._want_depth(d, q(moire_on=True, moire=0))                         # on, but nothing to draw
+    assert started == [] and not getattr(d, '_depth_started', False)
+    server._want_depth(d, q(moire_on=True, moire=40))
+    assert started == [d] and d._depth_started
+    server._want_depth(d, q(moire_on=True, moire=40))                        # once is enough
+    assert started == [d]
