@@ -49,7 +49,8 @@ def test_defaults_reproduce_verify_renders(fx):
     src = np.ascontiguousarray(art[..., ::-1])
     R = np.where(stock, REG, 0).astype(np.int8)
     period = 4.6
-    ref_knit, _ = knit.render_thread(src, R, V / period + 0.37 * R, A / (period * 1.25), alpha, knit.wide_luma(src))
+    ref_knit, _ = knit.render_thread(src, R, V / period + 0.37 * R, A / (period * 1.25), alpha,
+                                     knit.region_tone(knit.wide_luma(src), R, alpha))
     theta = np.deg2rad(32)
     side = np.select([np.isin(R, [1, 4]), np.isin(R, [2, 5])], [1.0, -1.0], 0.0)
     ref_lines, _ = knit.render_lines(src, R, np.cos(theta) * V / period + np.sin(theta * side) * A / period, alpha)
@@ -85,6 +86,66 @@ def test_thread_gaps_take_the_skin_colour(style, rgb, darker):
     assert abs(1 / f - info['period']) < 0.3                           # one gap per course
     b, g, r = d[gap].mean(0)
     assert (r > b) and (r > g)                                         # warmer than the stocking either way
+
+
+def _skew(x):
+    """+ for narrow bright gaps in a duller ground, - for narrow dark ones."""
+    x = x - x.mean()
+    return float((x ** 3).mean() / (x.std() ** 3 + 1e-9))
+
+
+def _gap_skew(s, style, cols):
+    out, _ = s.render(dict(OFF, style=style, strength=100, strength_auto=False))
+    rel = (out.astype(float) - s.src.astype(float)) / np.maximum(s.src, 1)
+    return _skew((rel @ [0.114, 0.587, 0.299])[20:-20, cols])
+
+
+@pytest.mark.parametrize('style', ['knit', 'loops', 'coil'])
+def test_a_highlight_on_dark_stockings_keeps_its_texture_and_its_drawing(style):
+    """A bright patch on black stockings is still black stockings: the gaps stay lighter than the stocking all over it,
+    and the texture is as strong on it as round it. Deciding by each pixel's own lightness drew nothing where it crossed
+    the point the gaps turn from lighter to darker: a plain ring round the patch."""
+    h = w = 240
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    bump = np.clip(np.exp(-(((xx - 120) / 45.0) ** 2 + ((yy - 120) / 90.0) ** 2)) * 1.6, 0, 1)[..., None]
+    art = np.round(np.array([62., 50, 58]) + bump * (np.array([240., 214, 200]) - [62, 50, 58])).astype(np.uint8)
+    s = look.Scene(art, np.ones((h, w), np.int8), yy, xx, np.ones((h, w), bool), np.ones((h, w)), ['左腿'])
+    out, _ = s.render(dict(OFF, style=style, strength=100, strength_auto=False))
+    rel = ((out.astype(float) - s.src.astype(float)) / np.maximum(s.src, 1))[20:-20, 20:-20]
+    contrast = np.array([np.sqrt((rel[:, c:c + 4] ** 2).mean()) for c in range(0, 200, 4)])
+    assert contrast.min() > 0.6 * np.median(contrast)
+    lum = rel @ [0.114, 0.587, 0.299]
+    assert min(_skew(lum[:, c:c + 20]) for c in range(0, 200, 20)) > -0.15
+
+
+@pytest.mark.parametrize('style', ['knit', 'loops', 'coil'])
+def test_each_region_takes_its_own_drawing(style):
+    """One leg in black stockings and the other in white: warm light gaps on the one, pink dark gaps on the other."""
+    h = w = 240
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    art = np.empty((h, w, 3), np.uint8)
+    art[:, :120], art[:, 120:] = (62, 50, 58), (223, 216, 226)
+    REG = np.ones((h, w), np.int8)
+    REG[:, 120:] = 2
+    s = look.Scene(art, REG, yy, xx, np.ones((h, w), bool), np.ones((h, w)), ['左腿', '右腿'])
+    assert _gap_skew(s, style, slice(20, 100)) > 0.1
+    assert _gap_skew(s, style, slice(140, -20)) < -0.1
+
+
+def test_region_tone_is_one_value_per_region_from_its_own_stocking():
+    h, w = 120, 200
+    wide = np.full((h, w), 0.2, np.float32)
+    wide[:, 100:] = 0.9
+    wide[40:80, 20:60] = 0.7                                           # a highlight on the dark region: not the region
+    reg = np.zeros((h, w), np.int8)
+    reg[:, :100], reg[:, 100:180] = 1, 2
+    reg[:5, 190:] = 3                                                  # a sliver too small to judge by itself
+    tone = knit.region_tone(wide, reg, np.ones((h, w)))
+    assert np.allclose(tone[reg == 1], 0.2) and np.allclose(tone[reg == 2], 0.9)
+    assert np.allclose(tone[reg == 3], np.median(wide[reg > 0]))       # it takes the whole image's
+    alpha = np.ones((h, w))
+    wide[:, 40:100], alpha[:, 40:100] = 0.9, 0.5                       # a soft edge, brighter: it is not the stocking
+    assert np.allclose(knit.region_tone(wide, reg, alpha)[reg == 1], 0.2)
 
 
 @pytest.mark.parametrize('style', ['loops', 'coil'])

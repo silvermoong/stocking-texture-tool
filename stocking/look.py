@@ -440,12 +440,15 @@ class Scene:
         """Clean params with an automatic strength filled in."""
         return dict(q, strength=self.suggested_strength()) if q['strength_auto'] else q
 
-    def wide_luma(self):
-        """knit.wide_luma of the whole image, cached: crops take theirs from it, so they match the whole render."""
+    def region_tone(self):
+        """knit.region_tone of the whole image, cached: crops take theirs from it, so they match the whole render."""
         with self._lock:
-            if 'wide' not in self._stretch:
-                self._stretch['wide'] = knit.wide_luma(self.src)
-            return self._stretch['wide']
+            tone = self._stretch.get('tone')
+        if tone is None:
+            tone = knit.region_tone(knit.wide_luma(self.src), self.R, self.alpha)
+            with self._lock:
+                self._stretch['tone'] = tone
+        return tone
 
     def see_map(self):
         """skin_visibility (see, trust) of the whole image, cached: crops slice it, so they match the whole render."""
@@ -668,11 +671,11 @@ class Scene:
         if q['style'] == 'coil':
             gn, gc = self.randoms('grain')[:2]
             see, trust = self.see_map()
-            out, _ = knit.render_coil(src, R, V / p + 0.37 * R, A / (p * g['wale_ratio']), alpha, self.wide_luma()[sl],
+            out, _ = knit.render_coil(src, R, V / p + 0.37 * R, A / (p * g['wale_ratio']), alpha, self.region_tone()[sl],
                                       see[sl], trust[sl], (gn[sl], gc[sl]), amp=s, f_lo=g['f_lo'], f_hi=g['f_hi'])
         elif q['style'] in ('knit', 'loops'):
             draw = knit.render_thread if q['style'] == 'knit' else knit.render_loops
-            out, _ = draw(src, R, V / p + 0.37 * R, A / (p * g['wale_ratio']), alpha, self.wide_luma()[sl],
+            out, _ = draw(src, R, V / p + 0.37 * R, A / (p * g['wale_ratio']), alpha, self.region_tone()[sl],
                           amp=(0.10 if q['style'] == 'knit' else 0.12) * s, f_lo=g['f_lo'], f_hi=g['f_hi'])
         elif q['style'] == 'lines':
             th = np.deg2rad(q['tilt'])

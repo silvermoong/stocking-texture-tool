@@ -147,7 +147,7 @@ Switch to the Texture page at the top. The settings are on the left; Whole shows
 
 | Style | Looks like |
 | --- | --- |
-| Fine lines (default) | Skin shows through a thin gap between wide threads: pink lines on light stockings, warm bright lines on dark ones |
+| Fine lines (default) | Skin shows through a thin gap between wide threads: pink lines on light stockings, warm bright lines on dark ones (decided for each part as a whole, so one leg can be black and the other white) |
 | Knit | Columns of V-shaped stitch loops, like the reinforced sole of a stocking |
 | Coil | Neat plain knit: every loop drawn the way real plain knit is built, all the same, in straight rows and columns. It varies the way the artist's drawings do, with how much skin shows through: clear loops where the colour shows skin, a fine rough grain and weaker contrast where it does not. Handy as an underlay for painting |
 | Slanted lines | Fine slanting lines, leaning opposite ways on the two legs in a chevron |
