@@ -4,3 +4,7 @@
 *.ps1 text eol=crlf
 # GitHub's ZIP downloads get the commit written into this file, so install.bat can tell when a newer version is out
 tools/commit.txt export-subst
+# Development material is public on GitHub but not in the code ZIPs, which install.bat copies to every user in full
+/.scratch export-ignore
+/AGENTS.md export-ignore
+/docs/agents export-ignore

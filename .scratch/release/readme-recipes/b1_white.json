@@ -1,0 +1,12 @@
+{"width":1600,"height":1000,"dpr":1.5,"url":"http://127.0.0.1:8790/","steps":[
+ {"click":"#tab-look","wait":3000},
+ {"click":"[data-style=knit]"}, {"range":["#sparkle-depth",0]},{"range":["#sparkle-bright",0]},
+ {"fitclick":[0.342,0.085],"wait":3500,"eval":"[document.querySelector('#strength-val').textContent, document.querySelector('#strength-auto').hidden]","shot":"D:/Video/assets/stocking-promo/shots/b1-white/04-look.png"},
+ {"shot":"D:/Video/assets/stocking-promo/shots/b1-white/11-style-fine-lines.png","selector":".detail-pane"},
+ {"click":"[data-style=loops]"}, {"range":["#sparkle-depth",0]},{"range":["#sparkle-bright",0]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-white/12-style-knit.png","selector":".detail-pane"},
+ {"click":"[data-style=coil]"}, {"range":["#sparkle-depth",0]},{"range":["#sparkle-bright",0]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-white/16-style-coil.png","selector":".detail-pane"},
+ {"click":"[data-style=lines]"}, {"range":["#sparkle-depth",100]},{"range":["#sparkle-bright",100]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-white/13-style-slanted-lines.png","selector":".detail-pane"},
+ {"click":"[data-style=grain]"}, {"range":["#sparkle-depth",100]},{"range":["#sparkle-bright",100]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-white/14-style-kase.png","selector":".detail-pane"},
+ {"click":"[data-style=oily]"}, {"range":["#sparkle-depth",0]},{"range":["#sparkle-bright",0]}, {"wait":6000,"shot":"D:/Video/assets/stocking-promo/shots/b1-white/15-style-glossy.png","selector":".detail-pane"},
+ {"click":"[data-style=knit]"}, {"range":["#sparkle-depth",0]},{"range":["#sparkle-bright",0]}, {"wait":1500}
+]}

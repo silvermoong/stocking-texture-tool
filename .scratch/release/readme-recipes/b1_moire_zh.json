@@ -1,0 +1,12 @@
+{"width":1600,"height":1000,"dpr":1.5,"url":"http://127.0.0.1:8790/","steps":[
+ {"click":"#tab-look","wait":3000},
+ {"click":"[data-style=knit]"}, {"range":["#sparkle-depth",0]},{"range":["#sparkle-bright",0]},{"range":["#sparkle-even",0]},
+ {"click":"[data-zoom='1']","wait":500},
+ {"eval":"(() => { const on = document.querySelector('#moire-on'); if (!on.checked) on.click(); return on.checked; })()","wait":3500},
+ {"range":["#moire",100]}, {"range":["#moire-area",100]}, {"wait":2500},
+ {"click":"#btn-preset-save","wait":500},
+ {"eval":"(() => { const i = document.querySelector('#preset-name'); i.value = '黑丝·摩尔纹'; i.dispatchEvent(new Event('input', { bubbles: true })); return i.value; })()"},
+ {"click":"#btn-preset-ok","wait":800},
+ {"wait":5500},
+ {"fitclick":[0.327,0.099],"wait":4000,"eval":"[document.querySelector('#moire-on').checked, document.querySelector('#moire-val').textContent, document.querySelector('#moire-area-val').textContent, document.querySelector('#preset-select').value, document.querySelector('#status-msg').textContent]","shot":"D:/Video/assets/stocking-promo/shots/b1-black/06-moire-page.png"}
+]}
