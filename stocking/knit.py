@@ -155,12 +155,14 @@ def gap_factor(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, da
     keep = (1 - sstep(f_lo, f_hi, fv)) * same
     m = tiles.sample(rip, u, phi, footprint(u), fv) * keep
     gate = sstep(dark[0], dark[1], _luma(src, 1.5)) * alpha
-    pol = (1 - 2 * sstep(pol_band[0], pol_band[1], wide))[..., None].astype(np.float32)   # +1 dark stockings, -1 light
+    s = sstep(pol_band[0], pol_band[1], wide)[..., None].astype(np.float32)            # 0 on dark stockings, 1 on light
     to_dark = np.array([1.25, 1.1, 0.6], np.float32)                 # B, G, R: the gap as a pink line
     to_light = np.array([0.75, 0.95, 1.25], np.float32)              # the gap as a warm light line
-    tint = (1 - pol) / 2 * to_dark + (1 + pol) / 2 * to_light
+    # Cross-fade the two drawings. Fading their signs through zero instead drew nothing where the stocking is
+    # mid-light: a ring of plain fabric round a bright highlight.
+    tint = (1 - s) * to_light - s * to_dark
     a = np.float32(amp) if np.ndim(amp) == 0 else np.asarray(amp, np.float32)[..., None]
-    return 1 + a * (gate * m).astype(np.float32)[..., None] * pol * tint, gate
+    return 1 + a * (gate * m).astype(np.float32)[..., None] * tint, gate
 
 
 def render_gaps(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, dark=(0.03, 0.30)):
