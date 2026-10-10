@@ -1235,6 +1235,190 @@ def test_a_wall_leaves_no_seam_in_the_floor(floor_glint):
     assert core[:, CX].min() > 0.35
 
 
+def lengthwise_wall(top=100, bottom=500, x0=176, x1=184):
+    """A wall down the middle of a leg that stops short of both ends: the crease between a thigh and the calf folded
+    behind it, drawn as far as it shows."""
+    cut = np.zeros((H, W), bool)
+    cut[top:bottom, x0:x1] = True
+    return cut
+
+
+def test_a_wall_that_stops_short_parts_the_glints(floor_glint):
+    """A dark leg with a wall down its middle that stops short of both ends is two stretches of stocking side by side, joined
+    only round the wall's ends: each has the glint down its own middle, the wall's own band none, and nothing joins the two
+    (the one limb the wall's ends leave, as measured before, had its glint down the middle of both together: on the wall)."""
+    src, R, alpha, A, V, REG = leg(flat(30))
+    core = oily.oily_maps(src, R, alpha, A, V, 0.64, cut=lengthwise_wall(), REG=REG)[1]
+    for y in (50, 150, 300, 450, 550):
+        assert core[y, 100:176].max() > 0.35 and core[y, 184:260].max() > 0.35, y
+        assert abs(core[y, 100:176].argmax() + 100 - 138) <= 3 and abs(core[y, 184:260].argmax() + 184 - 222) <= 3, y
+    assert core[100:500, 177:183].max() < 0.02
+
+
+def test_a_wall_that_stops_short_leaves_the_look_as_drawn(monkeypatch):
+    """What closing the wall's ends is for is the light, not the shape: facing, zones and tone come out as with the walls as
+    drawn, on a plain leg and where the leg's edge is another region's (its outline unseen there)."""
+    plain = leg(flat(30))
+    src, R, alpha, A, V, REG = leg(flat(30))
+    R, REG = R.copy(), REG.copy()
+    R[:300, X0:130] = REG[:300, X0:130] = 2
+    for args in (plain, (src, R, alpha, A, V, REG)):
+        got = oily.oily_maps(*args[:5], 0.64, cut=lengthwise_wall(), REG=args[5])
+        with monkeypatch.context() as mp:
+            mp.setattr(oily, '_closed_cut', lambda cut, G, scale=1.0: cut)
+            drawn = oily.oily_maps(*args[:5], 0.64, cut=lengthwise_wall(), REG=args[5])
+        for k in (0, 4, 6):
+            assert np.array_equal(got[k], drawn[k]), k
+
+
+def test_a_wall_that_stops_short_is_open_round_its_end_for_the_light(monkeypatch):
+    """The line that closes a wall is no wall: a glint close beside it lights the other side as the light falls off, with no cliff
+    along it (its band .9 on this side, .07 on the other without); but the wall itself is: nothing of that glint reaches the other
+    side of it, where the line of sight is across the wall."""
+    src, R, alpha, A, V, REG = leg(lambda yy, xx: lit(yy, xx, at=168, width=10))
+    band = oily.oily_maps(src, R, alpha, A, V, 0.64, cut=lengthwise_wall(), REG=REG)[2]
+    with monkeypatch.context() as mp:
+        mp.setattr(oily, 'LIGHT_ACROSS_LINE', False)
+        closed = oily.oily_maps(src, R, alpha, A, V, 0.64, cut=lengthwise_wall(), REG=REG)[2]
+    assert band[50, 180] > 0.8 and band[50, 184] > 0.6 and closed[50, 184] < 0.2
+    assert np.abs(band[150:450, 186:200] - closed[150:450, 186:200]).max() < 0.03
+
+
+def test_nothing_is_drawn_to_join_the_glints_of_the_two_sides_of_a_wall(floor_glint):
+    """The two stretches of a dark leg with a wall down its middle that stops short of both ends have their own glints, and
+    where the leg's top and bottom edge run between them nothing is drawn: no glint is made up to join them."""
+    src, R, alpha, A, V, REG = leg(flat(30))
+    core = oily.oily_maps(src, R, alpha, A, V, 0.64, cut=lengthwise_wall(), REG=REG)[1]
+    for y in (1, 598):
+        assert core[y, 150:211].max() < 0.45 and core[y, 160:200].min() < 0.02, y
+    assert core[100:500, 177:183].max() < 0.02
+
+
+def test_a_thin_wall_stops_the_light_as_a_thick_one_does():
+    """oily._reach: the line of sight from a pixel to the glint's nearest point is stopped by a wall one pixel thick (that is three
+    once dilated, as the production code does) as it is by a thick one, and a wall's end has a penumbra, not an edge."""
+    curve = np.stack([np.full(41, 20.0), np.arange(30, 71, dtype=float)], 1)             # a glint down x=20, y 30..70
+    px, py = np.array([65, 30]), np.array([50, 50])                                      # across the wall; on the glint's side
+    for width in (1, 12):
+        wall = np.zeros((100, 100), bool)
+        wall[:, 50:50 + width] = True
+        wall = cv2.dilate(wall.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        _, _, seen = oily._reach(curve, px, py, oily._shadow(wall, 1.0), 60.0)
+        assert seen[0] == 0 and seen[1] > 0.8, (width, seen)
+    wall = np.zeros((100, 100), bool)
+    wall[30:70, 50] = True                                                                # ends at y=70, the glint's end
+    wall = cv2.dilate(wall.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    seen = oily._reach(curve, np.full(31, 55), np.arange(60, 91), oily._shadow(wall, 1.0), 60.0)[2]
+    assert seen[0] == 0 and seen[-1] > 0.9 and (np.diff(seen) >= -1e-9).all() and ((seen > 0.05) & (seen < 0.95)).sum() >= 4
+
+
+def test_walls_that_meet_in_a_branch_close_without_trouble(floor_glint):
+    """A T of walls, the stem and both ends of the bar stopping short of the outline: three stretches, the lines that close
+    them touching two or three of them. Nothing raises, the maps stay in range, and no light goes through a wall."""
+    src, R, alpha, A, V, REG = leg(flat(30))
+    cut = np.zeros((H, W), bool)
+    cut[298:306, 120:240] = True
+    cut[100:300, 176:184] = True
+    for k, m in enumerate(oily.oily_maps(src, R, alpha, A, V, 0.64, cut=cut, REG=REG)):
+        assert np.isfinite(m).all() and m.min() >= -1 - 1e-4 and m.max() <= 1 + 1e-4, k
+    core = oily.oily_maps(src, R, alpha, A, V, 0.64, cut=cut, REG=REG)[1]
+    assert core[120:290, 178:182].max() < 0.02
+
+
+def test_a_glint_is_not_drawn_from_a_path_in_another_piece(monkeypatch, floor_glint):
+    """A path that is wholly in another piece of the region (here, forced: down the right piece of a slanting wall, ten pixels
+    off it, inside the left piece's bounding box) lights nothing of this one, however near."""
+    wall_x = lambda y: 130 + (y - 100) * 0.25
+    cut = np.abs(XX - wall_x(YY)) < 4
+    cut[:100] = cut[500:] = False
+    ys = np.linspace(150, 450, 300)
+    monkeypatch.setattr(oily, '_curve', lambda rows, ga, st, dl, su, t, Ag, xs, ys_, ab, **kw: np.stack([wall_x(ys) + 10, ys], 1))
+    src, R, alpha, A, V, REG = leg(flat(30))
+    core, band, tail = oily.oily_maps(src, R, alpha, A, V, 0.64, cut=cut, REG=REG)[1:4]
+    left = (XX < wall_x(YY) - 4) & (R > 0)
+    assert max(m[left].max() for m in (core, band, tail)) < 0.02 and core[300, int(wall_x(300)) + 10] > 0.3
+
+
+def _pieces_of(cut, scale=0.64):
+    """Number of separate pieces of the leg the wall mask leaves, after closing."""
+    G = np.zeros((H, W), bool)
+    G[:, X0:X1] = True
+    return cv2.connectedComponents((G & ~oily._closed_cut(cut, G, scale)).astype(np.uint8), connectivity=8)[0] - 1
+
+
+def test_a_walls_free_ends_are_carried_on_to_the_outline():
+    """Two stretches side by side, whichever way the wall runs; a wall across the whole leg is as it was."""
+    assert _pieces_of(lengthwise_wall()) == 2
+    aslant = np.zeros((H, W), bool)
+    for y in range(100, 500):
+        aslant[y, 150 + (y - 100) // 8: 158 + (y - 100) // 8] = True
+    assert _pieces_of(aslant) == 2
+    across = np.zeros((H, W), bool)
+    across[296:304, X0:X1] = True
+    assert _pieces_of(across) == 2
+    assert np.array_equal(oily._closed_cut(across, np.pad(np.ones((H, X1 - X0), bool), ((0, 0), (X0, W - X1)))), across)
+
+
+def test_a_wall_ends_on_another_wall_it_meets():
+    """A wall that stops short of one across the leg is carried on to it, not through: three pieces, not four."""
+    cut = np.zeros((H, W), bool)
+    cut[296:304, X0:X1] = True
+    cut[100:290, 176:184] = True
+    assert _pieces_of(cut) == 3
+
+
+def test_a_speck_or_a_wall_with_nowhere_to_end_is_left_as_it_is():
+    """A bit of a wall too short to say which way it runs (the solver does not take it for one either), a blob no longer than
+    it is thick, and a wall whose ends have no outline within reach (twice the limb's half-width), are no cut: though the
+    outline is near, a speck's end has nothing to say where the wall goes."""
+    G = np.zeros((H, W), bool)
+    G[100:140, X0:X1] = True
+    speck = np.zeros((H, W), bool)
+    speck[112:118, 176:184] = True
+    blob = np.zeros((H, W), bool)
+    blob[110:130, 170:190] = True
+    for cut in (speck, blob):
+        assert np.array_equal(oily._closed_cut(cut, G, 0.64), cut)
+    G = np.zeros((H, W), bool)
+    G[:, X0:X1] = True
+    short = np.zeros((H, W), bool)
+    short[250:290, 176:184] = True
+    assert np.array_equal(oily._closed_cut(short, G, 0.64), short) and _pieces_of(short) == 1
+
+
+def test_two_walls_ends_are_carried_on_to_the_one_that_got_there_first():
+    """A wall across the leg's left half stops short of the right edge; one down the middle stops short of both ends: the
+    first is carried on to the right outline, the other to it and to the bottom outline, no further: three pieces."""
+    cut = np.zeros((H, W), bool)
+    cut[40:48, X0:150] = True
+    cut[100:500, 176:184] = True
+    assert _pieces_of(cut) == 3
+
+
+def test_a_wall_with_a_branch_is_closed_at_every_free_end():
+    """A T of one connected wall: the bar stops short of the outline on both sides and so does the stem, off its top. All
+    three free ends are carried on to the outline: three pieces, not two."""
+    G = np.zeros((H, W), bool)
+    G[:200, 90:270] = True
+    cut = np.zeros((H, W), bool)
+    cut[98:106, 120:240] = True
+    cut[40:100, 176:184] = True
+    closed = oily._closed_cut(cut, G, 0.64)
+    assert cv2.connectedComponents((G & ~closed).astype(np.uint8), connectivity=8)[0] - 1 == 3
+
+
+def test_a_glint_path_is_broken_off_where_it_would_cross_into_another_piece():
+    """oily._outside: the parts of a path that stay out of the other pieces, in order; the path itself if it never enters one."""
+    other = np.zeros((20, 40), bool)
+    other[:, 15:25] = True
+    path = np.stack([np.arange(0, 40, 0.5), np.full(80, 10.0)], 1)
+    parts = oily._outside(path, other)
+    assert len(parts) == 2 and parts[0][:, 0].max() < 15 and parts[1][:, 0].min() >= 25
+    assert len(oily._outside(path[:20], other)) == 1 and np.array_equal(oily._outside(path[:20], other)[0], path[:20])
+    inside = np.stack([np.arange(16, 24, 0.5), np.full(16, 10.0)], 1)
+    assert oily._outside(inside, other) == []
+
+
 def cut_out(args, gap):
     """leg()'s arguments with `gap` (a bool mask) left out of the painted region too, as a selection leaves out a ribbon or
     strands of hair, and the connectors the solver fills the gap with, {1: the gap} (V and A as the scene has them: none

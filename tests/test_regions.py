@@ -130,6 +130,58 @@ def test_select_segment_by_tier_and_outlines():
         d.close()
 
 
+def test_segment_seams_between_picked_pieces_are_filled():
+    d, (a, b, _) = make_doc()
+    try:
+        left, right = rect(100, 10, 20, 40, 80), rect(100, 43, 20, 80, 80)          # a 3 px seam between them
+        seam = rect(100, 40, 20, 43, 80)
+        d.segment_click(a.id, 20, 50, False, [left] * 3, 0, True)
+        assert np.array_equal(a.mask, left)                                          # nothing to bridge to yet
+        d.segment_click(a.id, 60, 50, False, [right] * 3, 0, True)
+        assert np.array_equal(a.mask, left | seam | right)
+        d.undo()                                                                     # one step: the seam goes with the piece
+        assert np.array_equal(a.mask, left)
+        d.segment_click(a.id, 60, 50, False, [right] * 3, 0)                         # seams off: left as the pieces are
+        assert np.array_equal(a.mask, left | right)
+    finally:
+        d.close()
+
+
+def test_segment_seams_only_fill_thin_gaps_and_never_take_another_regions_pixels():
+    d, (a, b, _) = make_doc()
+    try:
+        left = rect(100, 10, 20, 40, 80)
+        d.segment_click(a.id, 20, 50, False, [left] * 3, 0)
+        d.segment_click(a.id, 80, 50, False, [rect(100, 52, 20, 90, 80)] * 3, 0, True)     # 12 px apart: not a seam
+        assert not a.mask[50, 40:52].any()
+        d.undo()
+        d.segment_click(b.id, 41, 50, False, [rect(100, 41, 40, 42, 60)] * 3, 0)     # b already holds part of the seam
+        assert b.mask[50, 41]
+        d.segment_click(a.id, 60, 50, False, [rect(100, 43, 20, 80, 80)] * 3, 0, True)
+        assert b.mask[50, 41] and not a.mask[50, 41]
+        assert a.mask[50, 40] and a.mask[50, 42] and a.mask[30, 41]
+    finally:
+        d.close()
+
+
+def test_seams_switch_applies_to_the_click_showing_and_stays_one_undo_step():
+    d, (a, _, _) = make_doc()
+    try:
+        left, right = rect(100, 10, 20, 40, 80), rect(100, 43, 20, 80, 80)
+        d.segment_click(a.id, 20, 50, False, [left] * 3, 0)
+        d.segment_click(a.id, 60, 50, False, [right] * 3, 0)
+        assert np.array_equal(a.mask, left | right)
+        assert d.select_segment(0, seams=True) == 0
+        assert a.mask[50, 41]
+        assert d.cycle_segment(1) == 1 and a.mask[50, 41]                            # the choice stays through Tab
+        assert d.select_segment(1, seams=False) == 1 and not a.mask[50, 41]
+        d.select_segment(1, seams=True)
+        d.undo()
+        assert np.array_equal(a.mask, left)
+    finally:
+        d.close()
+
+
 def two_lobes(size=120):
     """Two touching discs with a dark crease drawn between them in the art."""
     m = np.zeros((size, size), np.uint8)
@@ -301,3 +353,87 @@ def test_cut_snaps_a_shaky_line_onto_the_crease():
     a2, _, _ = split.cut_mask(m, pts, np.full((n, n, 3), 150, np.uint8), 14)
     cols2 = [np.flatnonzero(a2[y])[-1] for y in range(60, 140, 10)]
     assert all(abs(c - 96) <= 4 for c in cols2), cols2
+
+
+def test_divider_snaps_a_shaky_line_onto_the_outline():
+    """A 隔开 line drawn a few px beside an outline lies on it when snapping is on, and stays as drawn when off."""
+    n = 200
+    art = np.full((n, n, 3), 150, np.uint8)
+    cv2.line(art, (103, 0), (103, n), (25, 25, 25), 2)
+    rng = np.random.default_rng(0)
+    ys = np.arange(40, 160, 2.0)
+    pts = np.stack([96 + rng.normal(0, 2.5, len(ys)), ys], 1)
+    d = Document(art, 'synthetic.png')
+    try:
+        d.add_divider(pts)
+        d.add_divider(pts, 14)
+        drawn, snapped = d.dividers
+        assert np.allclose(drawn.pts, pts)
+        assert np.abs(snapped.pts[12:-12, 0] - 102.5).max() <= 3, snapped.pts[12:-12, 0]
+        assert abs(snapped.pts[0, 1] - 40) <= 4 and abs(snapped.pts[-1, 1] - 158) <= 4      # about as long as drawn
+        assert [x['id'] for x in d.state()['dividers']] == [drawn.id, snapped.id]
+        d.undo()
+        assert d.dividers == [drawn]
+        with pytest.raises(ValueError):
+            d.add_divider([(10, 10)], 14)
+    finally:
+        d.close()
+
+
+def _snapped_cols(art, x_drawn, radius, mask=None, seed=0):
+    """Columns (every 10th row) of a stroke drawn shakily down column x_drawn, after snap_line."""
+    from stocking import split
+    rng = np.random.default_rng(seed)
+    ys = np.arange(40, 160, 2.0)
+    P = np.stack([x_drawn + rng.normal(0, 2.0, len(ys)), ys], 1)
+    S, _ = split.snap_line(P, art, mask, radius)
+    keep = (S[:, 1] >= 60) & (S[:, 1] <= 140)
+    return S[keep, 0]
+
+
+def test_snap_reaches_a_line_as_far_as_its_radius():
+    n = 200
+    art = np.full((n, n, 3), 150, np.uint8)
+    cv2.line(art, (120, 0), (120, n), (25, 25, 25), 2)
+    near = _snapped_cols(art, 96, 30)                                # drawn 24 px off, reach 30
+    assert np.abs(near - 120.5).max() <= 2, near
+    far = _snapped_cols(art, 96, 10)                                 # out of reach: stays as drawn
+    assert np.abs(far - 96).max() <= 4, far
+
+
+def test_snap_follows_a_faint_line_and_a_tone_step_with_no_outline():
+    n = 200
+    faint = np.full((n, n, 3), 190, np.uint8)
+    cv2.line(faint, (110, 0), (110, n), (172, 172, 172), 2)          # a line 18 grey levels darker
+    assert np.abs(_snapped_cols(faint, 98, 24) - 110.5).max() <= 2
+    step = np.full((n, n, 3), 190, np.uint8)
+    step[:, 110:] = 130                                              # the stocking in front is darker: no outline
+    cols = _snapped_cols(step, 98, 24)
+    assert np.abs(cols - 109.5).max() <= 2, cols
+
+
+def test_snap_takes_a_tone_step_not_the_dark_side_of_it():
+    """Beside a step the pixels on the dark side are not a dark line: the line lands on the step itself."""
+    n = 200
+    art = np.full((n, n, 3), 190, np.uint8)
+    art[:, 110:] = 100
+    cols = _snapped_cols(art, 104, 20)
+    assert np.abs(cols - 109.5).max() <= 1.2, cols
+
+
+def test_cut_snap_stays_inside_the_region_it_cuts():
+    """Only the gaps between a region's pieces draw a cut line, not the empty space round it: a cut drawn down a
+    narrow region stays where it was drawn instead of running off to the region's edge."""
+    from stocking import split
+    n = 200
+    art = np.full((n, n, 3), 150, np.uint8)
+    m = rect(n, 100, 20, 160, 180)
+    ys = np.arange(40, 160, 2.0)
+    P = np.stack([130 + np.random.default_rng(0).normal(0, 2.0, len(ys)), ys], 1)
+    a, b, axis = split.cut_mask(m, P, art, 40)
+    assert axis == 'x' and a.any() and b.any()
+    assert 120 <= np.flatnonzero(a[100]).max() <= 140, np.flatnonzero(a[100]).max()
+    # a gap between two pieces does draw it: the line comes to lie in the gap (anywhere in it cuts the same)
+    pieces = rect(n, 100, 20, 124, 180) | rect(n, 132, 20, 160, 180)
+    cols = _snapped_cols(art, 112, 30, pieces)
+    assert cols.min() >= 123.5 and cols.max() <= 132.5, cols

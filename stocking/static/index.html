@@ -233,11 +233,18 @@
     <label class="check" title="手画的线会抖，打开后切线会自动贴到附近的线稿上（比如乳沟的折线）"><input type="checkbox" id="cut-snap" checked>自动贴线</label>
     <button id="btn-auto-cut" class="btn" title="把左右一对（两胸、两条腿）沿中线分开；不是左右一对的，自己画线切开">自动分割</button>
   </div>
-  <div id="tiers" class="tiers edit-only" role="radiogroup" aria-label="点选范围" hidden>
+  <div id="wallbar" class="cutbar wallbar edit-only" hidden>
+    <span id="wallbar-text">隔开：沿两块丝袜的交界画一条线，松开鼠标就画好了</span>
+    <label class="check" title="手画的线会抖，打开后隔开线会自动贴到附近的线稿上（比如一块丝袜压着另一块的轮廓）"><input type="checkbox" id="wall-snap" checked>自动贴线</label>
+  </div>
+  <div id="tiers" class="tiers edit-only" hidden>
     <span id="tiers-label" class="tiers-label">范围</span>
-    <button class="tier" data-k="0" role="radio">小</button>
-    <button class="tier" data-k="1" role="radio">中</button>
-    <button class="tier" data-k="2" role="radio">大</button>
+    <div class="tier-group" role="radiogroup" aria-label="点选范围">
+      <button class="tier" data-k="0" role="radio">小</button>
+      <button class="tier" data-k="1" role="radio">中</button>
+      <button class="tier" data-k="2" role="radio">大</button>
+    </div>
+    <label id="seams" class="check seams" title="拼几次点选时，各块中间被线稿隔开、没点到的细缝自动补上；只补细缝，不会多选大块"><input type="checkbox" id="fill-seams" checked>补接缝</label>
   </div>
   <div id="empty" class="empty">
     <div class="drop-frame">

@@ -23,13 +23,30 @@ HOLD = 0.08         # second pass: a strong pull toward the straight line fitted
 LINE_COST = 0.3     # cost of cutting along a crease or a gap, relative to 1 for cutting through plain fabric
 STEP_COST = 0.75    # extra cost per px the cut moves sideways per row
 
+# snap_line (自动贴线, for the split line and the 隔开 line) pulls much harder than the automatic split does:
+SNAP_LINE_COST = 0.1    # cost along a line or a gap: lines are close to free
+SNAP_PULL = 0.3         # cost per row of lying at the edge of the search ribbon, the pull back to the drawn stroke;
+                        # a line saves up to 0.9 a row, so a strong line reaches the whole ribbon, a faint one less far
+SNAP_STEP = 0.15        # extra cost per px the snapped line moves sideways per row
+SNAP_DARK = 0.05        # how much darker than both its sides a pixel is to count fully as a dark line (grey 0..1)
+SNAP_SIDE = 3           # px either side of a pixel where a dark line's lighter surroundings are looked for
+SNAP_EDGE = 0.05        # strength of a step between two tones (σ · gradient, a step of h gives 0.4 h) that counts well:
+                        # a third of that counts for 0.4 of a line, three times that for 0.95
+SNAP_EDGE_WEIGHT = 0.7  # a tone step pulls less than a dark line, so a line with an edge each side is followed along
+                        # its middle
+SNAP_RIDGE = 7          # px: only the crest of a tone step counts, the pixels beside it whose gradient is weaker than
+                        # the strongest within this window count less, so the line lands on the step, not near it
+SNAP_GAP = 15           # px: the gaps between the pieces of a region that snap_line takes for a line are at most this wide
+SNAP_SMOOTH = 3.0       # px: how much the snapped line is smoothed at the end, so it does not follow the grain of the
+                        # art's edge
 
-def _seam(cost, centre, follow, step_cost=STEP_COST):
+
+def _seam(cost, centre, follow, step_cost=STEP_COST, gain=1 - LINE_COST):
     """Cheapest path down the rows of `cost` (one column per row, moving at most one column per row), paying
-    step_cost per sideways move and (1 - LINE_COST) / follow per column of distance from centre[row]."""
+    step_cost per sideways move and gain / follow per column of distance from centre[row]."""
     ns, nt = cost.shape
     cols = np.arange(nt)
-    total = cost + (1 - LINE_COST) * np.abs(cols[None, :] - np.asarray(centre, float)[:, None]) / follow
+    total = cost + gain * np.abs(cols[None, :] - np.asarray(centre, float)[:, None]) / follow
     acc = total[0].copy()
     back = np.zeros((ns, nt), np.int8)
     for i in range(1, ns):
@@ -53,6 +70,29 @@ def _line_cost(art_rgb):
     return 1 - (1 - LINE_COST) * line
 
 
+def _snap_strength(art_rgb):
+    """How much each pixel looks like something to snap a line to, 0 (plain fabric) to 1: a dark line (darker than
+    both its sides, so one side of a tone step is not a line), or less so a step between two tones (the edge of a
+    stocking lying over another, which has no outline of its own)."""
+    L = cv2.cvtColor(np.ascontiguousarray(art_rgb), cv2.COLOR_RGB2GRAY).astype(np.float32) / 255
+    d = SNAP_SIDE
+    B = cv2.copyMakeBorder(cv2.GaussianBlur(L, (0, 0), 1.0), d, d, d, d, cv2.BORDER_REPLICATE)
+    h, w = L.shape
+    c = B[d:d + h, d:d + w]
+    line = np.zeros_like(L)
+    for dy, dx in ((0, d), (d, 0), (d - 1, d - 1), (d - 1, 1 - d)):       # the four directions through a pixel
+        both = np.minimum(B[d + dy:d + dy + h, d + dx:d + dx + w], B[d - dy:d - dy + h, d - dx:d - dx + w])
+        line = np.maximum(line, both - c)
+    dark = np.clip(line / SNAP_DARK, 0, 1)
+    edge = np.zeros_like(L)
+    for sigma in (1.5, 3.0):
+        G = cv2.GaussianBlur(L, (0, 0), sigma)
+        edge = np.maximum(edge, sigma * np.hypot(cv2.Sobel(G, cv2.CV_32F, 1, 0, ksize=3),
+                                                 cv2.Sobel(G, cv2.CV_32F, 0, 1, ksize=3)) / 8)
+    ridge = edge / (cv2.dilate(edge, np.ones((SNAP_RIDGE, SNAP_RIDGE), np.uint8)) + 1e-9)     # 1 on the crest only
+    return np.maximum(dark, SNAP_EDGE_WEIGHT * (1 - np.exp(-edge / SNAP_EDGE)) * ridge ** 2)
+
+
 def _resample(P, step=1.0):
     d = np.r_[0, np.cumsum(np.hypot(*np.diff(P, axis=0).T))]
     if d[-1] < step:
@@ -73,13 +113,14 @@ def snap_line(P, art_rgb, mask, radius):
     """A hand-drawn line moved onto the line art it was drawn along.
 
     The stroke is resampled and smoothed (hand jitter goes), then the cut is the cheapest path through a ribbon
-    `radius` px either side of it: cheap along dark lines and through gaps outside the region, a mild pull back to
-    the stroke, and a cost for every sideways step, so where there is no line nearby it just follows the smoothed
+    `radius` px either side of it: nearly free along dark lines, tone edges and (with `mask`, the region being cut)
+    the gaps between its pieces, a pull back to the stroke that a strong line outweighs from the far side of the
+    ribbon, and a small cost for every sideways step, so where there is no line nearby it just follows the smoothed
     stroke. Returns the snapped polyline (N x 2) and the smoothed stroke (for the end directions).
     """
-    H, W = mask.shape
+    H, W = art_rgb.shape[:2]
     radius = int(np.clip(round(radius), 2, 80))
-    C = _smooth(_resample(np.asarray(P, np.float64)), max(3.0, radius / 3.0))
+    C = _smooth(_resample(np.asarray(P, np.float64)), float(np.clip(radius / 3.0, 3.0, 6.0)))
     if len(C) < 3:
         return C, C
     T = np.gradient(C, axis=0)
@@ -92,13 +133,28 @@ def snap_line(P, art_rgb, mask, radius):
     y0 = int(np.clip(np.floor(gy.min()) - 8, 0, H - 1)); y1 = int(np.clip(np.ceil(gy.max()) + 9, 1, H))
     if x1 - x0 < 2 or y1 - y0 < 2:
         return C, C
-    cost = _line_cost(art_rgb[y0:y1, x0:x1])
-    cost[~mask[y0:y1, x0:x1]] = LINE_COST              # gaps between pieces, and beyond the region, cost little
+    strength = _snap_strength(art_rgb[y0:y1, x0:x1])
+    if mask is not None:
+        mc = np.ascontiguousarray(mask[y0:y1, x0:x1]).astype(np.uint8)
+        k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (SNAP_GAP, SNAP_GAP))
+        strength[(cv2.morphologyEx(mc, cv2.MORPH_CLOSE, k) > 0) & (mc == 0)] = 1      # gaps between the pieces
+    cost = 1 - (1 - SNAP_LINE_COST) * strength
     mx, my = (gx - x0).astype(np.float32), (gy - y0).astype(np.float32)
-    ribbon = cv2.remap(cost, mx, my, cv2.INTER_LINEAR, borderValue=LINE_COST)
-    path = _seam(ribbon, np.full(len(C), float(radius)), follow=radius / 0.6, step_cost=0.3)
+    ribbon = cv2.remap(cost, mx, my, cv2.INTER_LINEAR, borderValue=1.0)
+    gain = 1 - SNAP_LINE_COST
+    path = _seam(ribbon, np.full(len(C), float(radius)), follow=gain * radius / SNAP_PULL, step_cost=SNAP_STEP,
+                 gain=gain)
     S = C + (path - radius)[:, None] * N
-    return _smooth(S, 1.5), C
+    return _smooth(S, SNAP_SMOOTH), C
+
+
+def snap_stroke(pts, art_rgb, radius):
+    """A hand-drawn line (N x 2 px) moved onto the line art within `radius` px of it (a 隔开 line along the outline
+    of one stocking over another); jitter is smoothed away and, unlike a cut, the ends are not carried on."""
+    P = np.asarray(pts, np.float64).reshape(-1, 2)
+    if len(P) < 2:
+        return P
+    return snap_line(P, art_rgb, None, radius)[0]
 
 
 def _direction(Q, end_len=12.0):

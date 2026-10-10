@@ -75,7 +75,7 @@ Drop a PNG, JPG or PSD on the window, or press Ctrl+O. A PSD is read as its flat
 
 Step 1, Regions, on the left. There are two to start with, Left leg and Right leg.
 
-- **Pick (S):** left-click a leg to select all of it; right-click subtracts. After a click, Small / Medium / Large appears beside it, and Tab switches between them. Fill in anything missed with another click at Small.
+- **Pick (S):** left-click a leg to select all of it; right-click subtracts. After a click, Small / Medium / Large appears beside it, and Tab switches between them. Fill in anything missed with another click at Small. When several picks make up one region, the thin gaps the line art leaves between the pieces are filled in automatically (the Fill seams switch beside the range turns that off).
 - **Brush (B) / Eraser (E):** touch up the edges by hand; `[` and `]` change the brush size.
 - **Split (K):** draw a line across a region to cut it in two. A Snap to line art switch appears above the picture: with it on, the line snaps to nearby line art. If two breasts or two legs ended up in one region, Auto split there cuts it down the middle.
 
@@ -113,7 +113,7 @@ With just the two direction lines, the thigh's courses run straight on into the 
 
 ![No divider line: one direction line each on thigh and calf, and the thigh's courses run on into the calf](docs/images/fold-step1.jpg)
 
-**Thigh and calf each go their own way:** draw a Divider (W) along the line where thigh and calf touch. The courses part there, so the thigh and the calf can have direction lines running different ways.
+**Thigh and calf each go their own way:** draw a Divider (W) along the line where thigh and calf touch (with Snap to line art on, above the picture, the line snaps to nearby line art). The courses part there, so the thigh and the calf can have direction lines running different ways.
 
 ![With a divider line: the courses of thigh and calf part at the join](docs/images/fold-step2.jpg)
 

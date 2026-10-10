@@ -89,6 +89,22 @@ stocking):
            by side): the limb runs as far as all of them, and a piece with no glint of its own goes on with that of the
            nearest of the others that have one, at its end toward the piece (_nearest; every piece is measured before
            any goes on, so a piece with nothing painted is no donor and no blocker).
+  walls    light does not cross a wall (the user's 隔开 line, or one the depth model found: a thigh over the calf folded
+           behind it). A wall that stops short of the outline (drawn as far as it shows: the crease runs out at the knee)
+           leaves the two sides one connected piece, whose cross-section is thigh + wall + calf: its middle, where the
+           glint goes, is on the wall, and the mean of a row's pixels at the glint's A lies between the strips. So the
+           light is measured on the walls closed (_closed_cut: each free end carried on straight to the outline, another
+           wall or an earlier line, within twice the limb's half-width, none for a speck): each side is a stretch of
+           stocking of its own, with its own lighting, glints and floor. The look is not: facing, zones and tone are
+           measured with the walls as drawn (the leg bent double is one limb; its edges are what they are), in a pass of
+           their own, and the glint pass reads how far the zones are believed from them; a wall is no outline in the glint
+           pass, but nothing says the limb is wider behind it either, so each side's middle is that of what is seen. A
+           glint's path is broken off where it would enter another piece (_outside). A wall that stops short is open round
+           its end, though, so the line that closes it is no wall to the light: the glint of one side lights the stocking
+           of the other beside the line as the light falls off, with no cliff along it (_reach: the lobes, as far as the
+           straight way to the glint is not across the wall itself: blurred, so that its shadow has a penumbra).
+           LIGHT_ACROSS_LINE switches that off. The glints of the two sides are not joined by anything drawn: where each
+           goes round the knee is what the courses and the painted light make it.
 
 tone (lit-side sheen, shadow-side sink) is the region's own range of smoothed brightness with a floor, so a flat
 region is neutral rather than all shadow. Every map is whole-image and crops slice them (Scene.oily_maps), so a crop
@@ -175,6 +191,11 @@ STACK = (0.75, 0.5)
 # outline, anywhere, at least this share of what the plain frame does at best: a sliver of three bands of V of which only the
 # middle one is whole has its trust smoothed away to nothing (and no floor: nothing believes its zones): measured as before
 CUT_TRUST = 0.25
+# A wall that stops short of the outline is closed for the light (_closed_cut: each side is a limb of its own), but the line that
+# closes it is no wall: the light of one side goes on across it as far as the other side's stocking is in sight of it (_reach), so
+# that no cliff opens along it. Nothing is drawn to join the glints of the two sides: where they go, the courses and the painted
+# light say.
+LIGHT_ACROSS_LINE = True
 
 
 def luminance(src_bgr):
@@ -983,6 +1004,116 @@ def _pieces(body, link, V, A):
     return lab, group, span
 
 
+def _closed_cut(cut, G, scale=1.0):
+    """cut, the bands along walls, with each wall's free ends carried on in a straight line to the outline of G (the
+    region's painted stocking), to the next wall or to a line already carried, as far as twice the region's greatest
+    half-width: a wall that stops short of the outline (the crease between a thigh and the calf folded behind it, drawn as
+    far as it shows and no further) leaves the two sides one piece, and the limb's middle that the glint follows is the
+    middle of both together, which is the wall. Closed, each side is a limb of its own. A wall's end is known only to
+    the direction of its last stretch, so a line that finds nothing in that reach is not drawn, and a bit of a wall (a
+    speck, shorter than the solver takes for a wall: walls.MIN_LEN, or not four times as long as it is thick) has no
+    direction to carry on in."""
+    from .walls import MIN_LEN, branch_ends
+    wall = cut & G
+    if not wall.any():
+        return cut
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(wall.astype(np.uint8), connectivity=8)
+    half = float(cv2.distanceTransform(np.pad(G, 1).astype(np.uint8), cv2.DIST_L2, 5).max())
+    h, w = G.shape
+    lines = np.zeros((h, w), np.uint8)
+    width = max(3, int(round(3 * scale)))
+    for k in range(1, n):
+        x, y, bw, bh = (int(v) for v in stats[k, :4])
+        span = float(np.hypot(bw, bh))
+        thick = 2 * float(cv2.distanceTransform(np.pad(lab[y:y + bh, x:x + bw] == k, 1).astype(np.uint8), cv2.DIST_L2, 5).max())
+        if span < MIN_LEN * scale or span < 4 * thick:
+            continue
+        reach = max(20.0, 2.5 * thick)
+        pad = int(reach) + 2
+        y0, y1, x0, x1 = max(y - pad, 0), min(y + bh + pad, h), max(x - pad, 0), min(x + bw + pad, w)
+        for e, d in branch_ends(lab[y0:y1, x0:x1] == k, reach=reach, min_branch=max(2.5 * thick, 20.0)):
+            e = e + [x0, y0]
+            for t in np.arange(1.0, 2.0 * half, 1.0):
+                px, py = (int(round(v)) for v in e + d * t)
+                if (not (0 <= px < w and 0 <= py < h) or not G[py, px] or lines[py, px]
+                        or (wall[py, px] and lab[py, px] != k)):
+                    if t > 1.0:
+                        cv2.line(lines, tuple(int(round(v)) for v in e), tuple(int(round(v)) for v in e + d * (t - 1.0)),
+                                 1, width)
+                    break
+    return cut | (lines > 0)
+
+
+def _outside(curve, other):
+    """The parts of curve (N, 2) xy, a glint's path on screen, that stay out of other (a bool mask: the pieces of the
+    region that are not the glint's own): a list of arrays, in order. A glint is a path along one piece of stocking; where
+    the smoothing, or the mean of a row's pixels, would carry it into another (across a wall) it is broken off there, not
+    drawn across. The path is sampled finer than a wall is thick (_curve: a quarter pixel), so no step jumps one."""
+    h, w = other.shape
+    inside = other[np.clip(np.round(curve[:, 1]).astype(np.int64), 0, h - 1), np.clip(np.round(curve[:, 0]).astype(np.int64), 0, w - 1)]
+    if not inside.any():
+        return [curve]
+    at = np.flatnonzero(~inside)
+    return [curve[s] for s in np.split(at, np.flatnonzero(np.diff(at) > 1) + 1)] if at.size else []
+
+
+def _shadow(walls, scale):
+    """The walls (bool mask) as a shadow, float 0..1: their blur, strong enough that a thin wall stops the light as well as a
+    thick one (a wall one pixel thick blurs to a peak of .05 at 8 px: ten times that is a wall), and still a penumbra, no
+    edge, round it."""
+    return np.clip(10.0 * cv2.GaussianBlur(walls.astype(np.float32), (0, 0), 8 * scale), 0.0, 1.0)
+
+
+def _reach(curve, px, py, shade, within):
+    """How a glint along curve (N, 2) xy reaches the pixels (px, py): (distance to it, index of its nearest point, how much
+    of its light gets there, 0..1). Light goes round the end of a wall, not through it: the straight line to the nearest point
+    is followed over shade (_shadow). Pixels farther than within px get none, and are not followed."""
+    h, w = shade.shape
+    flat = shade.ravel()
+    n = len(px)
+    d, near, seen = np.full(n, np.inf), np.zeros(n, np.int64), np.zeros(n, np.float64)
+    pts = np.stack([px, py], 1).astype(np.float32)
+    if len(curve) < 2:
+        d = np.hypot(*(pts - curve[0]).T).astype(np.float64)
+        pick = np.flatnonzero(d <= within)
+    else:
+        # a distance transform of the path tells which pixels are within reach at all (to a pixel or so), cheaply
+        x0, y0 = int(min(px.min(), curve[:, 0].min())), int(min(py.min(), curve[:, 1].min()))
+        x1, y1 = int(max(px.max(), curve[:, 0].max())) + 1, int(max(py.max(), curve[:, 1].max())) + 1
+        canvas = np.full((y1 - y0 + 1, x1 - x0 + 1), 255, np.uint8)
+        cv2.polylines(canvas, [np.round(curve - [x0, y0]).astype(np.int32).reshape(-1, 1, 2)], False, 0, 1)
+        pick = np.flatnonzero(cv2.distanceTransform(canvas, cv2.DIST_L2, 3)[py - y0, px - x0] <= within + 2.0)
+        if pick.size:
+            # the path is sampled finer than a pixel and nearly straight: a tree of every fourth point finds the nearest
+            # within a pixel, and a good deal faster
+            every = np.unique(np.r_[0:len(curve):4, len(curve) - 1])
+            d[pick], nearest = cKDTree(curve[every]).query(pts[pick])
+            near[pick] = every[nearest]
+    # the shadow is a few pixels wider than a wall each side (_shadow): two dozen steps along the way do not step over one, and
+    # the light is as smooth as the shadow, so one look along the way does for a cell of 4 x 4 pixels
+    f = (np.arange(1, 25, dtype=np.float32) / 25.0)[None, :]
+    curve32 = np.asarray(curve, np.float32)
+    close = pick[d[pick] <= within]
+    if close.size:
+        key = (py[close] // 4) * (w // 4 + 2) + px[close] // 4
+        _, first, cell = np.unique(key, return_index=True, return_inverse=True)
+        rep, looked = close[first], np.zeros(len(first), np.float64)
+        for s in range(0, len(rep), 20000):
+            i = rep[s:s + 20000]
+            p, q = pts[i], curve32[near[i]]
+            xi = np.clip(np.round(p[:, :1] + f * (q[:, :1] - p[:, :1])).astype(np.int64), 0, w - 1)
+            yi = np.clip(np.round(p[:, 1:] + f * (q[:, 1:] - p[:, 1:])).astype(np.int64), 0, h - 1)
+            looked[s:s + 20000] = np.clip(1.0 - flat[yi * w + xi].max(1), 0.0, 1.0)
+        seen[close] = looked[cell]
+    return d, near, seen
+
+
+def _lobes(d, g, cw, bw, tw):
+    """core, band, tail and centre of a glint of strength g with the widths cw, bw, tw (px) at distance d from its path."""
+    return (np.exp(-0.5 * (d / cw) ** 2) * g, np.exp(-0.5 * (d / bw) ** 2) * g, np.exp(-d / tw) * g,
+            np.exp(-0.5 * (d / (1.3 * cw)) ** 2) * (g > 0.05))
+
+
 def _joins(lab, group, gap):
     """The part of gap, what the solver filled in beside a region, that lies between the pieces of one limb (group and lab:
     _pieces): what cuts the limb across, a ribbon, a hand, a band of hair, as a mask. A notch in the outline of one piece,
@@ -1030,17 +1161,31 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
     ring = np.ones((3, 3), np.uint8)
     rim = max(2, int(round(2 * scale)))                   # px of mixed pixels at the edge of the visible stocking
     disc = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * rim + 1, 2 * rim + 1))
+    # a region a wall's end stops short in is measured twice: as drawn, for the look of the limb (facing, zones: the leg bent
+    # double is one limb, its edges are what they are), and with the walls closed (_closed_cut), for the light: each side of
+    # a wall is a stretch of stocking of its own, with its own glint, and no glint crosses a wall
+    passes = []
     for i in np.unique(R[R > 0]):
+        closed = None if cut is None else _closed_cut(cut, (geo == i) | (R == i), scale)
+        if closed is not None and (closed & ~cut).any():
+            passes += [(i, 'look'), (i, 'glint')]
+        else:
+            passes.append((i, 'both'))
+    for i, role in passes:
         seen = R == i
         G = (geo == i) | seen
-        # where this region's edge meets other stocking (another region, a wall): the limb goes on behind it
-        beside = ((geo > 0) & (geo != i) & ~seen) if cut is None else (((geo > 0) & (geo != i) & ~seen) | cut)
+        wall = _closed_cut(cut, G, scale) if role == 'glint' else cut
+        # where this region's edge meets other stocking (another region, a wall): the limb goes on behind it. The glint of
+        # each side of a wall is measured as seen: a wall is no outline, but nothing says the limb is wider behind it
+        beside = (geo > 0) & (geo != i) & ~seen
+        if cut is not None and role != 'glint':
+            beside |= cut
         hidden = on_frame | (cv2.dilate(beside.astype(np.uint8), ring) > 0)
         Ls = _masked_blur(Y, seen, 3 * scale)
         lo, hi = (float(v) for v in np.percentile(Ls[seen], [3, 99]))
         tone[G] = np.clip((Ls[G] - (lo + hi) / 2) / max((hi - lo) / 2, TONE_FLOOR), -1, 1)
         dark = float(1 - knit.sstep(DARK[0], DARK[1], float(np.median(Y[seen]))))
-        body = G if cut is None else G & ~cut
+        body = G if wall is None else G & ~wall
         gap = None if fill is None else fill.get(int(i))
         lab, group, span = _pieces(body, gap, V, A)
         # the pieces of a limb something cuts across (a ribbon, a hand, hair) have the edge they have there for no outline:
@@ -1062,12 +1207,20 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
             k, c, h, hf, hmed, tilt, whole, trust = frame
             hk = h[k]
             u = np.clip((Ag - c[k]) / hf[k], -1, 1)
-            facing[m] = np.sqrt(1 - u * u) * np.cos(tilt[k])
+            if role != 'glint':
+                facing[m] = np.sqrt(1 - u * u) * np.cos(tilt[k])
             vis = seen[m]
             if vis.sum() < MIN_PIECE:
                 continue
             believed = dark * trust * knit.sstep(HALF_ZONE[0], HALF_ZONE[1], hmed)       # per band of V
-            zone[m] = believed[k]
+            if role == 'glint':
+                # how far the zones are believed is the look's (above), not this piece's own outline: the mean of what they
+                # are over each band of it
+                believed = np.bincount(k, zone[m], len(c)) / np.maximum(np.bincount(k, minlength=len(c)), 1)
+            else:
+                zone[m] = believed[k]
+            if role == 'look':
+                continue
             pure = (cv2.erode(seen.astype(np.uint8), disc, borderType=cv2.BORDER_REPLICATE) > 0)[m]
             if pure.sum() >= MIN_PIECE:
                 vis = pure
@@ -1088,8 +1241,16 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
                                         vlo=float(Vg.min()), vhi=float(Vg.max()), vmean=float(Vg.mean()), size=int(m.sum())))
         # every piece measured: where each limb's pieces have a painted glint at their ends, for the ones that have none
         ends = {jb.j: _ends(jb.tracks, jb.kq, jb.c, jb.h, jb.a0, jb.ab) for jb in jobs if group[jb.j] and jb.middle is not None}
+        spills, line, dline, block, shade = [], None, None, None, None
+        if role == 'glint' and LIGHT_ACROSS_LINE:
+            line = wall & ~cut & G                                  # what closes the walls: no wall, light goes across it
+            if line.any():
+                dline = cv2.distanceTransform((~line).astype(np.uint8), cv2.DIST_L2, 3)
+                block = cv2.dilate(cut.astype(np.uint8), ring) > 0
+                shade = _shadow(block, scale)
         for jb in jobs:
             m = lab == jb.j
+            other = (lab > 0) & ~m
             Vg, Ag, k, c, h, hk, hmed, believed = jb.Vg, jb.Ag, jb.k, jb.c, jb.h, jb.hk, jb.hmed, jb.believed
             fit, v0, wlen, a0, ab, middle, kq, tracks = jb.fit, jb.v0, jb.wlen, jb.a0, jb.ab, jb.middle, jb.kq, jb.tracks
             drawn = tracks
@@ -1110,6 +1271,14 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
             exact = 3 * band_half * 2.0 * scale                 # px: within this, the lobe's shape needs exact distance
             wmed = float(np.median(np.concatenate([tr[3] for tr in tracks]))) if tracks else 1.0
             acc = [np.zeros(m.sum(), np.float32) for _ in range(4)]
+            at_line = None
+            if dline is not None:
+                # the pieces' pixels near a line that closes a wall: the glint's light goes across it, where the wall is not between
+                sy, sx = np.nonzero(other & (dline <= 3 * BAND_REL * 1.6 * float(np.median(hk)) + 2 * band_half * scale))
+                if sx.size:
+                    # each with the limb's half-width where it lies (as the piece's own pixels have: hk = h[k])
+                    k_s = np.clip(np.floor((V[sy, sx] - Vg.min()) / _band(scale)).astype(np.int64), 0, len(h) - 1)
+                    at_line = (sx, sy, (V[sy, sx] - v0) / wlen - 0.5, h[k_s])
             for tr in drawn:
                 rows, tu, st, wd, su, dl = tr[:6]
                 # a track may count its rows in other steps than the fit's (the floor of a piece of one row: _floor_glint)
@@ -1119,6 +1288,11 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
                                free=tr[6] if len(tr) > 6 else None)
                 if curve is None or not at.any():
                     continue
+                # a path along this piece of stocking is not drawn into another: broken off where it would cross a wall
+                runs = _outside(curve, other)
+                if not runs:
+                    continue
+                curve = np.vstack(runs)
                 ti = tt[at]
                 g_s = np.interp(ti, rows, st)
                 flat = np.clip(np.interp(ti, rows, wd) / max(wmed, 1e-6), 0.7, 2.5)
@@ -1134,7 +1308,8 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
                     d = np.hypot(xs[at] - curve[0, 0], ys[at] - curve[0, 1]).astype(np.float64)
                 else:
                     canvas = np.full(box, 255, np.uint8)
-                    cv2.polylines(canvas, [np.round((curve - [bx0, by0]) * 16).astype(np.int32).reshape(-1, 1, 2)],
+                    cv2.polylines(canvas, [np.round(((q if len(q) > 1 else np.vstack([q, q])) - [bx0, by0]) * 16)
+                                           .astype(np.int32).reshape(-1, 1, 2) for q in runs],
                                   False, 0, 1, cv2.LINE_8, 4)
                     d = cv2.distanceTransform(canvas, cv2.DIST_L2, cv2.DIST_MASK_PRECISE)[ys[at] - by0, xs[at] - bx0]
                     d = d.astype(np.float64)
@@ -1146,12 +1321,30 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
                                         np.exp(-d / tw) * g_s,
                                         np.exp(-0.5 * (d / (1.3 * cw)) ** 2) * (g_s > 0.05))):
                     a[at] = np.maximum(a[at], val)
+                if dline is not None and at_line is not None:
+                    sx, sy, t_s, hk_all = at_line
+                    tt_s = t_s if len(tr) < 8 else (t_s - tr[7][0]) * tr[7][1] - 0.5
+                    on = (tt_s >= rows[0]) & (tt_s <= rows[-1])
+                    if on.any():
+                        sx, sy, tt_s, hk_s = sx[on], sy[on], tt_s[on], hk_all[on]
+                        rel_s = np.clip(0.5 + 0.5 * np.clip(np.interp(tt_s, rows, wd) / max(wmed, 1e-6), 0.7, 2.5), 0.8, 1.6)
+                        d_s, _, seen = _reach(curve, sx, sy, shade, 3 * BAND_REL * 1.6 * float(hk_s.max()) + 2 * band_half * scale)
+                        vals = _lobes(d_s, np.interp(tt_s, rows, st), np.maximum(CORE_REL * hk_s * rel_s, core_half * scale),
+                                      np.maximum(BAND_REL * hk_s * rel_s, band_half * scale),
+                                      np.maximum(TAIL_REL * hk_s * rel_s, tail_len * scale))
+                        spills.append((sy, sx, [v * seen for v in vals]))
             core[m], band[m], tail[m], centre[m] = acc
-        if cut is not None and (G & cut).any() and body.any():
-            # the wall's own band takes its maps from the nearest stocking beside it, so no seam opens along it
-            gap = G & cut
+        if dline is not None:
+            for sy, sx, vals in spills:
+                for mp, v in zip((core, band, tail, centre), vals):
+                    mp[sy, sx] = np.maximum(mp[sy, sx], v)
+        if wall is not None and (G & wall).any() and body.any():
+            # the wall's own band takes its maps from the nearest stocking beside it, so no seam opens along it (the look's
+            # maps, then the glint's: a wall closed for the light is no wall to the look)
+            gap = G & wall
             iy, ix = ndi.distance_transform_edt(~body, return_distances=False, return_indices=True)
-            for mp in (core, band, tail, centre, facing, zone):
+            for mp in {'both': (core, band, tail, centre, facing, zone), 'look': (facing, zone),
+                       'glint': (core, band, tail, centre)}[role]:
                 mp[gap] = mp[iy[gap], ix[gap]]
     return tone, core, band, tail, facing, centre, zone
 

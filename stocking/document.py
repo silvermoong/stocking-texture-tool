@@ -29,6 +29,7 @@ PALETTE = ('#65a7fa', '#f2823b', '#b77ff2', '#47c496', '#f3c443',
            '#f075aa', '#54c9e3', '#97ca5d', '#ec5b57', '#c19d74')
 STROKE_WIDTH = 5
 ERASE_TOL = 12.0            # px (at 1280x1920): a deleted found wall is any found wall passing this near the spot
+SEAM_PX = 4.0               # px (at 1280x1920): a gap between two picked pieces up to about twice this wide is a seam
 MARGIN = 8
 REF_AREA = 1280 * 1920
 UNDO_LIMIT = 200
@@ -625,25 +626,60 @@ class Document:
 
     # ---------------------------------------------------------------- click to segment
 
-    def _segment_op(self, r, cand, subtract):
+    def _segment_op(self, r, cand, subtract, seams=False):
         box, seg = cand
         if box is None:
             return None
-        x0, y0, x1, y1 = box
         if subtract:
+            x0, y0, x1, y1 = box
             return self._set_masks([(r, box, r.mask[y0:y1, x0:x1] & ~seg)])
+        if seams:
+            box, seg = self._with_seams(r, box, seg)
         return self._set_masks(self._claim(r, box, seg))
 
-    def segment_click(self, rid, x, y, subtract, masks, best):
+    def _with_seams(self, r, box, seg):
+        """(box, seg) with the seams between seg and what region r already holds filled in. A seam is a gap
+        narrower than about 2 * SEAM_PX that closing the two shapes would fill and that has the new piece on one
+        side and the old on the other: SAM stops at line art, so two pieces picked one after the other leave the
+        line between them unpicked. Pixels of other regions are never taken."""
+        reach = max(2, int(round(SEAM_PX * self.scale)))
+        x0, y0, x1, y1 = box
+        wx0, wy0 = max(x0 - 2 * reach, 0), max(y0 - 2 * reach, 0)
+        wx1, wy1 = min(x1 + 2 * reach, self.w), min(y1 + 2 * reach, self.h)
+        new = np.zeros((wy1 - wy0, wx1 - wx0), bool)
+        new[y0 - wy0:y1 - wy0, x0 - wx0:x1 - wx0] = seg
+        old = r.mask[wy0:wy1, wx0:wx1] & ~new
+        if not old.any():
+            return box, seg
+        both = new | old
+        kernel = np.ones((2 * reach + 1, 2 * reach + 1), np.uint8)             # square: a seam's ends close right out to the rim
+        gap = (cv2.morphologyEx(both.astype(np.uint8), cv2.MORPH_CLOSE, kernel) > 0) & ~both
+        for o in self.regions:
+            if o is not r:
+                gap &= ~o.mask[wy0:wy1, wx0:wx1]
+        n, lab = cv2.connectedComponents(gap.astype(np.uint8), connectivity=8)
+        if n < 2:
+            return box, seg
+        ring = np.ones((3, 3), np.uint8)
+        next_to_new = np.unique(lab[gap & (cv2.dilate(new.astype(np.uint8), ring) > 0)])
+        next_to_old = np.unique(lab[gap & (cv2.dilate(old.astype(np.uint8), ring) > 0)])
+        seam = np.isin(lab, np.intersect1d(next_to_new, next_to_old))
+        if not seam.any():
+            return box, seg
+        return (wx0, wy0, wx1, wy1), (new | seam)
+
+    def segment_click(self, rid, x, y, subtract, masks, best, seams=False):
         """Add (or subtract) the segment SAM proposes at (x, y) to region rid. `masks` are SAM's candidates for the
-        click, smallest first; `best` is the one applied. cycle_segment() swaps in another candidate afterwards."""
+        click, smallest first; `best` is the one applied. seams: when adding, also fill the thin gaps between the
+        segment and what the region already holds (_with_seams). cycle_segment() swaps in another candidate
+        afterwards."""
         with self.lock:
             r = self.region(rid)
             cands = [clean_segment(m) for m in masks]
-            op = self._segment_op(r, cands[best], subtract)
+            op = self._segment_op(r, cands[best], subtract, seams)
             self._seg_last = {'rid': rid, 'subtract': subtract, 'cands': cands, 'k': best, 'op': op,
-                              'epoch': self._epoch, 'pt': (float(x), float(y)), 'click': next(self._ids),
-                              'outlines': None}
+                              'seams': seams, 'epoch': self._epoch, 'pt': (float(x), float(y)),
+                              'click': next(self._ids), 'outlines': None}
             return op is not None
 
     def cycle_segment(self, step=1):
@@ -654,21 +690,23 @@ class Document:
                 raise ValueError(tr('只能在点选之后马上切换范围'))
             return self.select_segment((L['k'] + step) % len(L['cands']))
 
-    def select_segment(self, k):
-        """Replace the last click's segment with SAM's candidate k (0 = smallest). Only straight after the click."""
+    def select_segment(self, k, seams=None):
+        """Replace the last click's segment with SAM's candidate k (0 = smallest), and with or without the seams
+        filled (None = as the click had it). Only straight after the click."""
         with self.lock:
             L = self._seg_last
             if not L or L['epoch'] != self._epoch or not 0 <= k < len(L['cands']):
                 raise ValueError(tr('只能在点选之后马上切换范围'))
-            if k == L['k']:
+            seams = L['seams'] if seams is None else bool(seams)
+            if k == L['k'] and seams == L['seams']:
                 return k
             if L['op'] is not None:
                 if not self._undo or self._undo[-1] is not L['op']:
                     raise ValueError(tr('只能在点选之后马上切换范围'))
                 self._undo.pop()
                 self._apply(L['op'], False)
-            op = self._segment_op(self.region(L['rid']), L['cands'][k], L['subtract'])
-            L.update(k=k, op=op, epoch=self._epoch)
+            op = self._segment_op(self.region(L['rid']), L['cands'][k], L['subtract'], seams)
+            L.update(k=k, seams=seams, op=op, epoch=self._epoch)
             return k
 
     def segment_outlines(self):
@@ -750,12 +788,15 @@ class Document:
 
     # ---------------------------------------------------------------- walls (隔开)
 
-    def add_divider(self, pts):
-        """A 隔开 line: the courses do not continue across it, in whatever region it crosses."""
+    def add_divider(self, pts, snap_radius=0):
+        """A 隔开 line: the courses do not continue across it, in whatever region it crosses. snap_radius > 0 first
+        moves the line onto the line art within that many px."""
         with self.lock:
             d = Divider(next(self._ids), pts)
             if len(d.pts) < 2:
                 raise ValueError(tr('隔开线至少要两个点'))
+            if snap_radius > 0:
+                d.pts = split.snap_stroke(d.pts, self.art, snap_radius)
             self.dividers.append(d)
             self._push(('divider+', d, len(self.dividers) - 1))
             self._touch()

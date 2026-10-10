@@ -364,6 +364,7 @@ def delete_stroke(doc_id: str, sid: int):
 
 class DividerIn(BaseModel):
     pts: list[float]
+    snap: float = 0                     # snap the line onto the line art within this many image px; 0 = as drawn
 
 
 class PointIn(BaseModel):
@@ -375,7 +376,7 @@ class PointIn(BaseModel):
 @app.post('/api/doc/{doc_id}/dividers')
 def add_divider(doc_id: str, body: DividerIn):
     d = doc_for(doc_id)
-    did = d.add_divider(body.pts)
+    did = d.add_divider(body.pts, body.snap)
     return dict(state_of(d), created=did)
 
 
@@ -406,6 +407,7 @@ class ClickIn(BaseModel):
     x: float
     y: float
     subtract: bool = False
+    seams: bool = False                 # when adding, fill the thin gaps between the piece and the region's others
 
 
 class CycleIn(BaseModel):
@@ -424,7 +426,7 @@ def segment(doc_id: str, rid: int, body: ClickIn):
         raise ValueError(str(e)) from e
     # the smallest of SAM's three sizes by default: the larger ones tend to take in hair, the other leg or a shoe
     # lying against the part; the user steps up with the 小/中/大 chooser or Tab
-    d.segment_click(rid, body.x, body.y, body.subtract, masks, 0)
+    d.segment_click(rid, body.x, body.y, body.subtract, masks, 0, body.seams)
     return state_of(d)
 
 
@@ -437,12 +439,13 @@ def segment_cycle(doc_id: str, body: CycleIn):
 
 class SelectIn(BaseModel):
     k: int
+    seams: bool | None = None           # fill the seams or not; none = as the click had it
 
 
 @app.post('/api/doc/{doc_id}/segment/select')
 def segment_select(doc_id: str, body: SelectIn):
     d = doc_for(doc_id)
-    d.select_segment(body.k)
+    d.select_segment(body.k, body.seams)
     return state_of(d)
 
 

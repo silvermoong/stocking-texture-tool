@@ -326,6 +326,7 @@ function placeTiers() {
     tiersKey = key;
     tiersSize = null;
     $('#tiers-label').textContent = c.subtract ? t('减去范围') : t('加入范围');
+    $('#seams').hidden = c.subtract;
     for (const b of el.querySelectorAll('.tier')) {
       const k = +b.dataset.k;
       b.hidden = k >= c.n;
@@ -940,6 +941,7 @@ function setTool(t) {
 }
 
 function renderCutbar() {
+  $('#wallbar').hidden = !(S.doc && S.tool === 'wall');
   const bar = $('#cutbar');
   bar.hidden = !(S.doc && S.tool === 'cut');
   if (bar.hidden) return;
@@ -961,7 +963,12 @@ function leaveCut() {
   setTool(S.toolBeforeCut && S.toolBeforeCut !== 'cut' ? S.toolBeforeCut : 'segment');
 }
 
-const SNAP_VIEW_PX = 14;     // how far (screen px) a cut line may move to reach the line art
+const SNAP_VIEW_PX = 24;     // how far (screen px) a cut or 隔开 line may move to reach the line art
+
+// image px a line drawn now may move to reach the line art: 0 when the tool's 自动贴线 box is off
+function snapRadius(box) {
+  return $(box).checked ? +(SNAP_VIEW_PX / S.view.s).toFixed(1) : 0;
+}
 
 // The drawn line carried on straight past both ends, as the server will cut along it: the direction of the last
 // 12 px of each end, or when snapping, of the last 40% of the line (at least 24 px), so hand jitter does not tilt it.
@@ -991,7 +998,7 @@ function cutExtensions(pts) {
 function cutAlong(drag) {
   const r = S.doc && S.doc.regions.find((x) => x.id === drag.rid);
   if (!r) return;
-  const snap = $('#cut-snap').checked ? +(SNAP_VIEW_PX / S.view.s).toFixed(1) : 0;
+  const snap = snapRadius('#cut-snap');
   edit('POST', `/regions/${r.id}/split`, { pts: flat(drag.pts), snap }).then((st) => splitDone(st, r.name));
 }
 
@@ -1110,7 +1117,7 @@ function segmentClick(p, subtract) {
   S.segPending = { x: p.x, y: p.y, subtract };
   stage.classList.add('segment-busy');
   redraw();
-  edit('POST', `/regions/${r.id}/segment`, { x: +(p.x - 0.5).toFixed(1), y: +(p.y - 0.5).toFixed(1), subtract })
+  edit('POST', `/regions/${r.id}/segment`, { x: +(p.x - 0.5).toFixed(1), y: +(p.y - 0.5).toFixed(1), subtract, seams: $('#fill-seams').checked })
     .then((st) => { if (st) segmentFlash(st); })
     .finally(() => { S.segPending = null; stage.classList.remove('segment-busy'); redraw(); });
 }
@@ -1241,7 +1248,7 @@ function endDrag(e) {
       const pts = flat(d.pts);
       S.dividers = [...S.dividers, { id: -1, pts, path: polyPath(pts, 1, 0.5) }];
       redraw();
-      edit('POST', '/dividers', { pts });
+      edit('POST', '/dividers', { pts, snap: snapRadius('#wall-snap') });
       return;
     }
     const pts = flat(d.pts);
@@ -1505,6 +1512,15 @@ $('#btn-auto-cut').addEventListener('click', () => {
 });
 $('#cut-snap').checked = localStorage.getItem('cut_snap') !== '0';
 $('#cut-snap').addEventListener('change', (e) => { localStorage.setItem('cut_snap', e.target.checked ? '1' : '0'); redraw(); });
+$('#wall-snap').checked = localStorage.getItem('wall_snap') !== '0';
+$('#wall-snap').addEventListener('change', (e) => localStorage.setItem('wall_snap', e.target.checked ? '1' : '0'));
+// 补接缝 sits in the range chooser, so it applies to the click the chooser is showing as well as to later ones
+$('#fill-seams').checked = localStorage.getItem('fill_seams') !== '0';
+$('#fill-seams').addEventListener('change', (e) => {
+  localStorage.setItem('fill_seams', e.target.checked ? '1' : '0');
+  const c = S.doc && S.doc.segment_cycle;
+  if (c && !c.subtract && !S.segPending) edit('POST', '/segment/select', { k: c.k, seams: e.target.checked });
+});
 
 // ------------------------------------------------------------------ a region's ··· menu
 

@@ -93,13 +93,13 @@ def find_walls(R, stock, scale=1.0):
     return walls & stock
 
 
-def _ends(piece):
-    """The two ends of a thin curved line (bool mask) and the unit direction it leaves each by: [(xy, dir)]."""
-    from scipy.sparse.csgraph import breadth_first_order
+def _graph(piece):
+    """(xs, ys, adjacency matrix of the 8-neighbours) of the pixels of a thin line (bool mask), or None under 4 pixels."""
+    import scipy.sparse as sp
     ys, xs = np.nonzero(piece)
     n = len(ys)
     if n < 4:
-        return []
+        return None
     idx = -np.ones(piece.shape, np.int64)
     idx[ys, xs] = np.arange(n)
     h, w = piece.shape
@@ -112,9 +112,32 @@ def _ends(piece):
         ok = k >= 0
         ii.append(np.arange(n)[ok]); jj.append(k[ok])
     ii, jj = np.concatenate(ii), np.concatenate(jj)
-    import scipy.sparse as sp
     adj = sp.csr_matrix((np.ones(len(ii)), (ii, jj)), shape=(n, n))
-    adj = (adj + adj.T).tocsr()
+    return xs, ys, (adj + adj.T).tocsr()
+
+
+def _leaving(pix, e0, near):
+    """The point at the far side of the pixels near (indices into pix), from a straight fit to them, and the unit direction
+    the line leaves its end e0 by, or None under 3 pixels: a path through a 3 px band zigzags, a fit does not."""
+    if near.sum() < 3:
+        return None
+    near = pix[near]
+    c = near.mean(0)
+    evals, evecs = np.linalg.eigh(np.cov((near - c).T))
+    d = evecs[:, -1]
+    if (e0 - c) @ d < 0:
+        d = -d
+    return c + d * float(((near - c) @ d).max()), d
+
+
+def _ends(piece, reach=20.0):
+    """The two ends of a thin curved line (bool mask) and the unit direction it leaves each by: [(xy, dir)]. reach: px
+    of the line, from each end, that the direction is fitted to."""
+    from scipy.sparse.csgraph import breadth_first_order
+    g = _graph(piece)
+    if g is None:
+        return []
+    xs, ys, adj = g
 
     def far(s):
         order, pred = breadth_first_order(adj, s, directed=False, return_predecessors=True)
@@ -129,16 +152,55 @@ def _ends(piece):
     pix = np.stack([xs, ys], 1).astype(np.float64)
     out = []
     for e0 in (P[0], P[-1]):
-        # the direction from a straight fit to the line's last 20 px: a path through a 3 px band zigzags
-        near = pix[np.hypot(*(pix - e0).T) <= 20.0]
-        if len(near) < 3:
-            continue
-        c = near.mean(0)
-        evals, evecs = np.linalg.eigh(np.cov((near - c).T))
-        d = evecs[:, -1]
-        if (e0 - c) @ d < 0:
-            d = -d
-        out.append((c + d * float(((near - c) @ d).max()), d))
+        found = _leaving(pix, e0, np.hypot(*(pix - e0).T) <= reach)
+        if found is not None:
+            out.append(found)
+    return out
+
+
+def branch_ends(piece, reach=20.0, min_branch=20.0):
+    """Every free end of a thin line that may branch (a wall with another coming off it: a T) as _ends gives them, [(xy, dir)]:
+    the two ends farthest apart along the line, then the tip of each branch that leaves what is found so far by at least
+    min_branch px (as the crow flies: a bit of a branch is no end), longest first. The direction is fitted to the line within
+    reach steps along it of the end, so that a short branch does not take in the one it joins."""
+    from scipy.sparse.csgraph import breadth_first_order, shortest_path
+    g = _graph(piece)
+    if g is None:
+        return []
+    xs, ys, adj = g
+    pix = np.stack([xs, ys], 1).astype(np.float64)
+
+    def steps(s):
+        return shortest_path(adj, directed=False, unweighted=True, indices=s)
+
+    a = int(np.argmax(steps(0)))
+    b = int(np.argmax(steps(a)))
+    _, pred = breadth_first_order(adj, a, directed=False, return_predecessors=True)
+    path = [b]
+    while pred[path[-1]] >= 0:
+        path.append(pred[path[-1]])
+    found = np.ones(piece.shape, np.uint8)                # 0 where the line found so far is
+    found[ys[path], xs[path]] = 0
+    ends = [a, b]
+    while len(ends) < 8:
+        far = cv2.distanceTransform(found, cv2.DIST_L2, 3)[ys, xs]
+        c = int(np.argmax(far))
+        if far[c] < min_branch:
+            break
+        ends.append(c)
+        # the branch from its tip back to the line: found too
+        hops = steps(c)
+        node = int(np.argmin(np.where(found[ys, xs] == 0, hops, np.inf)))
+        _, back = breadth_first_order(adj, c, directed=False, return_predecessors=True)
+        while node != c:
+            found[ys[node], xs[node]] = 0
+            node = int(back[node])
+        found[ys[c], xs[c]] = 0
+    out = []
+    for e in ends:
+        got = _leaving(pix, pix[e], steps(e) <= reach)
+        if got is not None:
+            out.append(got)
     return out
 
 
