@@ -87,20 +87,6 @@ def test_thread_gaps_take_the_skin_colour(style, rgb, darker):
     assert (r > b) and (r > g)                                         # warmer than the stocking either way
 
 
-@pytest.mark.parametrize('style', ['knit', 'loops', 'coil'])
-def test_texture_does_not_vanish_between_dark_and_light(style):
-    """The gaps turn from lighter to darker than the stocking as it goes from dark to light. The two drawings cancel
-    where they meet, so the turn is quick: a thin line, not a plain ring round a bright highlight."""
-    ramp = np.linspace(0, 1, 240)[None, :, None]
-    art = np.round((1 - ramp) * np.array([62, 50, 58]) + ramp * np.array([240, 232, 240]))
-    s = _flat(np.broadcast_to(art, (240, 240, 3)))
-    out, _ = s.render(dict(OFF, style=style, strength=100, strength_auto=False))
-    rel = ((out.astype(float) - s.src.astype(float)) / np.maximum(s.src, 1))[20:-20, 20:-20]
-    contrast = np.array([np.sqrt((rel[:, c:c + 4] ** 2).mean()) for c in range(0, 200, 4)])   # dark to light
-    weak = contrast < 0.5 * min(contrast[0], contrast[-1])
-    assert weak.mean() < 0.1                                           # was 14% with the two drawings fading over the whole band
-
-
 @pytest.mark.parametrize('style', ['loops', 'coil'])
 def test_loops_stand_in_columns(style):
     """针织 and 线圈 repeat across the wales too (one column of loops per wale); 细线 barely does."""

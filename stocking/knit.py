@@ -126,7 +126,6 @@ def render_lines(src, reg, phase, alpha, amp=0.115, f_lo=0.27, f_hi=0.34, tint=(
 
 
 _RIPS = {}
-FLIP_SHARE = 0.25           # how much of a style's pol_band the gaps take to turn from lighter to darker than the stocking
 
 
 def wide_luma(src):
@@ -145,7 +144,7 @@ def gap_factor(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, da
                pol_band=(0.40, 0.70)):
     """What render_gaps multiplies src by, as float32 HxWx3, and the gate. amp: a number, or an HxW array of
     amplitudes. pol_band: the local lightness (wide) between which the gaps turn from lighter to darker than the
-    stocking; the turn itself takes only the middle FLIP_SHARE of it."""
+    stocking."""
     same = _same_region(reg)
 
     def footprint(f):
@@ -156,15 +155,12 @@ def gap_factor(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, da
     keep = (1 - sstep(f_lo, f_hi, fv)) * same
     m = tiles.sample(rip, u, phi, footprint(u), fv) * keep
     gate = sstep(dark[0], dark[1], _luma(src, 1.5)) * alpha
-    mid, half = sum(pol_band) / 2, (pol_band[1] - pol_band[0]) / 2 * FLIP_SHARE
-    s = sstep(mid - half, mid + half, wide)[..., None].astype(np.float32)             # 0 on dark stockings, 1 on light
+    pol = (1 - 2 * sstep(pol_band[0], pol_band[1], wide))[..., None].astype(np.float32)   # +1 dark stockings, -1 light
     to_dark = np.array([1.25, 1.1, 0.6], np.float32)                 # B, G, R: the gap as a pink line
     to_light = np.array([0.75, 0.95, 1.25], np.float32)              # the gap as a warm light line
-    # Cross-fade the two drawings, and do it over a narrow band: they cancel where they meet, so a wide band left a
-    # ring of plain fabric round a bright highlight, where the turn between them goes through the stocking's lightness.
-    tint = (1 - s) * to_light - s * to_dark
+    tint = (1 - pol) / 2 * to_dark + (1 + pol) / 2 * to_light
     a = np.float32(amp) if np.ndim(amp) == 0 else np.asarray(amp, np.float32)[..., None]
-    return 1 + a * (gate * m).astype(np.float32)[..., None] * tint, gate
+    return 1 + a * (gate * m).astype(np.float32)[..., None] * pol * tint, gate
 
 
 def render_gaps(src, reg, phi, u, alpha, wide, rip, amp, f_lo=0.27, f_hi=0.34, dark=(0.03, 0.30)):
