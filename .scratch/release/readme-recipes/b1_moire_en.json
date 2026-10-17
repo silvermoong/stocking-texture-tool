@@ -1,6 +1,6 @@
 {"width":1600,"height":1000,"dpr":1.5,"url":"http://127.0.0.1:8790/","steps":[
  {"click":"#tab-look","wait":3000},
- {"click":"[data-style=knit]"}, {"range":["#sparkle-depth",0]},{"range":["#sparkle-bright",0]},{"range":["#sparkle-even",0]},
+ {"click":"[data-style=knit]"},
  {"click":"[data-zoom='1']","wait":500},
  {"eval":"(() => { const on = document.querySelector('#moire-on'); if (!on.checked) on.click(); return on.checked; })()","wait":3500},
  {"range":["#moire",100]}, {"range":["#moire-area",100]}, {"wait":2500},

@@ -432,10 +432,12 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .link-btn[aria-pressed="false"] { border-style: dashed; border-color: var(--faint); }
 .link-btn[aria-pressed="false"]::after { content: "不关联"; color: var(--muted); }
 .unlinked { margin-right: 28px; }
-.exclude { padding-top: 14px; border-top: 1px solid var(--line); margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+#sparkle-section, .exclude { padding-top: 14px; border-top: 1px solid var(--line); margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
+.exclude { margin-bottom: 0; }
 .exclude .field-head { align-items: center; }
 .exclude .note + .field-head { margin-top: 14px; }
 .exclude .note { margin-top: 4px; }
+#btn-check { display: block; margin-bottom: 14px; }
 #btn-look-reset { margin-top: 18px; }
 
 /* 纹理: 整体 and 细节, placed by look.js (side by side, or 细节 below), on the stage */

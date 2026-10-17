@@ -172,11 +172,12 @@
 
   <section class="group" id="sparkle-section">
     <div class="group-head">
-      <h2>亮点</h2>
+      <h2><label class="switch-label" for="sparkle-on">亮点</label></h2>
       <button class="info-btn" aria-expanded="false" aria-controls="sparkle-info" aria-label="亮点说明">?</button>
+      <span class="switch"><input type="checkbox" role="switch" id="sparkle-on"><span class="switch-track"></span></span>
     </div>
     <div id="sparkle-info" class="info-pop" role="note" hidden>
-      <p>纱线反光形成的细小闪光点，撒在丝袜受光的地方。下面的滑杆决定撒在哪、撒多少，都拉到 0 就是不加。</p>
+      <p>纱线反光形成的细小闪光点，撒在丝袜受光的地方。默认关，打开开关才有，下面的滑杆决定撒在哪、撒多少。</p>
       <p><b>按深度</b>：放在鼓起来的地方，比如膝盖、腿正面、胸顶。</p>
       <p><b>按画面亮部</b>：放在画师画出来的高光上。</p>
       <p><b>关联</b>：打开时这两个数量保持一样，拖其中一个，另一个跟着变。</p>
@@ -184,27 +185,29 @@
       <p>有浅色印花或条纹的丝袜，把画面亮部调低，免得亮点落在印花上。</p>
       <p>想自己决定位置：在 PSD 的“丝袜引导”组里画一层叫“亮点”的图层，再打开那个 PSD，这里会多一个滑杆。</p>
     </div>
-    <div class="linked">
-      <div class="field">
-        <div class="field-head"><label for="sparkle-depth">按深度</label><span id="sparkle-depth-val" class="val num"></span></div>
-        <input id="sparkle-depth" type="range" min="0" max="300" step="5" value="100">
+    <div id="sparkle-fields" hidden>
+      <div class="linked">
+        <div class="field">
+          <div class="field-head"><label for="sparkle-depth">按深度</label><span id="sparkle-depth-val" class="val num"></span></div>
+          <input id="sparkle-depth" type="range" min="0" max="300" step="5" value="100">
+        </div>
+        <div class="field">
+          <div class="field-head"><label for="sparkle-bright">按画面亮部</label><span id="sparkle-bright-val" class="val num"></span></div>
+          <input id="sparkle-bright" type="range" min="0" max="300" step="5" value="100">
+        </div>
+        <button id="btn-sparkle-link" class="link-btn" aria-pressed="true" aria-label="关联"
+                title="关联：两个数量保持一样，拖其中一个，另一个跟着变；打开时以“按深度”的值为准"></button>
       </div>
-      <div class="field">
-        <div class="field-head"><label for="sparkle-bright">按画面亮部</label><span id="sparkle-bright-val" class="val num"></span></div>
-        <input id="sparkle-bright" type="range" min="0" max="300" step="5" value="100">
+      <div class="field unlinked">
+        <div class="field-head"><label for="sparkle-even">均匀分布</label><span id="sparkle-even-val" class="val num"></span></div>
+        <input id="sparkle-even" type="range" min="0" max="300" step="5" value="0">
       </div>
-      <button id="btn-sparkle-link" class="link-btn" aria-pressed="true" aria-label="关联"
-              title="关联：两个数量保持一样，拖其中一个，另一个跟着变；打开时以“按深度”的值为准"></button>
+      <div id="sparkle-painted-field" class="field unlinked" hidden>
+        <div class="field-head"><label for="sparkle-painted">按 PSD 里的“亮点”层</label><span id="sparkle-painted-val" class="val num"></span></div>
+        <input id="sparkle-painted" type="range" min="0" max="300" step="5" value="0">
+      </div>
+      <p id="sparkle-note" class="note"></p>
     </div>
-    <div class="field unlinked">
-      <div class="field-head"><label for="sparkle-even">均匀分布</label><span id="sparkle-even-val" class="val num"></span></div>
-      <input id="sparkle-even" type="range" min="0" max="300" step="5" value="0">
-    </div>
-    <div id="sparkle-painted-field" class="field unlinked" hidden>
-      <div class="field-head"><label for="sparkle-painted">按 PSD 里的“亮点”层</label><span id="sparkle-painted-val" class="val num"></span></div>
-      <input id="sparkle-painted" type="range" min="0" max="300" step="5" value="0">
-    </div>
-    <p id="sparkle-note" class="note"></p>
   </section>
 
   <section class="group" id="particle-section">
@@ -252,13 +255,15 @@
   </section>
 
   <section class="group exclude">
+    <button id="btn-check" class="btn small toggle" aria-pressed="false"
+            title="在整体和细节上标出没有纹理或纹理很弱的地方（只在预览里显示，不会导出）">标出问题</button>
     <div class="field-head">
       <label class="check"><input type="checkbox" id="fade" checked>纹理减弱</label>
       <button class="info-btn" aria-expanded="false" aria-controls="fade-info" aria-label="纹理减弱说明">?</button>
     </div>
     <div id="fade-info" class="info-pop" role="note" hidden>
       <p>打开时，横纹挤得太近、间距接近像素大小的地方会自动把纹理减弱，避免挤出细碎的摩尔纹。</p>
-      <p>关掉后，无论横纹多密都照常画满纹理。点细节上方的“标出问题”可以看到哪里被减弱了（红色）。</p>
+      <p>关掉后，无论横纹多密都照常画满纹理。点上面的“标出问题”可以看到哪里被减弱了（红色）。</p>
     </div>
     <p id="fade-note" class="note"></p>
     <div class="field-head">
@@ -267,7 +272,7 @@
     </div>
     <div id="exclude-info" class="info-pop" role="note" hidden>
       <p>打开时，部位里颜色和丝袜差得远的地方不加纹理，比如金边、手套、露出来的皮肤。</p>
-      <p>薄丝袜透出肤色的地方（膝盖、脚尖）偏暖，有时会被误当成皮肤排除掉。这时关掉它，部位里每一处都加纹理。点细节上方的“标出问题”可以看到哪里被排除了（蓝色）。</p>
+      <p>薄丝袜透出肤色的地方（膝盖、脚尖）偏暖，有时会被误当成皮肤排除掉。这时关掉它，部位里每一处都加纹理。点上面的“标出问题”可以看到哪里被排除了（蓝色）。</p>
     </div>
     <p id="exclude-note" class="note"></p>
     <button id="btn-look-reset" class="text-btn" title="纹理层、样式、密度、斜度、强度、亮点和摩尔纹效果都回到默认值">全部恢复默认</button>
@@ -336,9 +341,6 @@
           <button class="seg-btn num" data-zoom="2" role="radio">200%</button>
         </span>
         <button id="btn-densest" class="btn small" title="把细节挪回横纹最密的地方">回到最密处</button>
-        <span class="spacer"></span>
-        <button id="btn-check" class="btn small toggle" aria-pressed="false"
-                title="在整体和细节上标出没有纹理或纹理很弱的地方（只在预览里显示，不会导出）">标出问题</button>
       </div>
       <div class="pane-body"><canvas id="crop" tabindex="0" role="img" aria-label="细节预览，方向键移动查看的位置"
               title="拖动或用方向键看别处"></canvas></div>

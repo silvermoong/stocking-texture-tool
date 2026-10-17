@@ -11,7 +11,7 @@ from stocking import psd_io
 from sample_data import PSD, require
 
 OFF = {'sparkle_depth': 0, 'sparkle_bright': 0, 'sparkle_painted': 0, 'sparkle_link': False}
-PAINTED = {'sparkle_depth': 0, 'sparkle_bright': 0, 'sparkle_painted': 100, 'sparkle_link': False}
+PAINTED = {'sparkle_on': True, 'sparkle_depth': 0, 'sparkle_bright': 0, 'sparkle_painted': 100, 'sparkle_link': False}
 
 
 @pytest.fixture(scope='module')
@@ -307,8 +307,8 @@ def test_grain_and_sparkles_reproduce_the_reference_renders(fx):
 @pytest.mark.parametrize('style', look.STYLES)
 def test_crop_equals_full(fx, style):
     s = scene(fx, sparkle=np.full(fx[2].shape, 200, np.uint8))
-    p = {'style': style, 'density': 128, 'tilt': 25, 'strength': 140, 'sparkle_depth': 0, 'sparkle_bright': 80,
-         'sparkle_painted': 150, 'sparkle_even': 60, 'sparkle_link': False}
+    p = {'style': style, 'density': 128, 'tilt': 25, 'strength': 140, 'sparkle_on': True, 'sparkle_depth': 0,
+         'sparkle_bright': 80, 'sparkle_painted': 150, 'sparkle_even': 60, 'sparkle_link': False}
     full, _ = s.render(p)
     for rect in [(300, 320, 812, 832), (0, 0, 64, 64), (1100, 1800, 1280, 1920)]:
         crop, _ = s.render(p, rect)
@@ -344,7 +344,7 @@ def test_even_sparkles_spread_everywhere(fx, style):
     """Every style scatters sparkles (亮点), by the same settings."""
     art, names, REG, V, A, stock, alpha = fx
     s = scene(fx)
-    on = dict(OFF, style=style, sparkle_even=100)
+    on = dict(OFF, style=style, sparkle_on=True, sparkle_even=100)
     w, ready = s.sparkle_weight(look.clean_params(on), style)
     cover = alpha > 0.5
     assert ready and np.allclose(w[cover], look.EVEN_SPARKLES[style]) and (w[~cover] == 0).all()
@@ -365,7 +365,7 @@ def test_strength_leaves_sparkles_alone(fx, style):
     def lift(strength):
         p = dict(OFF, style=style, strength=strength, strength_auto=False)
         base = s.render(p, rect)[0].astype(float).sum(axis=2)
-        out = s.render(dict(p, sparkle_even=100), rect)[0].astype(float)
+        out = s.render(dict(p, sparkle_on=True, sparkle_even=100), rect)[0].astype(float)
         hit = (out.sum(axis=2) != base) & (base > 90) & (out.max(axis=2) < 250)
         return hit, np.where(hit, out.sum(axis=2) / np.maximum(base, 1) - 1, 0)
 
@@ -433,11 +433,12 @@ def test_sparkle_amounts_add_without_moving(fx):
     plain, _ = s.render(dict(OFF, style='lines'))
     hits = {}
     for amount in (0, 50, 100, 200):
-        out, _ = s.render(dict(OFF, style='lines', sparkle_painted=amount))
+        out, _ = s.render(dict(OFF, style='lines', sparkle_on=True, sparkle_painted=amount))
         hits[amount] = np.abs(out.astype(int) - plain.astype(int)).max(2) > 0
     assert not hits[0].any()
     assert hits[50].sum() < hits[100].sum() < hits[200].sum()
     assert not (hits[50] & ~hits[100]).any() and not (hits[100] & ~hits[200]).any()
+    assert np.array_equal(s.render(dict(OFF, style='lines', sparkle_on=False, sparkle_painted=200))[0], plain)
 
 
 def test_check_maps(fx):
@@ -468,7 +469,8 @@ def test_highlight_source_follows_painted_light(fx):
     assert st[inside].mean() > 0.6 and st[inside].mean() - base[inside].mean() > 0.3
     assert np.abs(st[far] - base[far]).max() < 1e-6        # other regions are untouched
     for style in ('lines', 'grain'):
-        p = {'style': style, 'sparkle_depth': 0, 'sparkle_bright': 100, 'sparkle_link': False, 'density': 120}
+        p = {'style': style, 'sparkle_on': True, 'sparkle_depth': 0, 'sparkle_bright': 100, 'sparkle_link': False,
+             'density': 120}
         full, info = s.render(p)
         assert info['sparkles_ready']
         crop, _ = s.render(p, (cx - 100, cy - 100, cx + 100, cy + 100))
@@ -482,22 +484,22 @@ def test_overlapping_sources_take_the_higher(fx):
     s = scene(fx, disparity=lambda: disp)
     dep, bri = s.sparkle_map('depth'), s.sparkle_map('bright')
     for style, curve in (('lines', lambda m: m ** 1.2), ('grain', lambda m: (0.15 + 0.85 * m) * (alpha > 0.5))):
-        q = look.clean_params({'sparkle_depth': 150, 'sparkle_bright': 60, 'sparkle_link': False})
+        q = look.clean_params({'sparkle_on': True, 'sparkle_depth': 150, 'sparkle_bright': 60, 'sparkle_link': False})
         w, ready = s.sparkle_weight(q, style)
         assert ready and np.allclose(w, np.maximum(1.5 * curve(dep), 0.6 * curve(bri)), atol=1e-6)
     plain, _ = s.render(dict(OFF, style='lines'))
 
     def hit(**amounts):
-        out, _ = s.render(dict(OFF, style='lines', **amounts))
+        out, _ = s.render(dict(OFF, style='lines', sparkle_on=True, **amounts))
         return np.abs(out.astype(int) - plain.astype(int)).max(2) > 0
     d, b, both = hit(sparkle_depth=100), hit(sparkle_bright=100), hit(sparkle_depth=100, sparkle_bright=100)
     assert np.array_equal(both, d | b)                       # same draws: the union, nothing doubled
     assert both.sum() < d.sum() + b.sum()
     # no depth yet: brightness still shows, and the render says it is waiting for depth
     nodepth = scene(fx)
-    out, info = nodepth.render(dict(OFF, style='lines', sparkle_depth=100, sparkle_bright=100))
+    out, info = nodepth.render(dict(OFF, style='lines', sparkle_on=True, sparkle_depth=100, sparkle_bright=100))
     assert not info['sparkles_ready']
-    assert np.array_equal(out, nodepth.render(dict(OFF, style='lines', sparkle_bright=100))[0])
+    assert np.array_equal(out, nodepth.render(dict(OFF, style='lines', sparkle_on=True, sparkle_bright=100))[0])
 
 
 def test_legacy_sparkle_settings():
@@ -1013,7 +1015,7 @@ def test_sparkles_and_moire_go_on_once_over_the_mix_with_the_first_layers_recipe
     s, disp, _ = _dome()
     layers = dict(style=first, weight=50, layers=[{'style': 'grain', 'weight': 50}])
     mix = s.render(dict(OFF, **layers))[0]
-    p = dict(OFF, sparkle_even=100, **layers)
+    p = dict(OFF, sparkle_on=True, sparkle_even=100, **layers)
     q = look.clean_params(p)
     weight, ready = s.sparkle_weight(q, first)
     r = look.SPARKLE_RECIPES[first]

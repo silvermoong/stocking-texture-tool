@@ -161,8 +161,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     const q = new URLSearchParams({ style: p.style, density: p.density, tilt: p.tilt,
       strength: p.strength, strength_auto: p.strength_auto, weight: p.weight, amount: p.amount ?? '',
       layers: JSON.stringify(p.layers || []), lock_total: p.lock_total,
-      sparkle_depth: p.sparkle_depth, sparkle_bright: p.sparkle_bright, sparkle_painted: p.sparkle_painted,
-      sparkle_even: p.sparkle_even,
+      sparkle_on: p.sparkle_on, sparkle_depth: p.sparkle_depth, sparkle_bright: p.sparkle_bright,
+      sparkle_painted: p.sparkle_painted, sparkle_even: p.sparkle_even,
       sparkle_link: p.sparkle_link, particle_on: p.particle_on, particle: p.particle,
       moire_on: p.moire_on, moire: p.moire, moire_area: p.moire_area, fade: p.fade !== false });
     for (const [k, v] of Object.entries(extra || {})) q.set(k, v);
@@ -682,6 +682,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     setVal($('#strength-val'), p.strength, '%');
     $('#strength-auto').hidden = !p.strength_auto;
     $('#btn-strength-auto').hidden = !!p.strength_auto;
+    $('#sparkle-on').checked = !!all.sparkle_on;
+    $('#sparkle-fields').hidden = !all.sparkle_on;
     for (const k of ['depth', 'bright', 'painted', 'even']) {
       $(`#sparkle-${k}`).value = all[`sparkle_${k}`];
       setVal($(`#sparkle-${k}-val`), all[`sparkle_${k}`], '%');
@@ -747,7 +749,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     $('#sparkle-painted-field').hidden = !i.has_sparkle_layer;
     const sn = $('#sparkle-note');
     sn.className = 'note';
-    const usesDepth = L.params.sparkle_depth > 0;
+    const usesDepth = !!L.params.sparkle_on && L.params.sparkle_depth > 0;
     if (usesDepth && i.depth !== 'ready' && i.depth !== 'error') sn.textContent = t('正在估算深度（第一次要几秒）…');
     else if (usesDepth && i.depth === 'error') {
       sn.textContent = t('深度模型不可用：{error}。按深度的亮点先不显示，按画面亮部的照常。', { error: i.depth_error || t('未知错误') });
@@ -816,7 +818,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     const notes = [];
     if (p && !p.params) notes.push(t('这个预设读不了（可能是新版本存的），可以删掉它。'));
     else if (modified) notes.push(t('已改动（和“{name}”不同）。', { name: p.name }));
-    if (p && p.params && p.params.sparkle_painted > 0 && L.info && !L.info.has_sparkle_layer) {
+    if (p && p.params && p.params.sparkle_on && p.params.sparkle_painted > 0 && L.info && !L.info.has_sparkle_layer) {
       notes.push(t('这张图没有“亮点”层，预设里按“亮点”层放亮点的那一项暂时不起作用。'));
     }
     $('#preset-note').textContent = notes.join(' ');
@@ -1019,6 +1021,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   $('#strength').addEventListener('input', (e) => setLayer({ strength: +e.target.value, strength_auto: false },
     { gesture: `strength:${L.layer}` }));
   $('#btn-strength-auto').addEventListener('click', () => setLayer({ strength_auto: true }));
+  $('#sparkle-on').addEventListener('change', (e) => set({ sparkle_on: e.target.checked }));
   $('#sparkle-depth').addEventListener('input', (e) => setAmount('sparkle_depth', +e.target.value));
   $('#sparkle-bright').addEventListener('input', (e) => setAmount('sparkle_bright', +e.target.value));
   $('#sparkle-painted').addEventListener('input', (e) => set({ sparkle_painted: +e.target.value }, { gesture: 'sparkle_painted' }));
@@ -1090,7 +1093,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     set({ style: 'knit', density: 100, tilt: 32,
       strength: L.info ? L.info.strength_suggested : 100, strength_auto: true, weight: 100, amount: null, layers: [],
       lock_total: L.info ? L.info.blend_auto : true,         // what a new look starts with: the user's last choice
-      sparkle_depth: layer ? 0 : 100,
+      sparkle_on: false, sparkle_depth: layer ? 0 : 100,
       sparkle_bright: layer ? 0 : 100, sparkle_painted: layer ? 100 : 0, sparkle_even: 0, sparkle_link: true,
       particle_on: false, particle: 100,
       moire_on: false, moire: 100, moire_area: 100, fade: true });

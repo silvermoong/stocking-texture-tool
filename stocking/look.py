@@ -55,8 +55,8 @@ LEGACY_STYLES = {'p_oily': 'oily'}                  # saved by an early version
 # where sparkles may go: bulges, painted highlights, a 亮点 layer, everywhere alike
 SPARKLE_KINDS = ('depth', 'bright', 'painted', 'even')
 DEFAULTS = {'style': 'knit', 'density': 100.0, 'tilt': 32.0, 'strength': 100.0,
-            'strength_auto': True, 'sparkle_depth': 100.0, 'sparkle_bright': 100.0, 'sparkle_painted': 0.0,
-            'sparkle_even': 0.0, 'sparkle_link': True, 'particle_on': False, 'particle': 100.0,
+            'strength_auto': True, 'sparkle_on': False, 'sparkle_depth': 100.0, 'sparkle_bright': 100.0,
+            'sparkle_painted': 0.0, 'sparkle_even': 0.0, 'sparkle_link': True, 'particle_on': False, 'particle': 100.0,
             'moire_on': False, 'moire': 100.0, 'moire_area': 100.0, 'fade': True,
             'weight': 100.0, 'amount': None, 'layers': [], 'lock_total': True}
 # What one 纹理层 holds: the look's own keys are the first layer's, each of `layers` has these. lock_total (the
@@ -104,7 +104,7 @@ MOIRE_FADE = (0.06, 0.14)
 MOIRE_SHARP = 2.2
 MOIRE_LIGHT = 0.13
 MOIRE_TEXTURE = 0.9
-RENDER_KEYS = ('style', 'density', 'tilt', 'strength', 'sparkle_depth', 'sparkle_bright',
+RENDER_KEYS = ('style', 'density', 'tilt', 'strength', 'sparkle_on', 'sparkle_depth', 'sparkle_bright',
                'sparkle_painted', 'sparkle_even', 'particle_on', 'particle',
                'moire_on', 'moire', 'moire_area', 'fade', 'weight', 'layers', 'lock_total')
 MARGIN = 8                  # px around a crop, so blurs and gradients at its edge see real neighbours
@@ -174,7 +174,7 @@ def clean_params(p):
     q['moire_area'] = float(np.clip(float(q['moire_area']), 0, 100))
     for k in SPARKLE_KINDS:
         q[f'sparkle_{k}'] = float(np.clip(float(q[f'sparkle_{k}']), 0, 300))
-    for k in ('sparkle_link', 'particle_on', 'moire_on', 'fade', 'lock_total'):
+    for k in ('sparkle_on', 'sparkle_link', 'particle_on', 'moire_on', 'fade', 'lock_total'):
         q[k] = _flag(q[k])
     if q['sparkle_link']:
         q['sparkle_bright'] = q['sparkle_depth']        # linked amounts are one value; depth's wins
@@ -789,6 +789,8 @@ class Scene:
         every setting, so raising any amount only adds sparkles. Returns (weight or None, ready): ready is False
         while a source with a non-zero amount is still being computed (the depth model).
         """
+        if not q['sparkle_on']:
+            return None, True
         sl = sl if sl is not None else (slice(None), slice(None))
         cover = (self.alpha[sl] > 0.5)
         total, ready = None, True

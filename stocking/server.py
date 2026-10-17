@@ -550,7 +550,7 @@ def _png(img, extra=None):
 
 def _want_depth(d, q):
     """Start estimating depth once a setting needs it (按深度 sparkles, 摩尔纹效果), if opening the image has not already."""
-    needs = (q['style'] in look.SPARKLE_STYLES and q['sparkle_depth'] > 0) or look.moire_active(q)
+    needs = (q['style'] in look.SPARKLE_STYLES and q['sparkle_on'] and q['sparkle_depth'] > 0) or look.moire_active(q)
     if needs and getattr(d, 'disparity', None) is None and not getattr(d, '_depth_started', False):
         d._depth_started = True
         depth.service.disparity_async(d)
@@ -871,7 +871,7 @@ def export_doc(doc_id: str, body: ExportIn):
             if not d.wait_idle(EXPORT_WAIT):
                 raise ValueError(tr('部位还在求解，稍等一下再导出'))
             _want_depth(d, q)
-            by_depth = q['style'] in look.SPARKLE_STYLES and q['sparkle_depth'] > 0
+            by_depth = q['style'] in look.SPARKLE_STYLES and q['sparkle_on'] and q['sparkle_depth'] > 0
             if by_depth or look.moire_active(q):
                 end = time.monotonic() + EXPORT_WAIT
                 while getattr(d, 'disparity', None) is None and time.monotonic() < end:

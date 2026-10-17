@@ -170,7 +170,7 @@ Tilt 10° / 32° / 55°: Slanted lines only
 
 ![Tilt](docs/images/slider-tilt.png)
 
-Sparkles (Evenly) 0% / 100% / 300%
+Sparkles (off by default, turn the switch on for the sliders; Evenly) 0% / 100% / 300%
 
 ![Sparkles](docs/images/slider-sparkles.png)
 
@@ -218,7 +218,7 @@ Kase's share 0% / 30% / 70% / 100% (the rest is Fine lines; left to right), the 
 
 ### 6. Show problems
 
-Click Show problems above Detail. Red marks where the courses are so dense that the texture was faded to avoid moiré, blue what color exclusion removed, and yellow regions with no direction lines yet. If a main area has a large patch of red, lower the density:
+Click Show problems in the panel. Red marks where the courses are so dense that the texture was faded to avoid moiré, blue what color exclusion removed, and yellow regions with no direction lines yet. If a main area has a large patch of red, lower the density:
 
 ![Left: density 140%, a large red patch behind the knee; right: density 85%, almost gone](docs/images/show-problems.png)
 
