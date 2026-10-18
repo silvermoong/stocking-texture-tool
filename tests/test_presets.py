@@ -320,3 +320,204 @@ def test_the_api_imports_the_file_the_dialog_picks_and_never_replaces_a_preset(m
     r = c.post('/api/look/presets/import')
     assert r.status_code == 400 and '这不是预设文件' in r.json()['detail']
     assert len(c.get('/api/look/presets').json()['presets']) == 2
+
+
+@pytest.mark.parametrize('lang, empty_label, pick_label, new_label, bad_suffix, undo_label, restore_label', [
+    ('zh', '还没有预设', '选一个预设', '保存为新预设…', '（读不了）', '撤销载入', '还原'),
+    ('en', 'No presets yet', 'Pick a preset', 'Save as new preset…', ' (unreadable)', 'Undo load', 'Restore'),
+])
+def test_preset_select_shows_hidden_placeholder_when_collapsed_and_omits_it_from_menu(
+    lang, empty_label, pick_label, new_label, bad_suffix, undo_label, restore_label,
+):
+    """When no preset is chosen, the collapsed <select> shows '选一个预设' (or '还没有预设' when none exist), while the
+    placeholder <option value=""> has hidden=True so it never appears in the opened dropdown menu or arrow-key list."""
+    import pathlib
+    import subprocess
+
+    look_url = (pathlib.Path(__file__).resolve().parent.parent / 'stocking' / 'static' / 'look.js').as_uri()
+    defaults_json = json.dumps(look.clean_params({}))
+    grain_json = json.dumps(look.clean_params({'style': 'grain', 'density': 120}))
+    script = f"""
+import assert from 'node:assert/strict';
+
+class El {{
+  constructor(tag = 'div') {{
+    this.tagName = tag.toUpperCase();
+    this.children = [];
+    this.dataset = {{}};
+    this.style = {{ setProperty() {{}} }};
+    this.classList = {{ add() {{}}, remove() {{}}, toggle() {{}} }};
+    this.listeners = {{}};
+    this.attrs = {{}};
+    this.textContent = '';
+    this.hidden = false;
+    this.disabled = false;
+    this.checked = false;
+    this.open = false;
+    this.returnValue = '';
+    this._value = undefined;
+  }}
+  get childElementCount() {{ return this.children.length; }}
+  get value() {{
+    if (this.tagName === 'SELECT') return this._value ?? '';
+    if (this.tagName === 'OPTION') return this._value !== undefined ? this._value : this.textContent;
+    return this._value ?? '';
+  }}
+  set value(v) {{
+    const s = String(v);
+    if (this.tagName === 'SELECT') {{
+      this._value = this.options.some((o) => o.value === s) ? s : '';
+    }} else {{
+      this._value = s;
+    }}
+  }}
+  get options() {{ return this.children.filter((c) => c.tagName === 'OPTION'); }}
+  get selectedOptions() {{
+    const o = this.options.find((x) => x.value === this.value);
+    return o ? [o] : [];
+  }}
+  replaceChildren(...nodes) {{
+    this.children = nodes;
+    if (this.tagName === 'SELECT' && !this.options.some((o) => o.value === this._value)) {{
+      this._value = this.options[0]?.value ?? '';
+    }}
+  }}
+  append(...nodes) {{ this.children.push(...nodes); }}
+  querySelector() {{ return null; }}
+  querySelectorAll() {{ return []; }}
+  closest() {{ return null; }}
+  addEventListener(type, fn) {{ (this.listeners[type] ??= []).push(fn); }}
+  dispatch(type, extra = {{}}) {{
+    for (const fn of [...(this.listeners[type] || [])]) fn({{ target: this, currentTarget: this, preventDefault() {{}}, ...extra }});
+  }}
+  setAttribute(k, v) {{ this.attrs[k] = String(v); }}
+  getAttribute(k) {{ return this.attrs[k] ?? null; }}
+  removeAttribute(k) {{ delete this.attrs[k]; }}
+  getBoundingClientRect() {{ return {{ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100 }}; }}
+  getContext() {{ return {{ setTransform() {{}}, fillRect() {{}}, drawImage() {{}}, save() {{}}, beginPath() {{}}, rect() {{}}, clip() {{}}, restore() {{}}, strokeRect() {{}} }}; }}
+  showModal() {{ this.open = true; }}
+  close() {{ this.open = false; this.dispatch('close'); }}
+  focus() {{}}
+}}
+
+const els = new Map();
+const getEl = (sel) => {{
+  if (!els.has(sel)) els.set(sel, new El(sel === '#preset-select' ? 'select' : 'div'));
+  return els.get(sel);
+}};
+globalThis.document = {{
+  documentElement: {{ lang: {json.dumps(lang)}, classList: {{ add() {{}} }} }},
+  body: new El('body'),
+  createElement: (tag) => new El(tag),
+  querySelector: (sel) => getEl(sel),
+  querySelectorAll: () => [],
+  addEventListener() {{}},
+}};
+globalThis.window = {{ devicePixelRatio: 1, innerHeight: 800, addEventListener() {{}} }};
+globalThis.getComputedStyle = () => ({{ getPropertyValue: () => '#222' }});
+globalThis.ResizeObserver = class {{ observe() {{}} }};
+globalThis.HTMLInputElement = class {{}};
+globalThis.HTMLSelectElement = class {{}};
+
+const {{ createLook }} = await import({json.dumps(look_url)});
+
+let serverPresets = [];
+const doc = {{ id: 'd1', width: 1280, height: 1920, color_exclude: true, look_rev: 0, coverage_v: 1 }};
+const baseParams = {defaults_json};
+const grainParams = {grain_json};
+
+const lookUI = createLook({{
+  getDoc: () => doc,
+  getArt: () => null,
+  request: async (method, url, body) => {{
+    if (url === '/api/look/presets' && method === 'GET') return {{ presets: serverPresets }};
+    if (url === '/api/look/presets' && method === 'PUT') {{
+      const idx = serverPresets.findIndex((p) => p.name === body.name);
+      const entry = {{ name: body.name, params: body.params }};
+      if (idx >= 0) serverPresets[idx] = entry; else serverPresets.push(entry);
+      return {{ presets: [...serverPresets] }};
+    }}
+    if (url === '/api/look/presets' && method === 'DELETE') {{
+      serverPresets = serverPresets.filter((p) => p.name !== body.name);
+      return {{ presets: [...serverPresets] }};
+    }}
+    return {{ params: {{ ...baseParams }}, strength_suggested: 100, blend_auto: true, textured: false,
+             has_sparkle_layer: false, solving: [], untextured: [], check: {{ faded: 0, excluded: 0, nostroke: 0 }} }};
+  }},
+  edit: async () => null,
+  flash: () => {{}},
+}});
+
+const sel = getEl('#preset-select');
+const visibleMenuTexts = () => sel.options.filter((o) => !o.hidden).map((o) => o.textContent);
+
+// 1. Before any presets exist: collapsed select shows '还没有预设', but dropdown menu only lists '保存为新预设…'
+lookUI.onState(doc);
+lookUI.enter();
+await new Promise((r) => setTimeout(r, 20));
+assert.equal(sel.value, '');
+assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(empty_label)});
+assert.equal(sel.selectedOptions[0]?.hidden, true);
+assert.deepEqual(visibleMenuTexts(), [{json.dumps(new_label)}]);
+assert.equal(sel.children.some((c) => c.tagName === 'HR'), false);
+
+// 2. With saved presets (including an unreadable one): collapsed select shows '选一个预设', hidden from menu list
+serverPresets = [
+  {{ name: '黑丝', params: {{ ...grainParams }} }},
+  {{ name: '旧版', params: null }},
+];
+lookUI.enter();
+await new Promise((r) => setTimeout(r, 20));
+assert.equal(sel.value, '');
+assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(pick_label)});
+assert.equal(sel.selectedOptions[0]?.hidden, true);
+assert.deepEqual(visibleMenuTexts(), ['黑丝', '旧版' + {json.dumps(bad_suffix)}, {json.dumps(new_label)}]);
+assert.equal(sel.children.some((c) => c.tagName === 'HR'), true);
+
+// 3. Picking '保存为新预设…' with no preset selected keeps collapsed select on '选一个预设' while opening the dialog
+sel._value = {json.dumps(new_label)};
+sel.dispatch('change');
+assert.equal(getEl('#preset-dialog').open, true);
+assert.equal(sel.value, '');
+assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(pick_label)});
+getEl('#preset-dialog').close();
+
+// 4. Selecting a preset applies it; 撤销载入 returns to the previous settings and resets collapsed select to '选一个预设'
+sel.value = '黑丝';
+sel.dispatch('change');
+assert.equal(sel.value, '黑丝');
+assert.equal(lookUI.params().style, 'grain');
+assert.equal(getEl('#btn-preset-undo').hidden, false);
+assert.equal(getEl('#btn-preset-undo').textContent, {json.dumps(undo_label)});
+
+getEl('#btn-preset-undo').dispatch('click');
+assert.equal(lookUI.params().style, 'knit');
+assert.equal(sel.value, '');
+assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(pick_label)});
+assert.equal(sel.selectedOptions[0]?.hidden, true);
+
+// 5. Selecting a preset, tweaking a setting marks 已改动 + 还原, and deleting resets to '选一个预设' / '还没有预设'
+sel.value = '黑丝';
+sel.dispatch('change');
+const density = getEl('#density');
+density.value = '135';
+density.dispatch('input');
+assert.equal(sel.value, '黑丝');
+assert.equal(getEl('#btn-preset-undo').hidden, false);
+assert.equal(getEl('#btn-preset-undo').textContent, {json.dumps(restore_label)});
+
+const delPromise = getEl('#btn-preset-delete').listeners.click[0]();
+const delDlg = getEl('#preset-delete');
+assert.equal(delDlg.open, true);
+delDlg.returnValue = 'delete';
+delDlg.close();
+await delPromise;
+await new Promise((r) => setTimeout(r, 20));
+assert.equal(sel.value, '');
+assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(pick_label)});
+assert.equal(sel.selectedOptions[0]?.hidden, true);
+assert.deepEqual(visibleMenuTexts(), ['旧版' + {json.dumps(bad_suffix)}, {json.dumps(new_label)}]);
+""";
+    res = subprocess.run(['node', '--input-type=module', '-e', script], capture_output=True, text=True, encoding='utf-8')
+    assert res.returncode == 0, res.stderr or res.stdout
+

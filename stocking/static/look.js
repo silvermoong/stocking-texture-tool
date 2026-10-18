@@ -788,6 +788,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   function renderPresetList() {
     const none = document.createElement('option');
     none.value = '';
+    none.hidden = true;
     none.textContent = L.presets.length ? t('选一个预设') : t('还没有预设');
     const asNew = document.createElement('option');
     asNew.textContent = t('保存为新预设…');
@@ -803,6 +804,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   }
 
   function renderPresetState() {
+    if (!presetSel.options.length) { renderPresetList(); return; }
     const p = presetOf(L.presetName);
     if (!p) L.presetName = null;                 // none, or deleted since
     presetSel.value = p ? p.name : '';
@@ -963,7 +965,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   });
 
   presetSel.addEventListener('change', () => {
-    if (presetSel.selectedOptions[0].dataset.new) {
+    if (presetSel.selectedOptions[0]?.dataset.new) {
       renderPresetState();                       // the list shows the selected preset again while the name is asked
       openSavePreset();
     } else if (presetSel.value) applyPreset(presetSel.value);
