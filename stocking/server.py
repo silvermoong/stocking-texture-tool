@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 import json
+import mimetypes
 import os
 import subprocess
 import threading
@@ -54,6 +55,10 @@ async def _lifespan(app):
     sam.service.start()
     yield
 
+
+# Windows reads MIME types from HKCR, where editors often set .js to text/plain; module scripts require text/javascript
+for _mime, _ext in (('text/javascript', '.js'), ('application/json', '.json'), ('text/css', '.css')):
+    mimetypes.add_type(_mime, _ext)
 
 bus = Bus()
 app = FastAPI(title='丝袜纹理工具', lifespan=_lifespan)
