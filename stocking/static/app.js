@@ -1305,6 +1305,8 @@ const EXPORTS = {
     done: t('已导出成品图到 {folder}'), needsLook: true },
   cutout: { label: t('仅丝袜'), desc: t('PNG，只有丝袜，其他地方透明'), main: t('导出仅丝袜'), doing: t('正在导出仅丝袜…'),
     done: t('已导出仅丝袜到 {folder}'), needsLook: true },
+  texture: { label: t('仅纹理'), desc: t('PNG，中性灰底的纹理，用「线性光」叠在丝袜上'), main: t('导出仅纹理'),
+    doing: t('正在导出仅纹理…'), done: t('已导出仅纹理到 {folder}'), needsLook: true },
   guides: { label: t('丝袜引导.psd'), desc: t('部位和走向线，可以再打开接着改'), main: t('导出丝袜引导.psd'),
     doing: t('正在导出丝袜引导.psd…'), done: t('已导出丝袜引导.psd到 {folder}'), needsLook: false },
 };

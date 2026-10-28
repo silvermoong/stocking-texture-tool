@@ -226,12 +226,13 @@ On a small picture (832×1216, say) the course spacing soon reaches its lower li
 
 ### 7. Export
 
-Click Export image at the top right. The arrow beside it switches to the other two kinds, and the button remembers your last choice (Ctrl+E does the same). Each export opens a save window where you choose the folder and the file name. It starts next to the original, then in the folder you last saved to; the suggested names are below, numbered (2), (3)… when that name is taken, so exporting several variants in a row never overwrites one. Picking an existing file asks before replacing it.
+Click Export image at the top right. The arrow beside it switches to the other three kinds, and the button remembers your last choice (Ctrl+E does the same). Each export opens a save window where you choose the folder and the file name. It starts next to the original, then in the folder you last saved to; the suggested names are below, numbered (2), (3)… when that name is taken, so exporting several variants in a row never overwrites one. Picking an existing file asks before replacing it.
 
 | Export | Suggested name | Use |
 | --- | --- | --- |
 | Finished image | `name-finished.png` | Use as is |
 | Stockings only | `name-stockings-only.png` | The stockings alone, everything else transparent. Laid over the original it gives the finished image: one layer in Photoshop whose opacity or mask you can still change |
+| Texture only | `name-texture-only.png` | The texture alone on neutral grey (128), grey wherever there is no texture. Set the layer's blend mode to Linear Light over the original and it gives the finished image; its opacity is the texture's strength, and over stockings you repaint it lays the texture on them too. The texture is worked out on the original, so the further you change the stockings' colour, the further the result is from the tool's |
 | Guides | `name-stocking-guides.psd` | Regions, direction lines and divider lines; drop it on the tool later to keep working |
 
 The tool saves your work as you go: close it and it opens where you left off. Before opening another picture, it reminds you to export the guides if the current ones aren't saved anywhere.

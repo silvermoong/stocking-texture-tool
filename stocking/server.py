@@ -805,7 +805,8 @@ EXPORT_WAIT = 180                   # s: longest an export waits for solves and 
 def _ask_save_path(kind, suggested):
     import tkinter as tk
     from tkinter import filedialog
-    title = {'png': tr('导出成品图'), 'cutout': tr('导出仅丝袜'), 'guides': tr('导出丝袜引导.psd')}[kind]
+    title = {'png': tr('导出成品图'), 'cutout': tr('导出仅丝袜'), 'texture': tr('导出仅纹理'),
+             'guides': tr('导出丝袜引导.psd')}[kind]
     types = [(tr('Photoshop 文件'), '*.psd')] if kind == 'guides' else [(tr('PNG 图片'), '*.png')]
     with _dialog_lock:
         root = tk.Tk()
@@ -836,7 +837,7 @@ def _check_exportable(d, kind):
 
 
 class KindIn(BaseModel):
-    kind: str = 'png'                   # export.KINDS: 成品图, 仅丝袜, 丝袜引导.psd
+    kind: str = 'png'                   # export.KINDS: 成品图, 仅丝袜, 仅纹理, 丝袜引导.psd
 
 
 @app.post('/api/doc/{doc_id}/export/ask')
@@ -851,7 +852,7 @@ def ask_export_path(doc_id: str, body: KindIn):
 
 
 class ExportIn(BaseModel):
-    kind: str = 'png'                   # export.KINDS: 成品图, 仅丝袜, 丝袜引导.psd
+    kind: str = 'png'                   # export.KINDS: 成品图, 仅丝袜, 仅纹理, 丝袜引导.psd
     path: str                           # the file to write, as chosen in the save dialog (export/ask)
     params: dict | None = None          # the look being shown; None = the document's saved look
 

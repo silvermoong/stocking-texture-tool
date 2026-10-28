@@ -4,11 +4,13 @@ user's own file is never written.
   png     <name>-丝袜成品.png   the finished picture (成品图)
   cutout  <name>-仅丝袜.png     the stockings alone, everything else transparent: laid over the art it gives the
                                finished picture
+  texture <name>-仅纹理.png     the texture alone on neutral grey: laid over the art in Linear Light it gives the
+                               finished picture, and over stockings painted anew it lays the same texture on them
   guides  <name>-丝袜引导.psd   the guides (regions, 走向, 亮点, 隔开), which reopen in the tool or Photoshop
 
 Those are the names the dialog suggests, numbered ' (2)', ' (3)' … past any file already there, so exporting a
 second variant never takes the first one's place unless the user picks that file. The names follow the page's
-language (English: -finished.png, -stockings-only.png, -stocking-guides.psd); either language's suffix is stripped
+language (English: -finished.png, -stockings-only.png, -texture-only.png, -stocking-guides.psd); either language's suffix is stripped
 from a source that is one of our exports.
 
 Each file is written beside its final name and then moved over it, so a failure (a file open in another program,
@@ -23,8 +25,10 @@ import numpy as np
 from . import knit, psd_io
 from .i18n import both, tr
 
-KINDS = ('png', 'cutout', 'guides')
-NAMES = {'png': '丝袜成品.png', 'cutout': '仅丝袜.png', 'guides': '丝袜引导.psd'}   # in Chinese; written via tr()
+KINDS = ('png', 'cutout', 'texture', 'guides')
+NAMES = {'png': '丝袜成品.png', 'cutout': '仅丝袜.png', 'texture': '仅纹理.png',
+         'guides': '丝袜引导.psd'}                                    # in Chinese; written via tr()
+NEUTRAL = 128                                                       # 仅纹理's grey where the texture changes nothing
 EXTS = {k: os.path.splitext(n)[1] for k, n in NAMES.items()}
 EARLIER = (psd_io.TEXTURE_MARK,)                                    # 丝袜纹理: what earlier exports were named
 
@@ -113,8 +117,18 @@ def stocking_layer(art_rgb, out_rgb, alpha):
     return np.dstack([np.clip(np.round(rgb), 0, 255), a8]).astype(np.uint8)
 
 
+def texture_layer(art_rgb, out_rgb):
+    """RGB uint8 of the texture alone, for Linear Light: NEUTRAL plus half of what the render changed. Linear Light
+    (base + 2 * (layer - NEUTRAL)) over the art gives the finished picture back (to within a level), the layer's
+    opacity scales the texture, and over stockings painted anew it adds the same change. Every texture is worked
+    out on the art, so on a very different colour the result is close, not exact; where the render changed
+    nothing the layer is the neutral grey."""
+    d = out_rgb.astype(np.int16) - art_rgb.astype(np.int16)
+    return np.clip(NEUTRAL + np.round(d / 2), 0, 255).astype(np.uint8)
+
+
 def export(doc, scene, params, path, kind='png'):
-    """Write one file of `kind` (KINDS) to `path` (see destination), replacing any file there. png and cutout render
+    """Write one file of `kind` (KINDS) to `path` (see destination), replacing any file there. png, cutout and texture render
     with `params` (look.clean_params) on `scene`; guides need neither. Returns {'file', 'seconds', 'sparkles_ready'}.
     Raises ValueError with a message for the user."""
     t0 = time.perf_counter()
@@ -132,6 +146,9 @@ def export(doc, scene, params, path, kind='png'):
         ready = info['sparkles_ready']
         if kind == 'png':
             _replace(path, lambda p: knit.write(p, out_bgr))
+        elif kind == 'texture':
+            layer = texture_layer(doc.art, cv2.cvtColor(out_bgr, cv2.COLOR_BGR2RGB))
+            _replace(path, lambda p: knit.write(p, cv2.cvtColor(layer, cv2.COLOR_RGB2BGR)))
         else:
             layer = stocking_layer(doc.art, cv2.cvtColor(out_bgr, cv2.COLOR_BGR2RGB), doc.coverage()[1])
             _replace(path, lambda p: knit.write(p, cv2.cvtColor(layer, cv2.COLOR_RGBA2BGRA)))

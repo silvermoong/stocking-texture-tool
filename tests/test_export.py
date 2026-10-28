@@ -51,7 +51,8 @@ def test_suggested_names_never_take_an_earlier_export_or_the_source(tmp_path):
     assert export.base_name('-丝袜引导.psd') == '-丝袜引导'
     src = str(tmp_path / 'x-丝袜引导.psd')
     assert [os.path.basename(export.suggest(str(tmp_path), 'x-丝袜引导.psd', k, source=src)) for k in export.KINDS] == \
-        ['x-丝袜成品.png', 'x-仅丝袜.png', 'x-丝袜引导 (2).psd']
+        ['x-丝袜成品.png', 'x-仅丝袜.png', 'x-仅纹理.png', 'x-丝袜引导 (2).psd']
+    assert export.base_name('x-仅纹理.png') == 'x' and export.base_name('x-texture-only.png') == 'x'
     (tmp_path / 'x-丝袜成品.png').write_bytes(b'')
     (tmp_path / 'x-丝袜成品 (2).png').write_bytes(b'')
     assert os.path.basename(export.suggest(str(tmp_path), 'x.png', 'png')) == 'x-丝袜成品 (3).png'
@@ -93,6 +94,13 @@ def test_the_finished_picture_and_the_stockings_alone(solved, tmp_path, style):
     assert (cut[..., 3][alpha > 0.999] == 255).all()
     rest = (alpha == 0) & (png == solved.art).all(2)
     assert (cut[rest] == 0).all()
+    tex = _read_png(export.export(solved, s, q, str(tmp_path / '方案A-仅纹理.png'), 'texture')['file'])
+    assert sorted(os.listdir(tmp_path)) == ['方案A-仅丝袜.png', '方案A-仅纹理.png', '方案A.png']
+    linear_light = np.clip(solved.art.astype(int) + 2 * (tex.astype(int) - export.NEUTRAL), 0, 255)
+    assert np.abs(linear_light - png).max() <= 1
+    unchanged = (png == solved.art).all(2)
+    assert (tex[unchanged] == export.NEUTRAL).all()
+    assert (tex[~unchanged] != export.NEUTRAL).any()
 
 
 def test_guides_psd_reopens_as_written(solved, tmp_path):
