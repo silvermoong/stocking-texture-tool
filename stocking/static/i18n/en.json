@@ -273,6 +273,8 @@
  "画笔：涂当前部位，右键擦除": "Brush: paints the current region; right-drag erases",
  "画面：涂部位、画走向线": "Picture: paint regions, draw direction lines",
  "界面语言": "Language",
+ "界面大小": "Interface size",
+ "界面大小只能是 {choices}": "The interface size can only be {choices}",
  "直接打开": "Open anyway",
  "相邻": "adjacent",
  "空格": "Space",

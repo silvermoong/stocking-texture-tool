@@ -135,6 +135,19 @@ for (const b of document.querySelectorAll('.lang .seg-btn')) {
   });
 }
 
+// 界面大小: kept in the server's settings like the language, which serves the page with it; reloading applies it everywhere
+{
+  const sel = $('#ui-scale');
+  const k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--k')) || 1;
+  sel.value = String(Math.round(k * 100));
+  sel.addEventListener('change', async () => {
+    try {
+      await request('POST', '/api/ui-scale', { scale: +sel.value });
+      location.reload();
+    } catch (e) { flash(e.message, true); }
+  });
+}
+
 for (const g of document.querySelectorAll('[role="radiogroup"]')) rovingGroup(g, '[role="radio"]', 'aria-checked');
 rovingGroup($('.modes'), '[role="tab"]', 'aria-selected');
 

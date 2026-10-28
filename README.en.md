@@ -27,7 +27,7 @@ Black or white stockings alike (original on the left, processed on the right):
 - **A beta switch for when you do want moiré.** The rippling bands of light and dark that real stockings show worn in layers or photographed: turn on the Moiré effect switch, then use Strength for how strong the bands are and Area for how far they grow from one small ring. Off by default; the bands follow the bulges of the knees and thighs and leave the flat parts alone.
 - **Mirror in one click.** Finish the left leg and the right one follows.
 - **Three exports:** the finished image; a PNG of the stockings alone with everything else transparent (laid over the original it gives the finished image, handy as a Photoshop layer); and a guides PSD you can open again to keep working. Your own PSD is never written to.
-- Chinese and English interface.
+- Chinese and English interface. If the text is too small on a 2K or 4K screen, Interface size (top right) enlarges it to 115%–175%.
 
 ## Install
 

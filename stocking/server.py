@@ -190,7 +190,34 @@ def index():
         html = f.read()
     if i18n.lang() == 'en':
         html = html.replace('<html lang="zh-CN">', '<html lang="en">', 1)
+    html = html.replace('<html ', f'<html style="--k: {ui_scale() / 100:g}" ', 1)
     return Response(html, media_type='text/html; charset=utf-8')
+
+
+UI_SCALES = (100, 115, 125, 150, 175)     # 界面大小, percent
+
+
+def ui_scale():
+    v = settings.get('ui_scale')
+    return v if v in UI_SCALES else 100
+
+
+class UiScaleIn(BaseModel):
+    scale: int
+
+
+@app.get('/api/ui-scale')
+def get_ui_scale():
+    return {'scale': ui_scale(), 'choices': list(UI_SCALES)}
+
+
+@app.post('/api/ui-scale')
+def set_ui_scale(body: UiScaleIn):
+    """The 界面大小 menu; the page reloads to show it."""
+    if body.scale not in UI_SCALES:
+        raise HTTPException(400, tr('界面大小只能是 {choices}', choices=' / '.join(f'{s}%' for s in UI_SCALES)))
+    settings.update(ui_scale=body.scale)
+    return get_ui_scale()
 
 
 class LangIn(BaseModel):
