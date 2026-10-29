@@ -3,7 +3,6 @@ import os
 import threading
 
 import pytest
-from fastapi.testclient import TestClient
 
 from stocking import look, presets, server, settings
 
@@ -119,8 +118,8 @@ def test_saves_from_several_threads_all_land_and_other_settings_survive():
     assert settings.get('lang') == 'en' and settings.get('last_dir') == 'C:/x'
 
 
-def test_the_api_lists_saves_overwrites_and_deletes():
-    c = TestClient(server.app)
+def test_the_api_lists_saves_overwrites_and_deletes(api):
+    c = api
     assert c.get('/api/look/presets').json() == {'presets': []}
     body = {'name': '细腻', 'params': {'style': 'grain', 'density': 110}}
     r = c.put('/api/look/presets', json=body)
@@ -133,8 +132,8 @@ def test_the_api_lists_saves_overwrites_and_deletes():
     assert json.loads(open(settings._FILE, encoding='utf-8').read())[presets.KEY] == {}
 
 
-def test_the_api_answers_a_bad_request_with_a_message():
-    c = TestClient(server.app)
+def test_the_api_answers_a_bad_request_with_a_message(api):
+    c = api
     r = c.put('/api/look/presets', json={'name': ' ', 'params': {}})
     assert r.status_code == 400 and '名字' in r.json()['detail']
     r = c.put('/api/look/presets', json={'name': '甲', 'params': {'style': 'nope'}})
@@ -144,9 +143,9 @@ def test_the_api_answers_a_bad_request_with_a_message():
     assert c.get('/api/look/presets').json() == {'presets': []}
 
 
-def test_the_last_choice_for_auto_100_is_remembered_and_a_new_look_starts_from_it():
+def test_the_last_choice_for_auto_100_is_remembered_and_a_new_look_starts_from_it(api):
     import types
-    c = TestClient(server.app)
+    c = api
     new = types.SimpleNamespace(look=None, sparkle=None)
     assert server.blend_auto() is True and server._base_look(new)['lock_total'] is True      # on until turned off
     r = c.put('/api/look/blend-auto', json={'on': False})
@@ -268,7 +267,7 @@ def test_a_file_that_is_missing_or_far_too_big_or_not_text_is_refused(tmp_path):
     assert presets.listing() == []
 
 
-def test_the_api_exports_a_preset_to_the_file_the_dialog_names_and_remembers_the_folder(monkeypatch, tmp_path):
+def test_the_api_exports_a_preset_to_the_file_the_dialog_names_and_remembers_the_folder(api, monkeypatch, tmp_path):
     out = tmp_path / '分享'
     out.mkdir()
     offered = []
@@ -279,7 +278,7 @@ def test_the_api_exports_a_preset_to_the_file_the_dialog_names_and_remembers_the
         return answers.pop(0)
 
     monkeypatch.setattr(server, '_ask_preset_save', ask)
-    c = TestClient(server.app)
+    c = api
     presets.save('黑丝·细线', TWO_LAYERS)
     answers.append(None)
     assert c.post('/api/look/presets/export', json={'name': '黑丝·细线'}).json() == {'cancelled': True}
@@ -300,12 +299,12 @@ def test_the_api_exports_a_preset_to_the_file_the_dialog_names_and_remembers_the
     assert r.status_code == 400 and '文件夹不存在' in r.json()['detail']
 
 
-def test_the_api_imports_the_file_the_dialog_picks_and_never_replaces_a_preset(monkeypatch, tmp_path):
+def test_the_api_imports_the_file_the_dialog_picks_and_never_replaces_a_preset(api, monkeypatch, tmp_path):
     presets.save('朋友的', {'style': 'loops'})
     f = write_file(tmp_path / 'p.json', {'format': presets.FORMAT, 'version': 1, 'name': '朋友的', 'params': TWO_LAYERS})
     answers = []
     monkeypatch.setattr(server, '_ask_preset_open', lambda: answers.pop(0))
-    c = TestClient(server.app)
+    c = api
     answers.append(None)
     assert c.post('/api/look/presets/import').json() == {'cancelled': True}
     answers.append(f)

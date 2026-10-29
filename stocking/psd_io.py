@@ -39,8 +39,22 @@ def _alpha(layer, size):
         return out
     x0, y0 = layer.bbox[0], layer.bbox[1]
     a = np.asarray(c.getchannel('A')) if 'A' in c.getbands() else np.full((c.height, c.width), 255, np.uint8)
-    out[y0:y0 + a.shape[0], x0:x0 + a.shape[1]] = a
+    # a layer may reach past the canvas on any side: keep the part on it
+    cx0, cy0 = max(x0, 0), max(y0, 0)
+    cx1, cy1 = min(x0 + a.shape[1], W), min(y0 + a.shape[0], H)
+    if cx1 > cx0 and cy1 > cy0:
+        out[cy0:cy1, cx0:cx1] = a[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
     return out
+
+
+def unique_name(name, used):
+    """`name`, or when `used` has it already the first free '<name> 2', '<name> 3' …."""
+    if name not in used:
+        return name
+    k = 2
+    while f'{name} {k}' in used:
+        k += 1
+    return f'{name} {k}'
 
 
 def read_guide_layers(path):
@@ -65,7 +79,8 @@ def read_guide_layers(path):
             elif L.name.startswith(tuple(strokes_n)):
                 continue                                  # alternative stroke layers, e.g. a hidden example variant
             else:
-                regions[L.name] = a > 0                   # coverage: the layer's display opacity is irrelevant
+                # coverage: the layer's display opacity is irrelevant. Two layers of one name both stay, numbered.
+                regions[unique_name(L.name, regions)] = a > 0
     return {'art': np.asarray(art.convert('RGB')), 'regions': regions, 'strokes': strokes, 'sparkle': sparkle,
             'dividers': dividers}
 

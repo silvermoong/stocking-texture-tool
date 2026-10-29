@@ -24,7 +24,8 @@ from . import psd_io, symmetry, trace
 from . import walls as walls_mod
 from .i18n import tr
 
-NEVER_SAVED = object()          # Document._saved_at: the guides were never in a file
+NEVER_SAVED = object()          # Document._saved_at: no file has the guides, or undo can no longer reach the state one had
+_NOW = object()                 # mark_guides_saved(): the guides as they are now
 DEFAULT_REGIONS = ('左腿', '右腿')          # a pair to start with (named in the page's language); + adds more
 PALETTE = ('#65a7fa', '#f2823b', '#b77ff2', '#47c496', '#f3c443',
            '#f075aa', '#54c9e3', '#97ca5d', '#ec5b57', '#c19d74')
@@ -227,7 +228,7 @@ class Document:
         self.dividers = []              # the user's 隔开 lines (Divider)
         self.erased = []                # (x, y) where the user deleted a found wall: walls there are dropped
         self.color_exclude = True       # 颜色排除: drop region pixels whose colour is far from the stocking's
-        self._known = {}                # every region ever created, by id (undo can bring deleted ones back)
+        self._known = {}                # every region that is live or that undo/redo can bring back, by id
         self.dirty = False              # edited since opening
         self._saved_at = None           # the edit on top of the undo stack when the guides last matched a file
                                         # (opened, or exported as 丝袜引导.psd); NEVER_SAVED: no file has them
@@ -239,6 +240,8 @@ class Document:
         self._ids = itertools.count(1)
         self._versions = itertools.count(1)
         self._undo, self._redo = [], []
+        self._held = []                 # the outer undo stacks while _batch collects a step's edits
+        self._dropped = 0               # steps the history cap has dropped (the state with nothing to undo moves on)
         # The 纹理 page has a history of its own: the look settings and 颜色排除 (undo(page='look')); the 引导 page's
         # is _undo, _redo above. look_rev counts the undos and redos of the look, so a page can tell its settings were
         # changed under it and read them again.
@@ -292,7 +295,7 @@ class Document:
         """A raster stroke layer as vector strokes: the centre line of each stroke inside each region, i.e. exactly
         the polylines the solver itself extracts from that layer. Pieces outside every region are kept too."""
         REG = (gf.label_regions([r.mask for r in self.regions], min_frac=0) if self.regions
-               else np.zeros((self.h, self.w), np.int8))
+               else np.zeros((self.h, self.w), np.int16))
         for i in range(len(self.regions) + 1):
             hint = self.regions[i - 1].id if i else None
             for Q in gf.centre_lines(stroke_alpha, REG == i):
@@ -316,7 +319,7 @@ class Document:
         with doc.lock:
             made = []
             for nm, color, mask in regions:
-                r = doc._new_region(nm, mask)
+                r = doc._new_region(doc._unique_name(nm), mask)
                 r.color = color
                 made.append(r)
             for pts, k in strokes:
@@ -335,10 +338,22 @@ class Document:
     def _top(self):
         return self._undo[-1] if self._undo else None
 
-    def mark_guides_saved(self):
-        """The guides as they are now were written to a file (丝袜引导.psd)."""
+    def guides_token(self):
+        """Names the guides' edit state as it is now, for mark_guides_saved once a file holding them is written."""
         with self.lock:
-            self._saved_at = self._top()
+            return self._top(), self._dropped
+
+    def mark_guides_saved(self, token=_NOW):
+        """The guides as they were at `token` (guides_token; by default as they are now) were written to a file
+        (丝袜引导.psd). Edits made since then stay unsaved; when undo and redo can no longer reach that state, no state
+        counts as saved until the next file."""
+        with self.lock:
+            top, dropped = self.guides_token() if token is _NOW else token
+            if top is None:                 # the state with nothing to undo: the same one while the cap drops nothing
+                reachable = dropped == self._dropped
+            else:
+                reachable = any(op is top for op in itertools.chain(self._undo, self._redo))
+            self._saved_at = top if reachable else NEVER_SAVED
 
     def unsaved_guides(self):
         """Regions or 走向 lines the user would lose by opening another image: they differ from the last file that
@@ -421,21 +436,17 @@ class Document:
         return r
 
     def _unique_name(self, name):
-        used = {r.name for r in self.regions}
-        if name not in used:
-            return name
-        k = 2
-        while f'{name} {k}' in used:
-            k += 1
-        return f'{name} {k}'
+        return psd_io.unique_name(name, {r.name for r in self.regions})
 
     @contextlib.contextmanager
     def _batch(self):
         """Edits inside become one undo step."""
         outer, self._undo = self._undo, []
+        self._held.append(outer)
         try:
             yield
         finally:
+            self._held.pop()
             ops, self._undo = self._undo, outer
             if ops:
                 self._push(ops[0] if len(ops) == 1 else ('group', ops))
@@ -504,14 +515,57 @@ class Document:
     def _push(self, op, page='guides'):
         undo, redo = self._stacks(page)
         undo.append(op)
+        dropped = undo[:-UNDO_LIMIT]
         del undo[:-UNDO_LIMIT]
+        cleared = list(redo)
         redo.clear()
         if op[0] != 'look':                                         # a look change is no edit of the guides
             self.dirty = True
         self.edits += 1
+        if page == 'guides':
+            if self._held:                                          # inside _batch, undo is the step's own list
+                dropped = []
+            if dropped or cleared:
+                self._forget(dropped, cleared)
+
+    def _forget(self, dropped, cleared):
+        """Steps of the 引导 history that are gone for good (dropped by the cap, or redo steps a new edit replaced):
+        the saved state among them can no longer be reached, and regions and solves nothing can bring back any more
+        are let go."""
+        self._dropped += len(dropped)
+        if (dropped and self._saved_at is None) or any(op is self._saved_at for op in dropped + cleared):
+            self._saved_at = NEVER_SAVED
+        self._release()
+
+    def _release(self):
+        """Forget regions (and their solves) that are neither live nor in a step undo or redo can still apply."""
+        keep = {r.id for r in self.regions}
+
+        def walk(op):
+            kind = op[0]
+            if kind == 'group':
+                for sub in op[1]:
+                    walk(sub)
+            elif kind == 'masks':
+                keep.update(rec[0] for rec in op[1])
+            elif kind in ('region+', 'region-'):
+                keep.add(op[1].id)
+            elif kind == 'rename':
+                keep.add(op[1])
+        for op in itertools.chain(self._undo, self._redo, *self._held):
+            walk(op)
+        for rid in [k for k in self._known if k not in keep]:
+            del self._known[rid]
+            for cache in (self._solves, self._changed_at, self._last_sig, self._walls):
+                cache.pop(rid, None)
+
+    def _taken(self, name, but=None):
+        if any(r.name == name for r in self.regions if r is not but):
+            raise ValueError(tr('已经有叫“{name}”的部位了，换一个名字', name=name))
 
     def add_region(self, name):
         with self.lock:
+            self._taken(name)
             r = self._new_region(name)
             self._push(('region+', r, len(self.regions) - 1))
             self._touch()
@@ -529,6 +583,7 @@ class Document:
         with self.lock:
             r = self.region(rid)
             if name != r.name:
+                self._taken(name, but=r)
                 self._push(('rename', rid, r.name, name))
                 r.name = name
 
@@ -953,7 +1008,7 @@ class Document:
         n = len(self.regions)
         # every piece the user selected counts, however small: a strip of leg showing between strands of hair is
         # cut off from the rest, and the solver carries the courses on into it (guide_fields.solve_region)
-        REG = gf.label_regions([r.mask for r in self.regions], min_frac=0) if n else np.zeros((self.h, self.w), np.int8)
+        REG = gf.label_regions([r.mask for r in self.regions], min_frac=0) if n else np.zeros((self.h, self.w), np.int16)
         index = {r.id: i for i, r in enumerate(self.regions, 1)}
         for s in self.strokes:
             x0, y0, x1, y1 = s.box
@@ -1077,12 +1132,13 @@ class Document:
                 error = tr('求解出错：{error}', error=e)
             dt = time.perf_counter() - t
             with self._cv:
-                cache = self._solves.setdefault(rid, {})
-                cache.pop(inp.sig, None)
-                cache[inp.sig] = Solved(inp.sig, inp, fields, error, dt, courses, wales, next(self._versions),
-                                        unguided, cut, wall_lines)
-                while len(cache) > SOLVE_CACHE:
-                    del cache[next(iter(cache))]
+                if rid in self._known:                  # else released while it was being solved
+                    cache = self._solves.setdefault(rid, {})
+                    cache.pop(inp.sig, None)
+                    cache[inp.sig] = Solved(inp.sig, inp, fields, error, dt, courses, wales, next(self._versions),
+                                            unguided, cut, wall_lines)
+                    while len(cache) > SOLVE_CACHE:
+                        del cache[next(iter(cache))]
                 self._solving = None
             self._emit(type='solved', region=rid, seconds=round(dt, 2), error=error)
 
@@ -1203,6 +1259,19 @@ class Document:
                     continue
                 y0, y1, x0, x1 = inp.box
                 out[y0:y1, x0:x1][inp.mc] = np.maximum(out[y0:y1, x0:x1][inp.mc], inp.alpha[inp.mc])
+            return out
+
+    def guide_stroke_alpha(self):
+        """Every stroke for the guides PSD's 走向 layer: as stroke_alpha, plus the strokes no region owns drawn whole,
+        so a file written from it keeps all of them."""
+        with self.lock:
+            out = self.stroke_alpha()
+            loose = [s for s in self.strokes if s.region is None]
+            if loose:
+                extra = np.zeros((self.h, self.w), np.uint8)
+                for s in loose:
+                    s.raster(extra, 0, 0)
+                out = np.maximum(out, extra)
             return out
 
     def divider_alpha(self):

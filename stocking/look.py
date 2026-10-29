@@ -106,7 +106,7 @@ MOIRE_LIGHT = 0.13
 MOIRE_TEXTURE = 0.9
 RENDER_KEYS = ('style', 'density', 'tilt', 'strength', 'sparkle_on', 'sparkle_depth', 'sparkle_bright',
                'sparkle_painted', 'sparkle_even', 'particle_on', 'particle',
-               'moire_on', 'moire', 'moire_area', 'fade', 'weight', 'layers', 'lock_total')
+               'moire_on', 'moire', 'moire_area', 'fade', 'weight', 'amount', 'layers', 'lock_total')
 MARGIN = 8                  # px around a crop, so blurs and gradients at its edge see real neighbours
 
 
@@ -128,6 +128,15 @@ def _flag(v):
     return v.strip().lower() in ('1', 'true', 'yes') if isinstance(v, str) else bool(v)
 
 
+def _number(v, lo, hi):
+    """A setting as a float clipped to lo..hi. NaN and infinity are refused: clipping lets them through, and one of
+    them turns the whole render black."""
+    x = float(v)
+    if not np.isfinite(x):
+        raise ValueError(tr('设置的值不是有效的数字：{value}', value=v))
+    return float(np.clip(x, lo, hi))
+
+
 def _clean_layer(p):
     """One layer's settings (LAYER_KEYS) from raw ones: defaults filled in and every value range-checked."""
     q = {k: DEFAULTS[k] for k in LAYER_KEYS}
@@ -135,11 +144,11 @@ def _clean_layer(p):
     q['style'] = LEGACY_STYLES.get(q['style'], q['style'])
     if q['style'] not in STYLES:
         raise ValueError(tr('未知样式：{style}', style=q['style']))
-    q['density'] = float(np.clip(float(q['density']), 40, 200))
-    q['tilt'] = float(np.clip(float(q['tilt']), 0, 75))
-    q['strength'] = float(np.clip(float(q['strength']), 0, 250))
-    q['weight'] = float(np.clip(float(q['weight']), 0, 100))
-    q['amount'] = None if q['amount'] in (None, '', 'null') else float(np.clip(float(q['amount']), 0, 100))
+    q['density'] = _number(q['density'], 40, 200)
+    q['tilt'] = _number(q['tilt'], 0, 75)
+    q['strength'] = _number(q['strength'], 0, 250)
+    q['weight'] = _number(q['weight'], 0, 100)
+    q['amount'] = None if q['amount'] in (None, '', 'null') else _number(q['amount'], 0, 100)
     q['strength_auto'] = _flag(q['strength_auto'])
     if p.get('strength_auto') is None and 'strength' in p:
         q['strength_auto'] = q['strength'] == 100.0     # settings from before auto strength: a moved slider stays put
@@ -169,11 +178,11 @@ def clean_params(p):
     q.update({k: v for k, v in p.items() if k in DEFAULTS and v is not None})
     q.update(_clean_layer(p))
     q['layers'] = _clean_layers(q['layers'])
-    q['particle'] = float(np.clip(float(q['particle']), 0, 100))
-    q['moire'] = float(np.clip(float(q['moire']), 0, 100))
-    q['moire_area'] = float(np.clip(float(q['moire_area']), 0, 100))
+    q['particle'] = _number(q['particle'], 0, 100)
+    q['moire'] = _number(q['moire'], 0, 100)
+    q['moire_area'] = _number(q['moire_area'], 0, 100)
     for k in SPARKLE_KINDS:
-        q[f'sparkle_{k}'] = float(np.clip(float(q[f'sparkle_{k}']), 0, 300))
+        q[f'sparkle_{k}'] = _number(q[f'sparkle_{k}'], 0, 300)
     for k in ('sparkle_on', 'sparkle_link', 'particle_on', 'moire_on', 'fade', 'lock_total'):
         q[k] = _flag(q[k])
     if q['sparkle_link']:
@@ -277,33 +286,49 @@ def tilt_sides(R, names):
     xs_all = np.nonzero(inside)[1]
     mid, span = xs_all.mean(), max(float(np.ptp(xs_all)), 1.0)
     margin = 0.15 * span
-    parts = {}                                              # region -> [(piece mask, centre x)]
+
+    def pieces(i):
+        """Region i's pixels (rows, cols), the 8-connected piece each lies in (0, 1, ...) and every piece's centre x
+        and size; None for an empty region. Labelled inside the region's bounding box and kept per pixel, never as a
+        mask per piece: a region in a thousand specks would otherwise hold a thousand whole-image masks."""
+        ys, xs = np.nonzero(R == i)
+        if not len(xs):
+            return None
+        y0, x0 = ys.min(), xs.min()
+        box = (R[y0:ys.max() + 1, x0:xs.max() + 1] == i).astype(np.uint8)
+        n, lab = cv2.connectedComponents(box, connectivity=8)
+        k = lab[ys - y0, xs - x0] - 1
+        del lab
+        size = np.bincount(k, minlength=n - 1)
+        return ys, xs, k, np.bincount(k, weights=xs, minlength=n - 1) / size, size
+
+    parts = {}                                              # region -> (centre x, size) of each piece
     for i in range(1, len(names) + 1):
-        n, lab = cv2.connectedComponents((R == i).astype(np.uint8), connectivity=8)
-        parts[i] = [(p, np.nonzero(p)[1].mean()) for p in (lab == k for k in range(1, n))]
+        p = pieces(i)
+        if p is not None:
+            parts[i] = p[3:]
+    others_of = {i: np.concatenate([c[s >= 0.01 * len(xs_all)] for j, (c, s) in parts.items() if j != i] or
+                                   [np.zeros(0)]) for i in parts}
 
     def lean(cx, i):
         # in the middle with other stockings on both sides of it (a crotch between two legs): no lean
-        others = [c for j, ps in parts.items() if j != i for p, c in ps if p.sum() >= 0.01 * len(xs_all)]
-        if abs(cx - mid) < margin and any(c < cx - margin for c in others) and any(c > cx + margin for c in others):
+        others = others_of[i]
+        if abs(cx - mid) < margin and (others < cx - margin).any() and (others > cx + margin).any():
             return 0.0
         return 1.0 if cx <= mid else -1.0
 
-    for i, pieces in parts.items():
-        if not pieces:
-            continue
-        m = R == i
+    for i in parts:
         s = side_of(names[i - 1])
         if s:
-            side[m] = s
+            side[R == i] = s
             continue
+        ys, xs, k, centre, size = pieces(i)
         # one region painted over both legs: each leg on its own; otherwise the region as a whole
-        big = [c for p, c in pieces if p.sum() >= 0.1 * m.sum()]
-        if any(c < mid - margin for c in big) and any(c > mid + margin for c in big):
-            for p, c in pieces:
-                side[p] = 1.0 if c <= mid else -1.0
+        big = centre[size >= 0.1 * len(xs)]
+        if (big < mid - margin).any() and (big > mid + margin).any():
+            side[ys, xs] = np.where(centre[k] <= mid, 1.0, -1.0)
         else:
-            side[m] = lean(np.nonzero(m)[1].mean(), i)
+            side[ys, xs] = lean(xs.mean(), i)
     return side
 
 
@@ -564,7 +589,7 @@ class Scene:
         self.h, self.w = REG.shape
         self.src = np.ascontiguousarray(art_rgb[..., ::-1])            # the renderers work in BGR
         self.REG = REG
-        self.R = np.where(stock, REG, 0).astype(np.int8)
+        self.R = np.where(stock, REG, 0).astype(np.int16)
         self.V, self.A, self.alpha = V, A, alpha
         self.cut = cut if cut is not None and cut.any() else None
         self.fill = fill or None
@@ -840,8 +865,17 @@ class Scene:
         cover = same.astype(np.float32)
         num = cv2.boxFilter(f, -1, (size, size), normalize=False)
         den = cv2.boxFilter(cover, -1, (size, size), normalize=False)
-        score = np.where(den >= 0.6 * size * size, num / np.maximum(den, 1), 0)
-        y, x = np.unravel_index(int(np.argmax(score)), score.shape)
+        ok = same & (den >= 0.6 * size * size)
+        if ok.any():
+            score = np.where(ok, num / np.maximum(den, 1), -1)
+            y, x = np.unravel_index(int(np.argmax(score)), score.shape)
+        else:
+            # no window is textured enough (a strip narrower than the window): the textured pixel deepest inside,
+            # the middle one of those as deep
+            inner = cv2.distanceTransform(np.pad(same, 1).astype(np.uint8), cv2.DIST_L2, 5)[1:-1, 1:-1]
+            ys, xs = np.nonzero(inner >= inner.max() - 1e-3)
+            k = int(np.argmin((ys - ys.mean()) ** 2 + (xs - xs.mean()) ** 2))
+            y, x = ys[k], xs[k]
         with self._lock:
             self._densest = (int(x), int(y))
         return self._densest

@@ -271,6 +271,8 @@ function applyState(st) {
     S.hover = null;
     S.pending = null;
     S.current = null;
+    S.tiers = null;                     // click ids restart with every document: drop the last one's outlines
+    tiersKey = null;
     $('#exported').hidden = true;
     setMode('edit');                    // a newly opened image starts at 引导 (a reload keeps its page: below)
     fit();
@@ -309,6 +311,8 @@ function setNoDoc() {
   S.masks.clear();
   S.courses.clear();
   S.coverage = null;
+  S.tiers = null;
+  tiersKey = null;
   S.strokes = [];
   S.dividers = [];
   S.wallHover = null;
@@ -318,16 +322,17 @@ function setNoDoc() {
   redraw();
 }
 
-// Outlines of SAM's candidates for the last click, so every tier is visible before choosing it.
+// Outlines of SAM's candidates for the last click, so every tier is visible before choosing it. Click ids restart
+// with every document, so the outlines belong to a document id and a click id together.
 function syncTiers() {
   const c = S.doc && S.doc.segment_cycle;
   if (!c) return;
-  if (S.tiers && S.tiers.click === c.click) return;
   const id = S.doc.id;
-  S.tiers = { click: c.click, paths: null };
+  if (S.tiers && S.tiers.doc === id && S.tiers.click === c.click) return;
+  S.tiers = { doc: id, click: c.click, paths: null };
   const t = S.tiers;
   request('GET', `/api/doc/${id}/segment/outlines`).then((j) => {
-    if (S.tiers !== t || j.click !== t.click) return;
+    if (S.tiers !== t || !S.doc || S.doc.id !== t.doc || j.click !== t.click) return;
     t.paths = j.outlines.map(linesPath);
     redraw();
   }).catch(() => {});
@@ -346,7 +351,7 @@ function placeTiers() {
   const show = !!(c && S.tool === 'segment' && !S.segPending);
   if (el.hidden === show) { el.hidden = !show; tiersSize = null; }
   if (!show) return;
-  const key = `${c.click}|${c.n}|${c.k}|${c.subtract}`;
+  const key = `${S.doc.id}|${c.click}|${c.n}|${c.k}|${c.subtract}`;
   if (key !== tiersKey) {
     tiersKey = key;
     tiersSize = null;
@@ -515,7 +520,8 @@ function renderHistory() {
 function stepHistory(kind) {
   if (!S.doc) return;
   if (S.mode !== 'look') { edit('POST', `/${kind}`); return; }
-  lookUI.flush().then(() => edit('POST', `/${kind}?page=look`));     // a change still on its way goes first
+  // a change still on its way goes first; if it could not be saved (already shown), do not undo past it
+  lookUI.flush().then(() => edit('POST', `/${kind}?page=look`), () => {});
 }
 
 function renderChrome() {
@@ -912,7 +918,8 @@ function draw() {
   }
   // where the last click landed, while its candidates can still be cycled, or while it is being segmented
   const cyc = d.segment_cycle;
-  if (S.tool === 'segment' && cyc && !S.segPending && S.tiers && S.tiers.paths && S.tiers.click === cyc.click) {
+  if (S.tool === 'segment' && cyc && !S.segPending && S.tiers && S.tiers.paths && S.tiers.doc === d.id
+      && S.tiers.click === cyc.click) {
     S.tiers.paths.forEach((path, k) => {
       const on = k === cyc.k, hot = k === S.tierHover;
       ctx.setLineDash(on || hot ? [] : [6 * px, 5 * px]);

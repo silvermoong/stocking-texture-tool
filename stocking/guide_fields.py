@@ -6,7 +6,7 @@ Verified on the sample guides PSD (tests/verify.py, tests/test_document.py). Pur
 
 regions: list of HxW bool masks, one per body part (left thigh, right thigh, ...). Overlaps go to the later mask.
 stroke_alpha: HxW uint8, the guide-stroke layer's alpha (any colour). Each connected stroke is one course.
-REG: int8 region index 1..n (0 = none). V: px along the surface normal to the courses, |grad V| = 1 everywhere: the
+REG: int16 region index 1..n (0 = none). V: px along the surface normal to the courses, |grad V| = 1 everywhere: the
 strokes only set which way the courses run, never how dense they are (unlike the reference, where strokes crowding
 together meant perspective and was carried into V).
 NX, NY: unit course normal (direction of increasing V). A: px of arc length along each course, 0 on the region's
@@ -312,6 +312,8 @@ def solve_v(region, stroke_alpha, walls=None):
     # a piece of the grid with no stroke would interpolate direction from nothing, and solve_across would trace
     # every course of the wild V that comes out there
     G.keep_pieces_with(np.concatenate(lines))
+    if not any(len(G.rows(Q)[0]) for Q in lines):
+        return None             # every stroke lies in a wall's slit: nothing on the grid says where courses run
     unguided = unguided_pieces(region, lines)
     # 1. course direction: doubled-angle tangents interpolated smoothly (stroke direction sign is meaningless)
     pts = np.concatenate(lines)
@@ -348,8 +350,8 @@ def solve_v(region, stroke_alpha, walls=None):
     # slanted or curved stroke covers, and one course along that stroke comes out about twice as wide (a seam).
     nxs = cv2.resize(nx, (G.ws, G.hs), interpolation=cv2.INTER_AREA)
     nys = cv2.resize(ny, (G.ws, G.hs), interpolation=cv2.INTER_AREA)
-    k, _ = G.rows(lines[0])
-    k = np.unique(k)
+    # the first stroke that reaches the grid: one lying wholly in a wall's slit has no cell to hold
+    k = next(k for k in (np.unique(G.rows(Q)[0]) for Q in lines) if len(k))
     F = sp.csr_matrix((np.full(len(k), 1.0 / len(k)), (np.zeros(len(k), int), k)), shape=(1, G.n))
     gx = G.edge(nxs, 0, 1) * SC
     gy = G.edge(nys, 1, 0) * SC
@@ -532,9 +534,9 @@ def solve_across(region, V, NX, NY, step=2.0, medial_sigma=12, post_sigma=2.0, c
 
 
 def label_regions(regions, min_frac=0.02):
-    """int8 region map 1..n from bool masks; overlaps go to the later mask, detached islands smaller than min_frac
+    """int16 region map 1..n from bool masks; overlaps go to the later mask, detached islands smaller than min_frac
     of the mask's largest piece are dropped (stray paint in a hand-painted mask; 0 keeps every piece)."""
-    REG = np.zeros(regions[0].shape, np.int8)
+    REG = np.zeros(regions[0].shape, np.int16)
     for i, m in enumerate(regions, 1):
         REG[keep_major_parts(m, min_frac) if min_frac > 0 else m.astype(bool)] = i
     return REG

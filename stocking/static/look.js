@@ -449,27 +449,39 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   }
 
   // Saves go out one after another, in order. flush() sends what is waiting now (an undo has to come after it) and
-  // resolves when every save is done.
+  // resolves when every save is done; it rejects if this save failed, which is then shown and kept to send again.
   let saving = Promise.resolve();
   let unsaved = false;
   let saveTimer = 0;
+  let edits = 0;              // local changes so far: a load() answer asked for before the latest one is stale
   function flush() {
     clearTimeout(saveTimer);
-    saving = saving.then(async () => {
+    const run = saving.then(async () => {
       const doc = getDoc();
       if (!unsaved || !doc || !L.params) return;
       unsaved = false;
       const merge = !L.newStep;
       L.newStep = false;
-      const info = await request('PUT', `/api/doc/${doc.id}/look?merge=${+merge}`, L.params);
-      if (getDoc() && getDoc().id === doc.id) adoptInfo(info);
-    }).catch((e) => console.warn(e));
-    return saving;
+      try {
+        const info = await request('PUT', `/api/doc/${doc.id}/look?merge=${+merge}`, L.params);
+        if (getDoc() && getDoc().id === doc.id) adoptInfo(info);
+      } catch (e) {
+        if (getDoc() && getDoc().id === doc.id && L.params) {
+          unsaved = true;                       // the next save sends it again, as the step it was meant to be
+          if (!merge) L.newStep = true;
+        }
+        flash(t('纹理设置没有保存：{error}', { error: e.message }), true);
+        throw e;
+      }
+    });
+    saving = run.catch(() => {});
+    return run;
   }
   function saveSoon() {
     unsaved = true;
+    edits++;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(flush, 150);
+    saveTimer = setTimeout(() => flush().catch(() => {}), 150);
   }
 
   // ---------------------------------------------------------------- layout
@@ -982,15 +994,24 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
 
   // ---------------------------------------------------------------- lifecycle
 
+  // Reads the saved settings into the page. An edit still waiting goes out first; one made while that save or the
+  // answer is on its way is newer than it, so the answer's settings are not taken (the edit's own save brings the
+  // server's word back). Nor are they if the waiting edit could not be saved (shown already): it stays on screen,
+  // to send again.
   async function load() {
     const doc = getDoc();
     if (!doc) return;
+    const seen = edits;
+    let kept = false;
+    try { await flush(); } catch { kept = true; }
     const info = await request('GET', `/api/doc/${doc.id}/look`);
     if (!getDoc() || getDoc().id !== doc.id) return;
     L.info = info;
-    L.params = { ...info.params };
-    L.gesture = null;
-    L.newStep = true;
+    if (!L.params || (!kept && !unsaved && edits === seen)) {
+      L.params = { ...info.params };
+      L.gesture = null;
+      L.newStep = true;
+    }
     if (L.layer >= layerCount()) L.layer = layerCount() - 1;
     renderControls();
     renderInfo();
@@ -1205,6 +1226,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
         L.docId = st ? st.id : null;
         L.coverageV = st ? st.coverage_v : null;
         L.lookRev = st ? st.look_rev : 0;
+        clearTimeout(saveTimer);                  // the last document's settings are not this one's to save
+        unsaved = false;
         Object.assign(L, { params: null, info: null, centre: null, fitImg: null, checkImg: null, cropImg: null,
           beforeReset: null, beforeLoad: null, presetName: null, layer: 0, addOnLoad: false,
           gesture: null, newStep: true,

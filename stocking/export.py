@@ -17,6 +17,7 @@ Each file is written beside its final name and then moved over it, so a failure 
 a full disk) never leaves a half-written file behind, and an earlier export stays intact.
 """
 import os
+import tempfile
 import time
 
 import cv2
@@ -84,15 +85,22 @@ def _drop(path):
 
 
 def _replace(final, write):
-    stem, ext = os.path.splitext(final)
-    tmp = f'{stem}.导出中{ext}'
+    """Have write(path) write a new file in final's folder, then move it over `final`. The file written is created
+    afresh with a name no file has (it is never the source, or any other file already there)."""
+    folder = os.path.dirname(final)
+    stem, ext = os.path.splitext(os.path.basename(final))
+    tmp = None
     try:
+        fd, tmp = tempfile.mkstemp(dir=folder, prefix=f'{stem}.导出中.', suffix=ext)
+        os.close(fd)                                    # write() opens it by name (Windows wants it closed)
         write(tmp)
     except PermissionError as e:
-        _drop(tmp)
-        raise ValueError(tr('不能在这个文件夹里写文件：{folder}（{why}）', folder=os.path.dirname(final), why=e.strerror)) from e
+        if tmp:
+            _drop(tmp)
+        raise ValueError(tr('不能在这个文件夹里写文件：{folder}（{why}）', folder=folder, why=e.strerror)) from e
     except BaseException:
-        _drop(tmp)
+        if tmp:
+            _drop(tmp)
         raise
     try:
         os.replace(tmp, final)
@@ -129,17 +137,20 @@ def texture_layer(art_rgb, out_rgb):
 
 def export(doc, scene, params, path, kind='png'):
     """Write one file of `kind` (KINDS) to `path` (see destination), replacing any file there. png, cutout and texture render
-    with `params` (look.clean_params) on `scene`; guides need neither. Returns {'file', 'seconds', 'sparkles_ready'}.
-    Raises ValueError with a message for the user."""
+    with `params` (look.clean_params) on `scene`; guides need neither. Returns {'file', 'seconds', 'sparkles_ready'},
+    and for guides 'saved': the document's guides_token for the state written, for doc.mark_guides_saved (edits
+    made while the file is written are not in it). Raises ValueError with a message for the user."""
     t0 = time.perf_counter()
     path = destination(path, kind, source=doc.path)
     ready = True
+    extra = {}
     if kind == 'guides':
-        with doc.lock:
-            regions = {r.name: r.mask.copy() for r in doc.regions}
+        with doc.lock:                              # one state: everything written, and the token naming it
+            regions = {r.name: r.mask.copy() for r in doc.regions}     # names are unique (Document)
             colors = {r.name: r.color for r in doc.regions}
-            sparkle = doc.sparkle
-        strokes, dividers = doc.stroke_alpha(), doc.divider_alpha()
+            sparkle = None if doc.sparkle is None else np.array(doc.sparkle, np.uint8)
+            strokes, dividers = doc.guide_stroke_alpha(), doc.divider_alpha()
+            extra['saved'] = doc.guides_token()
         _replace(path, lambda p: psd_io.write_guides(p, doc.art, regions, strokes, colors, sparkle, dividers))
     else:
         out_bgr, info = scene.render(params)
@@ -152,4 +163,4 @@ def export(doc, scene, params, path, kind='png'):
         else:
             layer = stocking_layer(doc.art, cv2.cvtColor(out_bgr, cv2.COLOR_BGR2RGB), doc.coverage()[1])
             _replace(path, lambda p: knit.write(p, cv2.cvtColor(layer, cv2.COLOR_RGBA2BGRA)))
-    return {'file': path, 'seconds': round(time.perf_counter() - t0, 2), 'sparkles_ready': ready}
+    return dict(extra, file=path, seconds=round(time.perf_counter() - t0, 2), sparkles_ready=ready)

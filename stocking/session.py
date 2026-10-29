@@ -1,13 +1,18 @@
 """The open document saved to disk as it is edited, so a restart (or a crash) picks up where the user left off.
 
-Layout of the session folder: meta.json (names, colours, strokes, file name and path), masks.npz (one packed bit
-mask per region) and art-<doc id>.png (the art, written once per document). Undo history is not kept.
+Layout of the session folder: meta.json (names, colours, strokes, file name and path), masks-<generation>.npz (one
+packed bit mask per region) and art-<doc id>.png (the art, written once per document). Undo history is not kept.
+
+A save writes the new masks file under a name of its own first, then replaces meta.json, which names it, and only
+then removes the files of earlier saves: a crash at any point leaves a meta.json whose files are all there and
+match it. Sessions of format 1 kept their masks in masks.npz; they still load.
 """
 import glob
 import json
 import os
 import time
 import urllib.request
+import uuid
 
 import cv2
 import numpy as np
@@ -15,7 +20,9 @@ import numpy as np
 from . import settings
 
 DIR = os.path.join(settings.DIR, 'session')
-FORMAT = 1
+FORMAT = 2
+READABLE = (1, 2)
+OLD_MASKS = 'masks.npz'          # format 1's masks file
 
 
 def _replace(path, write):
@@ -43,9 +50,10 @@ def write(d, doc_id, art_png, name, path, regions, strokes, sparkle=None, look=N
     def save_npz(p):
         with open(p, 'wb') as f:
             np.savez_compressed(f, shape=np.array(shape), **arrays)
-    _replace(os.path.join(d, 'masks.npz'), save_npz)
+    masks_file = f'masks-{uuid.uuid4().hex[:12]}.npz'
+    _replace(os.path.join(d, masks_file), save_npz)
     meta = {'format': FORMAT, 'saved': time.strftime('%Y-%m-%d %H:%M:%S'), 'name': name, 'path': path,
-            'art': art_file, 'regions': [{'name': n, 'color': c} for n, c, _ in regions],
+            'art': art_file, 'masks': masks_file, 'regions': [{'name': n, 'color': c} for n, c, _ in regions],
             'strokes': [{'pts': np.round(np.asarray(p, float), 2).ravel().tolist(), 'region': k} for p, k in strokes],
             'dividers': [np.round(np.asarray(p, float), 2).ravel().tolist() for p in dividers],
             'erased': [[round(float(x), 1), round(float(y), 1)] for x, y in erased],
@@ -54,8 +62,8 @@ def write(d, doc_id, art_png, name, path, regions, strokes, sparkle=None, look=N
             'look': look}
     _replace(os.path.join(d, 'meta.json'),
              lambda p: open(p, 'w', encoding='utf-8').write(json.dumps(meta, ensure_ascii=False)))
-    for old in glob.glob(os.path.join(d, 'art-*.png')):
-        if os.path.basename(old) != art_file:
+    for old in glob.glob(os.path.join(d, 'art-*.png')) + glob.glob(os.path.join(d, 'masks*.npz')):
+        if os.path.basename(old) not in (art_file, masks_file):
             try:
                 os.remove(old)
             except OSError:
@@ -76,10 +84,10 @@ def load(d=DIR):
     try:
         with open(os.path.join(d, 'meta.json'), encoding='utf-8') as f:
             meta = json.load(f)
-        if meta.get('format') != FORMAT:
+        if meta.get('format') not in READABLE:
             return None
-        bgr = cv2.imdecode(np.fromfile(os.path.join(d, meta['art']), np.uint8), cv2.IMREAD_COLOR)
-        with np.load(os.path.join(d, 'masks.npz')) as z:
+        bgr = cv2.imdecode(np.fromfile(os.path.join(d, os.path.basename(meta['art'])), np.uint8), cv2.IMREAD_COLOR)
+        with np.load(os.path.join(d, os.path.basename(meta.get('masks', OLD_MASKS)))) as z:
             shape = tuple(int(v) for v in z['shape'])
             masks = [np.unpackbits(z[f'm{i}'], count=shape[0] * shape[1]).reshape(shape).astype(bool)
                      for i in range(len(meta['regions']))]

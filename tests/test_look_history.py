@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from fastapi.testclient import TestClient
 
 from stocking import look, server, settings
 from stocking.document import Document
@@ -87,12 +86,12 @@ def test_there_are_two_histories_only(d):
         d.undo('nope')
 
 
-def test_the_server_undoes_the_page_asked_for(d, monkeypatch, tmp_path):
+def test_the_server_undoes_the_page_asked_for(d, api, monkeypatch, tmp_path):
     monkeypatch.setattr(settings, '_FILE', str(tmp_path / 'settings.json'))
     monkeypatch.setattr(server, '_doc', d)
     monkeypatch.setattr(server, 'look_info', lambda doc, q: {'params': q})
     monkeypatch.setattr(server, '_want_depth', lambda doc, q: None)
-    c = TestClient(server.app)
+    c = api
     url = f'/api/doc/{d.id}'
     put = lambda density, merge: c.put(f'{url}/look?merge={merge}', json={'density': density}).raise_for_status()
 

@@ -157,11 +157,10 @@ def test_a_file_in_use_is_reported_and_nothing_half_written(tmp_path):
         d.close()
 
 
-def test_each_export_asks_for_a_file_and_offers_a_new_name(monkeypatch, tmp_path):
+def test_each_export_asks_for_a_file_and_offers_a_new_name(api, monkeypatch, tmp_path):
     """Exporting asks for the file in the system's save dialog. It opens next to the source, then where the last
     export went, offering a name no file has yet; what the user names is written (with the kind's extension), and a
     dialog closed without a name writes nothing."""
-    from fastapi.testclient import TestClient
     from stocking import server, settings
     monkeypatch.setattr(settings, '_FILE', str(tmp_path / 'settings.json'))
     art, out = tmp_path / 'art', tmp_path / 'out'
@@ -178,7 +177,7 @@ def test_each_export_asks_for_a_file_and_offers_a_new_name(monkeypatch, tmp_path
         return answers.pop(0)
 
     monkeypatch.setattr(server, '_ask_save_path', ask)
-    c = TestClient(server.app)
+    c = api
     url = f'/api/doc/{d.id}/export'
     try:
         answers.append(None)
@@ -205,17 +204,16 @@ def test_each_export_asks_for_a_file_and_offers_a_new_name(monkeypatch, tmp_path
         d.close()
 
 
-def test_exporting_the_moire_without_the_depth_model_says_so(solved, monkeypatch, tmp_path):
+def test_exporting_the_moire_without_the_depth_model_says_so(solved, api, monkeypatch, tmp_path):
     """The 摩尔纹效果 is drawn from the depth model's bulge. Where the model is not there the picture is exported
     without it, and the export says so (as it does for the by-depth sparkles)."""
-    from fastapi.testclient import TestClient
     from stocking import depth, server, settings
     monkeypatch.setattr(settings, '_FILE', str(tmp_path / 'settings.json'))
     monkeypatch.setattr(server, '_doc', solved)
     monkeypatch.setattr(depth.service, 'status', 'unavailable')
     monkeypatch.setattr(solved, '_depth_started', True, raising=False)           # so no model run is started
     monkeypatch.setattr(solved, 'look', solved.look)                              # put the saved look back afterwards
-    c = TestClient(server.app)
+    c = api
     url = f'/api/doc/{solved.id}/export'
     plain = {'style': 'knit', 'sparkle_depth': 0, 'sparkle_link': False}
     with_moire = c.post(url, json={'kind': 'png', 'path': str(tmp_path / 'a.png'),

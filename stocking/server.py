@@ -8,6 +8,7 @@ import subprocess
 import threading
 import time
 from typing import Literal
+from urllib.parse import urlsplit
 
 import cv2
 import numpy as np
@@ -24,6 +25,11 @@ from .version import code_version
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 NO_STORE = {'Cache-Control': 'no-store'}
 VERSION = code_version()
+
+# Any web page the user visits can send requests to 127.0.0.1. The Host check stops DNS rebinding (a foreign domain
+# pointed at this computer); the Origin check stops other sites' changes. Other sites cannot read the answers anyway.
+LOCAL_HOSTS = ('127.0.0.1', 'localhost')
+CHANGES = ('POST', 'PUT', 'PATCH', 'DELETE')
 
 
 class Bus:
@@ -120,6 +126,36 @@ async def _no_cache_ui(request: Request, call_next):
     if request.url.path == '/' or request.url.path.startswith('/static/'):
         resp.headers['Cache-Control'] = 'no-cache'
     return resp
+
+
+def _host_and_port(host):
+    try:
+        u = urlsplit('//' + (host or ''))
+        return u.hostname, u.port
+    except ValueError:
+        return None, None
+
+
+def _own_origin(origin, port):
+    try:
+        u = urlsplit(origin)
+        return (u.scheme == 'http' and u.hostname in LOCAL_HOSTS and u.port == port
+                and not u.path and not u.query and not u.username)
+    except ValueError:
+        return False
+
+
+@app.middleware('http')
+async def _guard(request: Request, call_next):
+    """Answer only requests addressed to this computer by name (not a rebound domain), and changes only from the tool's
+    own page or from no page at all (the launcher sends no Origin)."""
+    host, port = _host_and_port(request.headers.get('host'))
+    if host not in LOCAL_HOSTS:
+        return JSONResponse({'detail': tr('只接受发给本机地址的请求')}, status_code=400)
+    origin = request.headers.get('origin')
+    if request.method in CHANGES and origin is not None and not _own_origin(origin, port):
+        return JSONResponse({'detail': tr('这个请求不是从工具自己的页面发出的，已拒绝')}, status_code=403)
+    return await call_next(request)
 
 
 @app.exception_handler(KeyError)
@@ -896,7 +932,7 @@ def export_doc(doc_id: str, body: ExportIn):
     with _export_lock:
         if body.kind == 'guides':
             res = export.export(d, None, None, path, 'guides')
-            d.mark_guides_saved()
+            d.mark_guides_saved(res['saved'])
         else:
             q = look.clean_params(body.params if body.params is not None else _base_look(d))
             if body.params is not None:
