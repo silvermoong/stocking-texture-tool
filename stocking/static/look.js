@@ -83,7 +83,7 @@ function debounce(fn, ms) {
 }
 
 // "100" with a smaller "%" after it
-function setVal(el, n, unit) {
+export function setVal(el, n, unit) {
   const u = document.createElement('span');
   u.className = 'unit';
   u.textContent = unit;
@@ -269,7 +269,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     if (i < L.layer) L.layer -= 1;
     L.layer = Math.min(L.layer, left.length - 1);
     set(withLayers(left));
-    flash(t('已删除一层纹理'));
+    flash(t('已删除“{name}”，Ctrl+Z 可以撤销', { name: layerName(i) }));
   }
 
   function selectLayer(i) {
@@ -331,15 +331,24 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     }
   }
 
+  // why + cannot add a layer now ('' with no image: nothing to say), or null when it can
+  function addBlocked() {
+    if (!canLook()) return getDoc() ? t('先给一个部位画走向线，才能看纹理') : '';
+    return L.params && layerCount() >= MAX_LAYERS ? t('最多 {n} 层纹理', { n: MAX_LAYERS }) : null;
+  }
+
   function renderAdd() {
-    const full = !!L.params && layerCount() >= MAX_LAYERS;
-    addBtn.disabled = !canLook() || full;
-    addBtn.title = full ? t('最多 {n} 层纹理', { n: MAX_LAYERS }) : t('加一层纹理，和现在的纹理按比例叠在一起（试验）');
+    const why = addBlocked();
+    addBtn.setAttribute('aria-disabled', String(why !== null));
+    addBtn.title = why || t('加一层纹理，和现在的纹理按比例叠在一起（试验）');
   }
 
   $('#tab-look').addEventListener('click', onTab);
   $('#tab-look').addEventListener('keydown', onTabKey);
-  addBtn.addEventListener('click', addLayer);
+  addBtn.addEventListener('click', () => {
+    const why = addBlocked();
+    if (why === null) addLayer(); else if (why) flash(why);
+  });
 
   // 融合: a row for each layer, the slider and the name that shows the layer (built when the number of layers changes,
   // so a slider being dragged is never replaced); 自动 100% beside the title is the switch.
@@ -682,18 +691,17 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     if (g.clamped) {
       const max = Math.floor(100 * 4.6 * Math.sqrt(doc.width * doc.height / REF_AREA) / 3.2);
       note.textContent = t('横纹间距已到 3.2\u00a0px 下限，再密就会出摩尔纹，这张图最多 {max}%。想更密，先把图放大（比如 1.5 倍）再来。', { max });
-      note.className = 'sub warn';
+      note.className = 'note warn';
     } else {
       note.textContent = t('横纹间距 {p}\u00a0px', { p: g.period.toFixed(2) });
-      note.className = 'sub';
+      note.className = 'note';
     }
     $('#tilt-section').hidden = p.style !== 'lines';
     $('#tilt').value = p.tilt;
     setVal($('#tilt-val'), p.tilt, '°');
     $('#strength').value = p.strength;
     setVal($('#strength-val'), p.strength, '%');
-    $('#strength-auto').hidden = !p.strength_auto;
-    $('#btn-strength-auto').hidden = !!p.strength_auto;
+    $('#strength-auto').setAttribute('aria-pressed', String(!!p.strength_auto));
     $('#sparkle-on').checked = !!all.sparkle_on;
     $('#sparkle-fields').hidden = !all.sparkle_on;
     for (const k of ['depth', 'bright', 'painted', 'even']) {
@@ -824,6 +832,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     const modified = presetModified(p);
     // an unreadable preset can be written over, which mends it
     const save = $('#btn-preset-save');
+    save.textContent = p ? t('保存') : t('保存…');          // with none selected it asks for a name
     save.disabled = !L.params || (!!p && !!p.params && !modified);
     save.title = p ? t('用现在的设置更新“{name}”', { name: p.name }) : t('把现在的设置存成新预设');
     $('#btn-preset-delete').disabled = !p;
@@ -865,7 +874,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       next.layers = (next.layers || []).map((l) => (l.strength_auto ? { ...l, strength: L.info.strength_suggested } : l));
     }
     set(next, { keepLoad: true });
-    flash(t('已载入预设“{name}”；想回去，点“撤销载入”', { name }));
+    flash(t('已载入预设“{name}”，Ctrl+Z 或“撤销载入”可以撤销', { name }));
   }
 
   // 撤销载入 while that window is open; after tweaks, 还原 loads the preset again.
@@ -882,7 +891,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     const name = presetNameInput.value.trim();
     const clash = !!presetOf(name);
     $('#btn-preset-ok').disabled = !name;
-    presetDlgNote.className = clash ? 'dialog-note warn' : 'dialog-note';
+    presetDlgNote.className = clash ? 'note dialog-note warn' : 'note dialog-note';
     presetDlgNote.textContent = clash ? t('已有同名预设，保存会覆盖它。') : '';
   }
 
@@ -905,7 +914,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     try {
       await putPreset(name);
     } catch (e) {
-      presetDlgNote.className = 'dialog-note error';
+      presetDlgNote.className = 'note dialog-note error';
       presetDlgNote.textContent = e.message;
       return;
     }
@@ -1043,7 +1052,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   $('#tilt').addEventListener('input', (e) => setLayer({ tilt: +e.target.value }, { gesture: `tilt:${L.layer}` }));
   $('#strength').addEventListener('input', (e) => setLayer({ strength: +e.target.value, strength_auto: false },
     { gesture: `strength:${L.layer}` }));
-  $('#btn-strength-auto').addEventListener('click', () => setLayer({ strength_auto: true }));
+  $('#strength-auto').addEventListener('click', () => {
+    if (L.params) setLayer({ strength_auto: !layerAt(L.layer).strength_auto });
+  });
   $('#sparkle-on').addEventListener('change', (e) => set({ sparkle_on: e.target.checked }));
   $('#sparkle-depth').addEventListener('input', (e) => setAmount('sparkle_depth', +e.target.value));
   $('#sparkle-bright').addEventListener('input', (e) => setAmount('sparkle_bright', +e.target.value));
@@ -1055,19 +1066,13 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   $('#moire').addEventListener('input', (e) => set({ moire: +e.target.value }, { gesture: 'moire' }));
   $('#moire-area').addEventListener('input', (e) => set({ moire_area: +e.target.value }, { gesture: 'moire_area' }));
   $('#btn-sparkle-link').addEventListener('click', toggleLink);
-  $('#fade').addEventListener('change', (e) => {
-    const on = e.target.checked;
-    set({ fade: on });
-    flash(on ? t('已打开纹理减弱，Ctrl+Z 可以撤销') : t('已关闭纹理减弱：横纹密集处也不减弱纹理，Ctrl+Z 可以撤销'));
-  });
+  $('#fade').addEventListener('change', (e) => set({ fade: e.target.checked }));
   $('#exclude').addEventListener('change', (e) => {
     const doc = getDoc();
     if (!doc) return;
     const on = e.target.checked;
     e.target.checked = doc.color_exclude !== false;           // shown once the server has it
-    edit('PUT', '/coverage/exclude', { on }).then((st) => {
-      if (st) flash(st.color_exclude ? t('已打开颜色排除，Ctrl+Z 可以撤销') : t('已关闭颜色排除：部位里每一处都加纹理，Ctrl+Z 可以撤销'));
-    });
+    edit('PUT', '/coverage/exclude', { on });
   });
   $('#btn-check').addEventListener('click', () => {
     L.showCheck = !L.showCheck;
@@ -1122,7 +1127,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       moire_on: false, moire: 100, moire_area: 100, fade: true });
     L.beforeReset = before;
     renderReset();
-    flash(t('已全部恢复默认；想回去，点“撤销恢复默认”'));
+    flash(t('已全部恢复默认，Ctrl+Z 或“撤销恢复默认”可以撤销'));
   });
   for (const b of document.querySelectorAll('.seg-btn[data-zoom]')) {
     b.addEventListener('click', () => {

@@ -3,7 +3,7 @@
 // Coordinates: "view" px are CSS px on the stage canvas; image coords are continuous (pixel i spans [i, i+1)).
 // The server works in pixel-centre coords (pixel i is centred on i), so values cross the wire shifted by 0.5.
 
-import { createLook, fillRange } from './look.js';
+import { createLook, fillRange, setVal } from './look.js';
 import { LANG, t, translatePage } from './i18n.js';
 
 const $ = (s) => document.querySelector(s);
@@ -1058,7 +1058,7 @@ function setBrush(r) {
   S.brush = Math.round(Math.min(400, Math.max(2, r)));
   $('#brush-size').value = S.brush;
   fillRange($('#brush-size'));
-  $('#brush-val').textContent = S.brush;
+  setVal($('#brush-val'), S.brush, 'px');
   redraw();
 }
 
@@ -1155,7 +1155,7 @@ function removeWallAt(at) {
 
 function segmentClick(p, subtract) {
   const r = currentRegion();
-  if (!r) { flash(t('先在左边选一个部位'), true); return; }
+  if (!r) { flash(t('先在左边选一个部位')); return; }
   if (p.x < 0 || p.y < 0 || p.x >= S.doc.width || p.y >= S.doc.height) return;
   if (S.segPending) return;           // one click at a time; each depends on the last
   S.segPending = { x: p.x, y: p.y, subtract };
@@ -1209,7 +1209,7 @@ cv.addEventListener('pointerdown', (e) => {
   } else if (S.tool === 'brush' || S.tool === 'erase') {
     if (e.button !== 0 && e.button !== 2) return;
     const r = currentRegion();
-    if (!r) { flash(t('先在左边选一个部位'), true); return; }
+    if (!r) { flash(t('先在左边选一个部位')); return; }
     cv.setPointerCapture(e.pointerId);
     S.drag = { kind: 'paint', rid: r.id, color: r.color, erase: S.tool === 'erase' || e.button === 2, pts: [p], last: p };
     S.painting = true;
@@ -1224,12 +1224,12 @@ cv.addEventListener('pointerdown', (e) => {
     if (S.tool === 'wall' && e.button === 2) {
       const h = wallAt(p);
       if (h) removeWallAt(h.at);
-      else flash(t('指针下没有隔开线：把指针移到隔开线上（线变红）再右键'), true);
+      else flash(t('指针下没有隔开线：把指针移到隔开线上（线变红）再右键'));
       return;
     }
     if (e.button !== 0) return;
     const r = currentRegion();
-    if (S.tool === 'cut' && !r) { flash(t('先在左边选一个部位'), true); return; }
+    if (S.tool === 'cut' && !r) { flash(t('先在左边选一个部位')); return; }
     cv.setPointerCapture(e.pointerId);
     const path = new Path2D();
     path.moveTo(p.x, p.y);
@@ -1321,13 +1321,13 @@ cv.addEventListener('wheel', (e) => {
 
 // what can be exported, one file at a time; the main half of 导出 exports the last one picked (成品图 at first)
 const EXPORTS = {
-  png: { label: t('成品图'), desc: t('PNG，合成好的整张图'), main: t('导出成品图'), doing: t('正在导出成品图…'),
+  png: { label: t('成品图'), desc: t('PNG，合成好的整张图'), main: t('导出成品图…'), doing: t('正在导出成品图…'),
     done: t('已导出成品图到 {folder}'), needsLook: true },
-  cutout: { label: t('仅丝袜'), desc: t('PNG，只有丝袜，其他地方透明'), main: t('导出仅丝袜'), doing: t('正在导出仅丝袜…'),
+  cutout: { label: t('仅丝袜'), desc: t('PNG，只有丝袜，其他地方透明'), main: t('导出仅丝袜…'), doing: t('正在导出仅丝袜…'),
     done: t('已导出仅丝袜到 {folder}'), needsLook: true },
-  texture: { label: t('仅纹理'), desc: t('PNG，中性灰底的纹理，用「线性光」叠在丝袜上'), main: t('导出仅纹理'),
+  texture: { label: t('仅纹理'), desc: t('PNG，中性灰底的纹理，用“线性光”叠在丝袜上'), main: t('导出仅纹理…'),
     doing: t('正在导出仅纹理…'), done: t('已导出仅纹理到 {folder}'), needsLook: true },
-  guides: { label: t('丝袜引导.psd'), desc: t('部位和走向线，可以再打开接着改'), main: t('导出丝袜引导.psd'),
+  guides: { label: t('丝袜引导.psd'), desc: t('部位和走向线，可以再打开接着改'), main: t('导出丝袜引导.psd…'),
     doing: t('正在导出丝袜引导.psd…'), done: t('已导出丝袜引导.psd到 {folder}'), needsLook: false },
 };
 let exportKind = 'png';
@@ -1342,7 +1342,7 @@ function renderExport() {
   const main = $('#btn-export');
   main.textContent = EXPORTS[exportKind].main;
   const blocked = exportBlocked(exportKind);
-  main.disabled = !d || blocked !== null;
+  main.setAttribute('aria-disabled', String(!d || blocked !== null));
   main.title = !d ? '' : blocked
     || t('{what} (Ctrl+E)：选择保存位置和文件名，原文件不会被改动', { what: EXPORTS[exportKind].main });
   $('#btn-export-more').disabled = !d;
@@ -1464,7 +1464,7 @@ async function readyToReplace() {
   try { d = await request('GET', '/api/doc'); } catch { d = S.doc; }    // the latest, not the last one drawn
   if (!d || !d.unsaved_guides) return true;
   const dlg = $('#confirm-open');
-  $('#confirm-open-text').textContent = t('打开新图后，「{name}」的部位和走向线就找不回来了。先导出成丝袜引导.psd，以后可以再打开接着改。', { name: d.name });
+  $('#confirm-open-text').textContent = t('打开新图后，“{name}”的部位和走向线就找不回来了。先导出成丝袜引导.psd，以后可以再打开接着改。', { name: d.name });
   dlg.returnValue = '';
   dlg.showModal();
   const choice = await new Promise((resolve) => dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }));
@@ -1527,7 +1527,6 @@ window.addEventListener('drop', (e) => {
 $('.skip').addEventListener('click', (e) => { e.preventDefault(); stage.focus(); });
 $('#btn-open').addEventListener('click', openDialog);
 $('#btn-open-2').addEventListener('click', openDialog);
-$('#file-input').addEventListener('change', (e) => { const f = e.target.files[0]; if (f) openUpload(f); e.target.value = ''; });
 $('#btn-undo').addEventListener('click', () => stepHistory('undo'));
 $('#btn-redo').addEventListener('click', () => stepHistory('redo'));
 $('#btn-fit').addEventListener('click', fit);
@@ -1933,7 +1932,7 @@ function connectEvents() {
       if (ev.type === 'solved') {
         const r = S.doc.regions.find((x) => x.id === ev.region);
         if (r && ev.error) flash(t('{name}：{error}', { name: r.name, error: ev.error }), true);
-        else if (r) flash(t('{name}的横纹已更新，用时 {s} 秒', { name: r.name, s: ev.seconds }));
+        else if (r) flash(t('“{name}”的横纹已更新，用时 {s} 秒', { name: r.name, s: ev.seconds }));
       }
       refresh();
     }

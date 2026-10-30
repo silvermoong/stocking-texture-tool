@@ -277,7 +277,7 @@ class Document:
                 raise ValueError(tr('读不了这个文件：{name}', name=name))
             art, regions, strokes, sparkle = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), {}, None, None
         else:
-            raise ValueError(tr('只支持 PNG、JPG 或 PSD：{name}', name=name))
+            raise ValueError(tr('只支持图片（PNG、JPG、WEBP、BMP、TIFF）或 PSD：{name}', name=name))
         doc = cls(art, name, path)
         doc.sparkle = sparkle
         with doc.lock:
