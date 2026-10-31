@@ -657,17 +657,25 @@ class Scene:
                 self._stretch['see'] = maps
         return maps
 
-    def oily_maps(self):
-        """oily.oily_maps of the whole image (油光's tone, glint and translucency maps), cached: crops slice it."""
+    def oily_context(self):
+        """Instance-owned seven maps with absorption deferred until an oily layer requests it.
+
+        This lock publishes complete maps once; the context separately serializes absorption.
+        Compact look measurements are released after successful absorption, or retained for retry.
+        Neither lock calls back into the other cache, and particles never request the extra field.
+        """
         with self._lock:
-            maps = self._stretch.get('oily')
-        if maps is None:
-            maps = oily.oily_maps(self.src, self.R, self.alpha, self.A, self.V,
-                                  float(np.sqrt(self.w * self.h / REF_AREA)), cut=self.cut, REG=self.REG,
-                                  fill=self.fill)
-            with self._lock:
-                self._stretch['oily'] = maps
-        return maps
+            context = self._stretch.get('oily_context')
+            if context is None:
+                context = oily.oily_maps(self.src, self.R, self.alpha, self.A, self.V,
+                                         float(np.sqrt(self.w * self.h / REF_AREA)), cut=self.cut, REG=self.REG,
+                                         fill=self.fill, with_absorption=True, _defer_absorption=True)
+                self._stretch['oily_context'] = context
+            return context
+
+    def oily_maps(self):
+        """The original seven whole-image maps; particles and other consumers retain their original semantics."""
+        return self.oily_context().maps
 
     def particle_maps(self):
         """(field, gate) of 高光粒子 over the whole image, cached: crops slice them, so a crop matches the whole.
@@ -935,9 +943,11 @@ class Scene:
             phase = np.cos(th) * V / p + np.sin(th * self.side[sl]) * A / p
             out, _ = knit.render_lines(src, R, phase, alpha, amp=0.115 * s, f_lo=g['f_lo'], f_hi=g['f_hi'], fade=fade)
         elif style == 'oily':
-            maps = self.oily_maps()
+            context = self.oily_context()
             gn, gc = self.randoms('grain')[:2]
-            out = oily.render_oily(src, R, V, A, alpha, g, s, *(m[sl] for m in maps), noise=(gn[sl], gc[sl]), fade=fade)
+            out = oily.render_oily(src, R, V, A, alpha, g, s, *(m[sl] for m in context.maps),
+                                   noise=(gn[sl], gc[sl]), fade=fade,
+                                   absorption_facing=context.absorption_facing[sl])
         else:
             gn, gc = self.randoms('grain')[:2]
             out, _ = knit.render_grain(src, R, V / p + 0.37 * R, A / (p * g['wale_ratio']), alpha, None,

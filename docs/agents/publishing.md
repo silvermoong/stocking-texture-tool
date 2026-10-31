@@ -20,6 +20,16 @@ Only when the user asks.
 - To try one first: `git fetch origin pull/<N>/head:pr-<N>` and check it out in a worktree.
 - Issues and pull requests from others are handled on GitHub. The local tracker under `.scratch/` is for our own work.
 
+## Test images and diagnostic artifacts
+
+Prefer procedural, synthetic fixtures; add real-image fixtures sparingly. Public fixtures must be suitable for a public repository and have documented redistribution permission. Keep NSFW images and artwork without confirmed redistribution rights local, even when useful for testing. Permission to inspect an image is not permission to publish it.
+
+Use ignored `tests/data/`, `out/`, or a verified ignored experiment directory for private originals and derivatives. This includes crops, rendered comparisons, PSD layers, image arrays (`.npz`, `.npy`), archives, and images embedded in HTML, notebooks or other text. `.scratch/` is public unless a specific path is ignored; ZIP exclusion via `.gitattributes` does not make Git content private.
+
+Keep reusable test code, synthetic generators and sanitized findings separate from private inputs and outputs. Before staging, verify local artifact paths with `git check-ignore -v`, then inspect the staged file list and diff for images, embedded data and identifying metadata. Missing private samples should cause the relevant tests to skip, not download or copy artwork into tracked paths. Use explicit paths when staging; never force-add ignored private artifacts.
+
+If an image is already tracked, ignoring it does not remove it from Git or history. Report the issue and confirm the intended cleanup with the maintainer; do not delete assets or rewrite history without authorization.
+
 ## Rules
 
 - Push `main` only: never `--all`, `--mirror` or a tag without a request. The `pre-push` hook in this repo's `.git/hooks` refuses any other ref and any commit made under the old personal address; `--no-verify` only when the user asks for it.

@@ -89,6 +89,12 @@ stocking):
            by side): the limb runs as far as all of them, and a piece with no glint of its own goes on with that of the
            nearest of the others that have one, at its end toward the piece (_nearest; every piece is measured before
            any goes on, so a piece with nothing painted is no donor and no blocker).
+  position after _curve has fixed its sample IDs, _glint_position may connect two complementary observations along
+           a unique supported near-top corridor, or follow a single fading identity's measured position. Only the
+           coupled main/floor geometry changes; observed identities, strength and width arrays stay unchanged.
+           A single track may carry its supported offset through at most 2.5 unobserved fit rows, with subsequent
+           displacement capped at 0.2 hmed. This is artistic extrapolation, not a new observation. Ambiguous, linked,
+           missing or unsafe evidence keeps the original path. Lobe max, spill and wall composition remain unchanged.
   walls    light does not cross a wall (the user's 隔开 line, or one the depth model found: a thigh over the calf folded
            behind it). A wall that stops short of the outline (drawn as far as it shows: the crease runs out at the knee)
            leaves the two sides one connected piece, whose cross-section is thigh + wall + calf: its middle, where the
@@ -121,7 +127,8 @@ from scipy import ndimage as ndi
 from scipy.signal import find_peaks, peak_widths
 from scipy.spatial import cKDTree
 
-from . import knit
+from . import knit, _glint_position
+from ._oily_absorption import OilyContext, absorption_facing as _absorption_facing
 
 TONE_FLOOR = 0.06           # luminance: a region lit less unevenly than this is not stretched to full sheen and sink
 PROM = (0.025, 0.08)        # luminance: a glint fades in as its lighting peak stands out across the limb by this much
@@ -1132,9 +1139,60 @@ def _joins(lab, group, gap):
     return joins
 
 
+class _DeferredAbsorption:
+    """Retain band measurements, not pixel coordinates, labels or sorted evidence.
+
+    Rebuilding component membership uses the scene's existing inputs. Per piece,
+    owned arrays cost ceil(pixel_count / 8) bytes plus the five frame band arrays
+    (40 bytes per band for float64). OilyContext releases this plan on success.
+    """
+    def __init__(self, R, geo, A, V, cut, fill, scale):
+        self.R, self.geo, self.A, self.V = R, geo, A, V
+        self.cut, self.fill, self.scale = cut, fill, scale
+        self.frames = {}
+
+    def remember(self, region, piece, hidden, frame):
+        bands = tuple(value.copy() if isinstance(value, np.ndarray) else value for value in frame[1:])
+        packed = np.packbits(hidden)
+        for value in (*bands, packed):
+            if isinstance(value, np.ndarray):
+                value.setflags(write=False)
+        self.frames.setdefault(region, []).append((piece, packed, bands))
+
+    @property
+    def retained_nbytes(self):
+        return sum(packed.nbytes + sum(value.nbytes for value in bands if isinstance(value, np.ndarray))
+                   for pieces in self.frames.values() for _, packed, bands in pieces)
+
+    def __call__(self):
+        absorption = np.zeros(self.R.shape, np.float32)
+        for region, pieces in self.frames.items():
+            G = (self.geo == region) | (self.R == region)
+            body = G if self.cut is None else G & ~self.cut
+            gap = None if self.fill is None else self.fill.get(int(region))
+            lab, _, _ = _pieces(body, gap, self.V, self.A)
+            for piece, packed, bands in pieces:
+                m = lab == piece
+                Vg, Ag = self.V[m], self.A[m]
+                k = np.floor((Vg - Vg.min()) / _band(self.scale)).astype(np.int64)
+                hidden = np.unpackbits(packed, count=len(Vg)).astype(bool)
+                absorption[m] = _absorption_facing(Vg, Ag, hidden, self.scale, (k, *bands))
+            if self.cut is not None and (G & self.cut).any() and body.any():
+                gap = G & self.cut
+                iy, ix = ndi.distance_transform_edt(~body, return_distances=False, return_indices=True)
+                absorption[gap] = absorption[iy[gap], ix[gap]]
+        return absorption
+
+
 def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5, band_half=4.0, tail_len=3.0,
-              fill=None):
+              fill=None, *, with_absorption=False, _defer_absorption=False):
     """Whole image: (tone, core, band, tail, facing, centre, zone), each HxW float32, 0 outside the regions.
+
+    with_absorption: return an OilyContext containing the same seven maps plus a read-only, whole-image
+    absorption_facing field. Only the zone exponential uses that field; the original facing is unchanged.
+    The extra field reuses the look pass's frame, without repeating the glint computation.
+    _defer_absorption: Scene keeps compact look evidence until an oily layer needs the field;
+    the default public seven-map path retains no evidence and allocates no absorption field.
 
     src: BGR art. R: the visible stocking, region index per pixel. alpha: soft coverage (render_oily applies it).
     A, V: the courses' frame. cut: the bands along walls where V and A jump (Document.cut_map), or None. REG: the
@@ -1156,6 +1214,8 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
     Y = luminance(src)
     geo = REG if REG is not None else R
     tone, core, band, tail, centre, facing, zone = (np.zeros((h_, w_), np.float32) for _ in range(7))
+    deferred = _DeferredAbsorption(R, geo, A, V, cut, fill, scale) if with_absorption and _defer_absorption else None
+    absorption = np.zeros((h_, w_), np.float32) if with_absorption and deferred is None else None
     on_frame = np.zeros((h_, w_), bool)
     on_frame[[0, -1], :] = on_frame[:, [0, -1]] = True
     ring = np.ones((3, 3), np.uint8)
@@ -1196,7 +1256,8 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
         for j in (int(x) for x in np.unique(lab[lab > 0])):
             m = lab == j
             Vg, Ag = V[m], A[m]
-            frame = _frame(Vg, Ag, hidden[m], scale)
+            frame_hidden = hidden[m]
+            frame = _frame(Vg, Ag, frame_hidden, scale)
             if group[j] and behind[m].any():
                 # with the limb's edge at the connector out of sight; the limb is no narrower than it was seen without it, so
                 # a few whole cross-sections (a toe) do not make it narrow, and where none is whole, or it believes the outline
@@ -1204,11 +1265,16 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
                 cut_frame = _frame(Vg, Ag, hidden[m] | behind[m], scale, hmed_min=frame[4])
                 if cut_frame[6] and cut_frame[7].max() >= CUT_TRUST * frame[7].max():
                     frame = cut_frame
+                    frame_hidden = hidden[m] | behind[m]
             k, c, h, hf, hmed, tilt, whole, trust = frame
             hk = h[k]
             u = np.clip((Ag - c[k]) / hf[k], -1, 1)
             if role != 'glint':
                 facing[m] = np.sqrt(1 - u * u) * np.cos(tilt[k])
+                if absorption is not None:
+                    absorption[m] = _absorption_facing(Vg, Ag, frame_hidden, scale, frame)
+                elif deferred is not None:
+                    deferred.remember(i, j, frame_hidden, frame)
             vis = seen[m]
             if vis.sum() < MIN_PIECE:
                 continue
@@ -1237,7 +1303,8 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
                 middle = (a0 + ab * (np.arange(fit.shape[1]) + 0.5)[None, :] - c[kq][:, None]) / h[kq][:, None]
             tracks = _tracks(fit, absolute, den, noise, reach=int(round(2 * hmed / wlen)), middle=middle)
             jobs.append(SimpleNamespace(j=j, Vg=Vg, Ag=Ag, k=k, c=c, h=h, hk=hk, hmed=hmed, believed=believed,
-                                        fit=fit, v0=v0, wlen=wlen, a0=a0, ab=ab, middle=middle, kq=kq, tracks=tracks,
+                                        fit=fit, den=den, noise=noise, v0=v0, wlen=wlen, a0=a0, ab=ab,
+                                        middle=middle, kq=kq, tracks=tracks,
                                         vlo=float(Vg.min()), vhi=float(Vg.max()), vmean=float(Vg.mean()), size=int(m.sum())))
         # every piece measured: where each limb's pieces have a painted glint at their ends, for the ones that have none
         ends = {jb.j: _ends(jb.tracks, jb.kq, jb.c, jb.h, jb.a0, jb.ab) for jb in jobs if group[jb.j] and jb.middle is not None}
@@ -1286,6 +1353,11 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
                 at = (tt >= rows[0]) & (tt <= rows[-1])
                 curve = _curve(rows, a0 + ab * tu, st, dl, su, tt, Ag, xs, ys, ab, floor=TOL_REL * hmed,
                                free=tr[6] if len(tr) > 6 else None)
+                if curve is not None and tracks and not any(tr is original for original in tracks):
+                    evidence = _glint_position.PieceEvidence(
+                        tuple(tracks), fit, jb.den, jb.noise, middle, hmed, wlen, a0, ab,
+                        t, Ag, xs, ys, R.shape, cut=cut, linked=bool(group[jb.j]))
+                    curve = _glint_position.refine_curve(evidence, curve).apply(curve)
                 if curve is None or not at.any():
                     continue
                 # a path along this piece of stocking is not drawn into another: broken off where it would cross a wall
@@ -1346,12 +1418,30 @@ def oily_maps(src, R, alpha, A, V, scale=1.0, cut=None, REG=None, core_half=1.5,
             for mp in {'both': (core, band, tail, centre, facing, zone), 'look': (facing, zone),
                        'glint': (core, band, tail, centre)}[role]:
                 mp[gap] = mp[iy[gap], ix[gap]]
-    return tone, core, band, tail, facing, centre, zone
+            if absorption is not None and role != 'glint':
+                absorption[gap] = absorption[iy[gap], ix[gap]]
+    maps = (tone, core, band, tail, facing, centre, zone)
+    if deferred is not None:
+        return OilyContext(maps, absorption_factory=deferred)
+    if absorption is not None:
+        absorption.setflags(write=False)
+        return OilyContext(maps, absorption)
+    return maps
 
 
-def render_oily(src, R, V, A, alpha, g, s, tone, core, band, tail, facing, centre, zone, noise, fade=True):
+def render_oily(src, R, V, A, alpha, g, s, tone, core, band, tail, facing, centre, zone, noise, fade=True,
+                *, absorption_facing=None, diagnostic=False):
     """BGR uint8 of the (margined) crop. g: look.geometry; s: strength (1 = 100%); tone .. zone: oily_maps()
-    cropped like src; noise: the scene's grain fields (knit.grain_noise), cropped like src."""
+    cropped like src; noise: the scene's grain fields (knit.grain_noise), cropped like src.
+    absorption_facing: optional field sliced exactly like facing, used only for zone absorption. Omitting it
+    preserves the original render. diagnostic returns (image, numerical intermediates), without global state.
+    """
+    if absorption_facing is None:
+        absorption_facing = facing
+    elif absorption_facing.shape != facing.shape or not np.isfinite(absorption_facing).all():
+        raise ValueError('absorption_facing must be finite and sliced like facing')
+    elif absorption_facing.dtype != facing.dtype and np.array_equal(absorption_facing, facing):
+        absorption_facing = facing
     p = g['period']
     gn, gc = noise
     phi = V / p + 0.37 * R
@@ -1366,8 +1456,11 @@ def render_oily(src, R, V, A, alpha, g, s, tone, core, band, tail, facing, centr
     see = (facing ** 2 * alpha)[..., None]
     out *= 1 + 0.35 * s * see * warm
     out *= 1 - 0.30 * s * ((1 - facing) ** 1.5)[..., None] * a3 * (1 - z3)
-    # the zones of a dark stocking: the fabric's thickness along the line of sight is 1 / facing, so the edges go black
-    out *= 1 - z3 * (1 - np.exp(-KAPPA * s * (1 / np.clip(facing, 0.15, 1.0) - 1))[..., None]) * a3
+    # Only excess zone absorption is corrected; skin warmth and non-zone shading retain the original facing.
+    pre_absorption = out.copy() if diagnostic else None
+    absorption_exp = np.exp(-KAPPA * s * (1 / np.clip(absorption_facing, 0.15, 1.0) - 1))
+    absorption_factor = 1 - z3 * (1 - absorption_exp[..., None]) * a3
+    out *= absorption_factor
     sink = np.clip(-tone, 0, 1) ** 1.2
     out *= (1 - 0.30 * s * sink * alpha)[..., None]
     # what the glint reflects: the courses (faded where they would alias) and a little grain, 0..1
@@ -1383,4 +1476,8 @@ def render_oily(src, R, V, A, alpha, g, s, tone, core, band, tail, facing, centr
     bright = np.clip((sheen + glint) * alpha, 0, 0.93)[..., None]        # soft coverage holds for every reflection
     lift = K_SEE * s * see * z3 * warm                                   # the skin through a dark stocking's middle
     out = 255 - (255 - out) * (1 - bright) * (1 - lift)
-    return np.clip(np.round(out), 0, 255).astype(np.uint8)
+    image = np.clip(np.round(out), 0, 255).astype(np.uint8)
+    if diagnostic:
+        return image, dict(absorption_exp=absorption_exp, absorption_factor=absorption_factor,
+                           preclip_BGR=out, pre_absorption=pre_absorption, see=see, bright=bright, lift=lift)
+    return image

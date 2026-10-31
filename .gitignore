@@ -3,8 +3,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 out/
-# the sample picture some tests run on; not distributed (see tests/sample_data.py)
+# Private test artwork and derivatives stay local; see docs/agents/publishing.md.
 tests/data/
+# Local image-bearing experiments, including rendered comparisons and array archives.
+.scratch/highlight-algorithm/facing-constraint-*/
+# Detailed research notes contain private local experiment references.
+.scratch/highlight-algorithm/research.md
 node_modules/
 # downloaded by install.bat
 models/
