@@ -8,26 +8,34 @@ Three parts, each usable on its own:
             through the API, so the 纹理 page can be entered
   Browser / Page   the system's Edge, headless, with a profile of its own, driven over the DevTools protocol
 
-Nothing is installed for this: Edge comes with Windows and the websockets package with uvicorn[standard]. Where
-either is missing the tests using require() are skipped. Screenshots go to out/ (ignored by git), or to the folder
-STOCKING_UI_SHOTS names; they are never written into a tracked path.
+Nothing extra is installed for this: Edge comes with Windows and the websockets package with uvicorn[standard].
+Where either is missing the tests using require() are skipped. Screenshots default to the ignored out/ui-browser;
+use an ignored directory for a STOCKING_UI_SHOTS override. See the README's development section for the limits.
 """
 import base64
 import contextlib
 import json
 import os
 import socket
+import struct
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 import uuid
+import warnings
 
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOTS = os.environ.get('STOCKING_UI_SHOTS') or os.path.join(ROOT, 'out', 'ui-browser')
+MAX_SHOT_EDGE = 1600
+MAX_SHOTS = 8
+_shots_used = 0             # saved and in-flight screenshots, shared by every tab in this process
+_shot_limit_warned = False
+_shot_lock = threading.Lock()
 TOOL_PORT = 8765            # the tool's own port: never used here
 _open = urllib.request.build_opener(urllib.request.ProxyHandler({})).open       # this computer only: no proxy
 
@@ -283,7 +291,7 @@ class Browser:
 
 
 class Page:
-    """One tab, over the DevTools protocol. `errors` collects the exceptions the page's scripts threw."""
+    """One tab over DevTools. `errors` is the history of uncaught JS exceptions; check_errors() reports a step."""
 
     def __init__(self, ws_url, width, height):
         from websockets.sync.client import connect
@@ -294,10 +302,17 @@ class Page:
             conn = connect(ws_url, max_size=None, open_timeout=20)
         self.ws = self._closing.enter_context(conn)
         self.errors = []
+        self._problems = []
+        self._requests = {}
         self._id = 0
-        self.send('Page.enable')
-        self.send('Runtime.enable')
-        self.resize(width, height)
+        try:
+            self.send('Page.enable')
+            self.send('Runtime.enable')
+            self.send('Network.enable')
+            self.resize(width, height)
+        except BaseException:
+            self._closing.close()
+            raise
 
     def send(self, method, timeout=30, **params):
         self._id += 1
@@ -312,9 +327,63 @@ class Page:
                 if 'error' in msg:
                     raise RuntimeError(f'{method}: {msg["error"]}')
                 return msg.get('result', {})
-            if msg.get('method') == 'Runtime.exceptionThrown':
-                d = msg['params']['exceptionDetails']
-                self.errors.append(d.get('exception', {}).get('description') or d.get('text'))
+            self._record_event(msg)
+
+    def _record_event(self, msg):
+        method, p = msg.get('method'), msg.get('params', {})
+        if method == 'Runtime.exceptionThrown':
+            detail = p['exceptionDetails']
+            text = detail.get('exception', {}).get('description') or detail['text']
+            self.errors.append(text)
+            self._problems.append(f'pageerror: {text}')
+        elif method == 'Runtime.consoleAPICalled' and p['type'] == 'error':
+            text = ' '.join(str(a.get('description') or a.get('value', a.get('unserializableValue', a.get('type'))))
+                            for a in p['args'])
+            self._problems.append(f'console.error: {text}')
+        elif method == 'Network.responseReceived':
+            response = p['response']
+            if 500 <= response['status'] < 600:
+                self._problems.append(f'HTTP {int(response["status"])}: {response["url"]}')
+        elif method == 'Network.requestWillBeSent':
+            self._requests[p['requestId']] = p['request']['url']
+        elif method in ('Network.loadingFinished', 'Network.loadingFailed'):
+            request = p['requestId']
+            url = self._requests.pop(request, f'request {request}')
+            if method == 'Network.loadingFailed' and not p.get('canceled'):
+                self._problems.append(f'requestfailed: {url} -> {p["errorText"]}')
+
+    def _drain_events(self):
+        # Read past a reply until the stream goes quiet briefly, without waiting for the open EventSource.
+        end = time.monotonic() + 1
+        while (left := end - time.monotonic()) > 0:
+            try:
+                raw = self.ws.recv(timeout=min(0.05, left))
+            except TimeoutError:
+                return
+            self._record_event(json.loads(raw))
+        raise TimeoutError('CDP event queue did not go quiet within 1 s')
+
+    def _flush_events(self):
+        try:
+            # This round trip processes work already queued by the last command, before draining its tail.
+            self.send('Runtime.evaluate', expression='void 0', timeout=5)
+            self._drain_events()
+        except Exception as e:
+            return e
+        return None
+
+    def _assert_no_errors(self, drain_error, allow=()):
+        problems, self._problems = self._problems, []
+        allowed = set(allow)
+        unexpected = [line for line in dict.fromkeys(problems) if line not in allowed]
+        if drain_error is not None:
+            unexpected.insert(0, f'could not finish draining browser events: {drain_error}')
+        if unexpected:
+            raise AssertionError('Browser errors:\n' + '\n'.join(unexpected)) from drain_error
+
+    def check_errors(self, *, allow=()):
+        """Drain and consume this step's diagnostics. Fail with one report, except for exact lines in `allow`."""
+        self._assert_no_errors(self._flush_events(), allow)
 
     def evaluate(self, js):
         """The value of a JavaScript expression in the page (a promise is awaited); it must be JSON."""
@@ -364,18 +433,60 @@ class Page:
             self.send('Input.dispatchMouseEvent', type=kind, x=x, y=y, button='left', clickCount=1)
 
     def screenshot(self, name):
-        """The window as a PNG in SHOTS (ignored by git), full size. Returns its path."""
-        os.makedirs(SHOTS, exist_ok=True)
-        path = os.path.join(SHOTS, name if name.endswith('.png') else name + '.png')
-        with open(path, 'wb') as f:
-            f.write(base64.b64decode(self.send('Page.captureScreenshot', format='png')['data']))
+        """The full-size viewport PNG in SHOTS. Returns its path, or None when the run's budget is exhausted."""
+        global _shots_used, _shot_limit_warned
+        with _shot_lock:
+            if _shots_used >= MAX_SHOTS:
+                if not _shot_limit_warned:
+                    _shot_limit_warned = True
+                    # This is an artifact notice, not a failed test, even when pytest is run with -W error.
+                    with warnings.catch_warnings():
+                        warnings.filterwarnings('always', message='^Screenshot budget:', category=RuntimeWarning)
+                        warnings.warn(f'Screenshot budget: up to {MAX_SHOTS} PNGs per run; '
+                                      'captures over the limit are skipped. Select fewer test cases to capture them.',
+                                      RuntimeWarning, stacklevel=2)
+                return None
+            _shots_used += 1
+        try:
+            png = base64.b64decode(self.send('Page.captureScreenshot', format='png', captureBeyondViewport=False)['data'])
+            width, height = struct.unpack_from('>2I', png, 16)  # actual pixel dimensions in the PNG's IHDR
+            if max(width, height) > MAX_SHOT_EDGE:
+                raise ValueError(f'screenshot {name!r} is {width}x{height}; use a viewport at most {MAX_SHOT_EDGE} px per edge')
+            os.makedirs(SHOTS, exist_ok=True)
+            path = os.path.join(SHOTS, name if name.endswith('.png') else name + '.png')
+            with open(path, 'wb') as f:
+                f.write(png)
+        except BaseException:
+            with _shot_lock:
+                _shots_used -= 1
+            raise
         return path
 
     def close(self):
-        with contextlib.suppress(Exception):
-            self.send('Page.close', timeout=5)
-        with contextlib.suppress(Exception):
-            self._closing.close()
+        """Drain, close the tab, and report diagnostics without masking an ongoing failure."""
+        if self.ws is None:
+            return
+        primary = sys.exception()
+        try:
+            drain_error = self._flush_events()
+        finally:
+            try:
+                with contextlib.suppress(Exception):
+                    self.send('Page.close', timeout=5)
+                # A target may close its socket instead of acknowledging Page.close. Collect any queued events either way.
+                with contextlib.suppress(Exception):
+                    self._drain_events()
+            finally:
+                with contextlib.suppress(Exception):
+                    self._closing.close()
+                self.ws = None
+                self._requests.clear()
+        try:
+            self._assert_no_errors(drain_error)
+        except AssertionError as report:
+            if primary is None:
+                raise
+            primary.add_note(str(report))
 
 
 @contextlib.contextmanager

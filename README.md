@@ -276,11 +276,21 @@ GitHub 下载失败的文件，会改从各自的原始来源下载（PyPI、PyT
 
 一部分测试要用一张样图，它不随仓库发布，没有时这些测试会自动跳过，见 [tests/sample_data.py](tests/sample_data.py)。
 
-界面的测试（[tests/test_ui_browser.py](tests/test_ui_browser.py)）用 Windows 自带的 Edge 在后台打开真实的页面，检查只有跑起来才看得到的东西，比如界面放大后顶栏的按钮是否都点得到。它自己起一个独立的工具进程，用程序画出来的图，不碰你的设置，也不需要另外安装什么；没有 Edge 时自动跳过。每次运行的截图留在 `out/ui-browser`（不进仓库）。写新的界面测试可以直接用 [tests/uibrowser.py](tests/uibrowser.py) 里的这套辅助。
-
 改了依赖版本（`requirements*.txt`）之后，要重新打包安装文件包：`.venv\Scripts\python tools\make_deps.py deps-2`，把生成的文件上传到新的 GitHub Release `deps-2`，再提交并推送更新后的 `tools/deps.json`。顺序不能反：用户运行 `install.bat` 时会立刻拿到新代码，并按新的 `deps.json` 下载。
 
 `tools/commit.txt` 由 GitHub 在生成代码 ZIP 时写入提交号（`.gitattributes` 里的 `export-subst`），`install.bat` 靠它判断 ZIP 版是否需要更新，不要改它。
+
+### 界面验证
+
+[界面回归](tests/test_ui_browser.py)用 [uibrowser.py](tests/uibrowser.py) 起隔离的真后端，再用无头 Edge 和临时浏览器配置打开真实页面。测试图由程序生成，不读取你的图片或设置，也不加载模型。没有 Edge（也未通过 `STOCKING_EDGE` 指定其他 Chromium 浏览器）或缺少 `websockets` 时，浏览器用例会跳过；`-rs` 会列出理由。辅助的单测不需要浏览器。
+
+```
+.venv\Scripts\python -m pytest -q -rs tests/test_uibrowser.py tests/test_ui_browser.py
+```
+
+- **截图预算。** 单次运行（一个 Python 进程，所有浏览器和标签页合计）最多写 8 张 PNG。每张保留视口原尺寸；宽或高超过 1600 像素时拒绝写入并报错。首次超出张数会提示，超额的 `page.screenshot()` 返回 `None`，测试断言照跑。默认写到 Git 忽略的 `out/ui-browser`。取证时用 `-k` 只跑需要看的情景，另选一例窄屏（如 360 像素）；可将 `STOCKING_UI_SHOTS` 指向新的忽略目录，以免混入以前的截图。
+- **异常自报。** `page.close()` 会汇总未捕获的 JS 异常、`console.error`、HTTP 5xx 和未取消的网络失败，有问题则断言失败。用例共用标签页时，在操作完成后调用 `page.check_errors()`，限时读出并清空本段诊断，不把它们留给下一段；已发生的用例失败不会被收尾报告盖掉。故意触发的错误用 `page.check_errors(allow={'console.error: expected test failure'})` 按完整诊断行放行，只对本次检查有效。自报不把 4xx 响应本身当成错误，也看不到只在 JS 内替换 `fetch` 产生的模拟响应；检查点不等还没发生的请求或定时器。
+- **验证边界。** 无头环境不覆盖真实桌面窗口、系统弹窗、用户数据、模型、高分屏或其他浏览器。截图或自报没问题，不代表文字、数据、交互流程正确，也不证明按钮没被遮挡。对需要交互的控件，用真实的指针或按键操作并断言结果；布局、遮挡和视觉效果要查看实际截图，必要时连同源码或差异一起核对。
 
 ## 许可
 

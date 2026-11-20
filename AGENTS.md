@@ -14,7 +14,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 ### Tests
 
-How to run the tests, and the interface tests that drive the real page in headless Edge through `tests/uibrowser.py` (screenshots go to the ignored `out/ui-browser`): see the Development section (开发) of `README.md`.
+When changing the UI (`stocking/static/`), use [uibrowser.py](tests/uibrowser.py) to start the isolated page and take screenshots; do not write a second screenshot script. See [Development](README.md#开发) for running the tests and [UI verification](README.md#界面验证) for budgets, error reports, and what a quiet screenshot cannot prove.
 
 ### Test images and diagnostic artifacts
 
