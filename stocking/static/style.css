@@ -305,7 +305,10 @@ body.no-doc .step-body > :not(.step-head), body.no-doc .step h2 { opacity: .4; }
 .tiers .seams { height: calc(26px * var(--k)); margin-left: calc(4px * var(--k)); padding: 0 calc(8px * var(--k)) 0 calc(10px * var(--k)); border-left: 1px solid var(--line); font-size: calc(12px * var(--k)); color: var(--muted); }
 .tiers .seams:has(input:checked) { color: var(--text); }
 /* a short note shown beside whatever has one (data-tip) on hover or keyboard focus */
-.tip.float { position: fixed; left: 0; top: 0; max-width: calc(300px * var(--k)); white-space: normal; line-height: 1.55; }
+.tip.float {
+  position: fixed; left: 0; top: 0; width: max-content; max-width: min(calc(300px * var(--k)), calc(100vw - 16px));
+  white-space: normal; overflow-wrap: anywhere; line-height: 1.55;
+}
 /* asking before opening another image would lose the current one's regions and 走向 lines */
 .dialog {
   width: calc(420px * var(--k)); max-width: calc(100vw - calc(32px * var(--k))); padding: calc(18px * var(--k)) calc(20px * var(--k)) calc(16px * var(--k)); border: 1px solid var(--line); border-radius: calc(6px * var(--k));
@@ -530,9 +533,10 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
   font-size: calc(12px * var(--k)); white-space: nowrap; overflow: hidden;
 }
 .status .hint, .status .pos { color: var(--muted); }
-/* the message comes first: the hint gives way to it, and a message too long for the bar ends in an ellipsis */
+/* the message comes first: the hint gives way to it, and a message too long for the bar ends in an ellipsis. The hint
+   takes all of the shrinking until it is gone: a share of it, even under a pixel, would end the message in an ellipsis */
 .status .msg { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.status .hint { flex: 0 100 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.status .hint { flex: 0 1000000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .status .pos { flex: none; }
 .status .msg.error { color: var(--error); }
 .status .pos { min-width: calc(86px * var(--k)); text-align: right; }

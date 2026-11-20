@@ -13,23 +13,23 @@
 <a class="skip" href="#stage">跳到画面</a>
 <h1 class="visually-hidden">丝袜纹理工具</h1>
 <header class="bar">
-  <button id="btn-open" class="btn" title="打开 (Ctrl+O)">打开…</button>
+  <button id="btn-open" class="btn" data-tip="打开 (Ctrl+O)">打开…</button>
   <div class="modes" role="tablist" aria-label="页面">
-    <button class="mode" id="tab-edit" data-mode="edit" role="tab" aria-controls="pane-edit" title="涂部位、画走向线">引导</button>
+    <button class="mode" id="tab-edit" data-mode="edit" role="tab" aria-controls="pane-edit" data-tip="涂部位、画走向线">引导</button>
     <button class="mode" id="tab-look" data-mode="look" role="tab" aria-controls="pane-look">纹理</button>
   </div>
   <div class="spacer"></div>
-  <button id="btn-undo" class="btn" title="撤销 (Ctrl+Z)" disabled>撤销</button>
-  <button id="btn-redo" class="btn" title="重做 (Ctrl+Shift+Z)" disabled>重做</button>
+  <button id="btn-undo" class="btn" disabled>撤销</button>
+  <button id="btn-redo" class="btn" disabled>重做</button>
   <div class="sep edit-only"></div>
-  <button id="btn-fit" class="btn edit-only" title="适应窗口 (F)">适应窗口</button>
-  <button id="btn-100" class="btn num edit-only" title="实际像素 (1)">100%</button>
+  <button id="btn-fit" class="btn edit-only" data-tip="适应窗口 (F)">适应窗口</button>
+  <button id="btn-100" class="btn num edit-only" data-tip="实际像素 (1)">100%</button>
   <span id="zoom-pct" class="zoom num edit-only"></span>
   <div class="sep"></div>
   <div class="split">
     <button id="btn-export" class="btn primary" aria-disabled="true">导出成品图…</button>
     <button id="btn-export-more" class="btn primary more" disabled aria-haspopup="menu" aria-expanded="false"
-            aria-controls="export-menu" aria-label="选择导出什么" title="选择导出什么">
+            aria-controls="export-menu" aria-label="选择导出什么" data-tip="选择导出什么">
       <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
   </div>
@@ -47,21 +47,21 @@
   </div>
 </header>
 
-<aside class="side">
+<aside class="side" inert>
  <div class="side-pane edit-only" id="pane-edit" role="tabpanel" aria-labelledby="tab-edit">
   <section class="step" data-step="regions">
     <div class="step-num" aria-hidden="true">1</div>
     <div class="step-body">
       <div class="step-head">
         <h2>部位</h2>
-        <button id="btn-add-region" class="icon-btn add" title="添加部位" aria-label="添加部位">+</button>
+        <button id="btn-add-region" class="icon-btn add" data-tip="添加部位" aria-label="添加部位">+</button>
       </div>
       <ul id="region-list" class="region-list" aria-label="部位"></ul>
       <div class="tools" role="radiogroup" aria-label="部位工具">
-        <button class="tool" data-tool="segment" role="radio" aria-keyshortcuts="W" title="点选：左键把点到的部分加进当前部位，右键减去">点选<kbd aria-hidden="true" translate="no">W</kbd></button>
-        <button class="tool" data-tool="brush" role="radio" aria-keyshortcuts="B" title="画笔：涂当前部位，右键擦除">画笔<kbd aria-hidden="true" translate="no">B</kbd></button>
-        <button class="tool" data-tool="erase" role="radio" aria-keyshortcuts="E" title="橡皮：擦当前部位">橡皮<kbd aria-hidden="true" translate="no">E</kbd></button>
-        <button class="tool" data-tool="cut" role="radio" aria-keyshortcuts="K" title="切开：在当前部位上画一条线，把它分割成两块">切开<kbd aria-hidden="true" translate="no">K</kbd></button>
+        <button class="tool" data-tool="segment" role="radio" aria-keyshortcuts="W" data-tip="点选：左键把点到的部分加进当前部位，右键减去">点选<kbd aria-hidden="true" translate="no">W</kbd></button>
+        <button class="tool" data-tool="brush" role="radio" aria-keyshortcuts="B" data-tip="画笔：涂当前部位，右键擦除">画笔<kbd aria-hidden="true" translate="no">B</kbd></button>
+        <button class="tool" data-tool="erase" role="radio" aria-keyshortcuts="E" data-tip="橡皮：擦当前部位">橡皮<kbd aria-hidden="true" translate="no">E</kbd></button>
+        <button class="tool" data-tool="cut" role="radio" aria-keyshortcuts="K" data-tip="切开：在当前部位上画一条线，把它分割成两块">切开<kbd aria-hidden="true" translate="no">K</kbd></button>
       </div>
       <div class="field brush-field">
         <div class="field-head"><label for="brush-size">笔刷</label><span id="brush-val" class="val num"></span></div>
@@ -83,8 +83,8 @@
       <div class="step-head"><h2>走向</h2></div>
       <div class="tool-row">
         <div class="tools" role="radiogroup" aria-label="走向工具">
-          <button class="tool" data-tool="pen" role="radio" aria-keyshortcuts="P" title="走向：沿一道横纹画线，右键删除线">走向<kbd aria-hidden="true" translate="no">P</kbd></button>
-          <button class="tool" data-tool="wall" role="radio" aria-keyshortcuts="D" title="隔开：沿两块丝袜的交界画线，横纹不会穿过它。一块挡住另一块的会自动找到（虚线），贴在一起的（比如大腿压着小腿）要自己画；右键删除隔开线">隔开<kbd aria-hidden="true" translate="no">D</kbd></button>
+          <button class="tool" data-tool="pen" role="radio" aria-keyshortcuts="P" data-tip="走向：沿一道横纹画线，右键删除走向线">走向<kbd aria-hidden="true" translate="no">P</kbd></button>
+          <button class="tool" data-tool="wall" role="radio" aria-keyshortcuts="D" data-tip="隔开：沿两块丝袜的交界画线，横纹不会穿过它。一块挡住另一块的会自动找到（虚线），贴在一起的（比如大腿压着小腿）要自己画；右键删除隔开线">隔开<kbd aria-hidden="true" translate="no">D</kbd></button>
         </div>
         <button id="btn-mirror" class="tool-btn" type="button" aria-disabled="true">镜像</button>
       </div>
@@ -297,7 +297,7 @@
   <div id="cutbar" class="cutbar edit-only" hidden>
     <span id="cutbar-text"></span>
     <label class="check" title="手画的线会抖，打开后切线会自动贴到附近的线稿上（比如乳沟的折线）"><input type="checkbox" id="cut-snap" checked>自动贴线</label>
-    <button id="btn-auto-cut" class="btn" title="把左右一对（两胸、两条腿）沿中线分开；不是左右一对的，自己画线切开">自动分割</button>
+    <button id="btn-auto-cut" class="btn" data-tip="把左右一对（两胸、两条腿）沿中线分开；不是左右一对的，自己画线切开">自动分割</button>
   </div>
   <div id="wallbar" class="cutbar wallbar edit-only" hidden>
     <span id="wallbar-text">隔开：沿两块丝袜的交界画一条线，松开鼠标就画好了</span>

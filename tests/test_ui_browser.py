@@ -262,6 +262,442 @@ def press(page, key, code, vk, ctrl=False):
                   modifiers=2 if ctrl else 0)
 
 
+def test_the_side_panel_cannot_be_used_until_an_image_opens(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        page.goto(server.url + '/')
+        page.evaluate('document.querySelector(".lang [aria-checked=true]").focus()')
+        press(page, 'Tab', 'Tab', 9)
+        assert page.evaluate('document.activeElement.id') == 'btn-open-2'
+
+        tool = '[data-tool="brush"]'
+        page.click(tool)
+        assert page.evaluate(f"document.querySelector('{tool}').getAttribute('aria-checked')") == 'false'
+
+        server.upload('synthetic.png', uibrowser.synthetic_png())
+        page.wait_for('!document.querySelector("#empty").checkVisibility()', what='the opened image')
+        page.evaluate('document.querySelector(".lang [aria-checked=true]").focus()')
+        press(page, 'Tab', 'Tab', 9)
+        assert page.evaluate('document.activeElement.id') == 'btn-add-region'
+        page.click(tool)
+        assert page.evaluate(f"document.querySelector('{tool}').getAttribute('aria-checked')") == 'true'
+
+
+STATUS_MSG = 'document.querySelector("#status-msg").textContent'
+
+
+def canvas_mark(page, button, dx=0):
+    x, y = page.hover('#view')
+    buttons = 1 if button == 'left' else 2
+    page.send('Input.dispatchMouseEvent', type='mousePressed', x=x, y=y,
+              button=button, buttons=buttons, clickCount=1)
+    if dx:
+        page.send('Input.dispatchMouseEvent', type='mouseMoved', x=x + dx, y=y, buttons=buttons)
+    page.send('Input.dispatchMouseEvent', type='mouseReleased', x=x + dx, y=y, button=button, clickCount=1)
+
+
+@pytest.mark.parametrize('tool', ('cut', 'pen', 'wall'))
+@pytest.mark.parametrize('lang, message', (
+    ('zh', '线太短，请拖出一段更长的线'), ('en', 'Line too short: drag out a longer line'),
+))
+def test_a_short_guides_line_explains_why_it_was_discarded(ui, lang, message, tool):
+    page = show(ui, lang, 100, (1280, 720))
+    page.click(f'[data-tool="{tool}"]')
+    canvas_mark(page, 'left', dx=2)
+    assert page.evaluate(STATUS_MSG) == message
+    # the tool's own hint beside it is long (Split's in English most of all) and must be what gives way, not the message
+    assert page.evaluate('''(() => {
+        const el = document.querySelector('#status-msg');
+        const text = document.createRange();
+        text.selectNodeContents(el);
+        return text.getBoundingClientRect().width <= el.getBoundingClientRect().width + 0.01;
+    })()'''), 'the message is cut short'
+
+
+@pytest.mark.parametrize('lang, message', (
+    ('zh', '指针下没有走向线：把指针移到走向线上再右键'),
+    ('en', 'No direction line under the pointer: move onto one, then right-click'),
+))
+def test_right_click_between_direction_lines_explains_how_to_delete_one(ui, lang, message):
+    page = show(ui, lang, 100, (1280, 720))
+    page.click('[data-tool="pen"]')
+    canvas_mark(page, 'right')
+    assert page.evaluate(STATUS_MSG) == message
+
+
+@pytest.mark.parametrize('lang, message', (
+    ('zh', '已自动配对：把“左腿”的走向线镜像到“右腿”，替换 3 条。Ctrl+Z 可以撤销'),
+    ('en', 'Paired automatically: mirrored the direction lines of “Left leg” onto “Right leg”, replacing 3. Ctrl+Z undoes'),
+))
+def test_mirror_names_the_automatic_pair_and_what_changed(tmp_path, lang, message):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang(lang)
+        before = uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('document.querySelector("#btn-mirror").getAttribute("aria-disabled") === "false"',
+                      what='Mirror to be available')
+        page.click('#btn-mirror')
+        assert page.evaluate('document.querySelector("#mirror-menu").hidden')
+        page.wait_for(f'{STATUS_MSG}.includes("Ctrl+Z")', what='mirror feedback')
+        assert page.evaluate(STATUS_MSG) == message
+        page.wait_for('!document.querySelector("#region-list .busy-dot")', what='the mirrored direction lines to solve')
+        assert page.evaluate(STATUS_MSG) == message
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.wait_for('!document.querySelector("#btn-redo").disabled', what='the mirror to be undone')
+        # the receipt offered Ctrl+Z: once that is done it must not go on offering it
+        assert page.evaluate(STATUS_MSG) != message
+        assert server.api('/api/doc')['strokes'] == before['strokes']
+
+
+RECEIPT = '已自动配对：把“左腿”的走向线镜像到“右腿”，替换 3 条。Ctrl+Z 可以撤销'
+
+# window.__said keeps every text the status bar is given; a request whose address has `slow` in it is sent late, and
+# window.__answered counts the answers to those with `count` in it
+WATCH = '''((slow, count) => {
+    window.__said = [];
+    window.__answered = 0;
+    new MutationObserver((records) => {
+        for (const r of records) for (const n of r.addedNodes) if (n.textContent) window.__said.push(n.textContent);
+    }).observe(document.querySelector('#status-msg'), { childList: true });
+    const real = window.fetch;
+    window.fetch = (url, opt) => {
+        const late = slow && String(url).includes(slow) ? new Promise((go) => setTimeout(go, 700)) : Promise.resolve();
+        return late.then(() => real(url, opt)).finally(() => { if (count && String(url).includes(count)) window.__answered++; });
+    };
+})'''
+
+
+def test_undo_pressed_before_the_mirror_receipt_shows_takes_the_receipt_with_it(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('zh')
+        before = uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('document.querySelector("#btn-mirror").getAttribute("aria-disabled") === "false"',
+                      what='Mirror to be available')
+        page.evaluate(WATCH + '("/mirror", "")')
+        page.click('#btn-mirror')
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        # the case is Ctrl+Z first, the receipt after it
+        assert RECEIPT not in page.evaluate('window.__said')
+        page.wait_for('!document.querySelector("#btn-redo").disabled', what='the mirror to be undone')
+        assert RECEIPT in page.evaluate('window.__said')
+        assert server.api('/api/doc')['strokes'] == before['strokes']
+        # the mirror it offers to undo is undone already: left there, the next Ctrl+Z would take back an older step
+        assert 'Ctrl+Z' not in page.evaluate(STATUS_MSG)
+
+
+def test_undo_on_a_texture_page_with_no_history_leaves_the_mirror_receipt(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('zh')
+        uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('document.querySelector("#btn-mirror").getAttribute("aria-disabled") === "false"',
+                      what='Mirror to be available')
+        page.evaluate(WATCH + '("", "/undo")')
+        page.click('#btn-mirror')
+        page.wait_for(f'{STATUS_MSG}.includes("Ctrl+Z")', what='mirror feedback')
+        page.wait_for('document.querySelector("#tab-look").getAttribute("aria-disabled") === "false"',
+                      what='the mirrored direction lines to solve')
+        mirrored = server.api('/api/doc')['strokes']
+        page.click('#tab-look')
+        page.wait_for('document.body.dataset.mode === "look"', what='the 纹理 page')
+        # the case: the receipt is still shown, and this page has nothing to undo
+        assert page.evaluate(f'[{STATUS_MSG}, document.querySelector("#btn-undo").disabled]') == [RECEIPT, True]
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.wait_for('window.__answered > 0', what='the answer to the undo')
+        page.evaluate('new Promise(resolve => setTimeout(resolve, 100))')
+        # nothing was undone, so what the receipt offers still holds
+        assert server.api('/api/doc')['strokes'] == mirrored
+        assert page.evaluate(STATUS_MSG) == RECEIPT
+
+
+def test_undo_with_nothing_to_undo_leaves_what_the_bar_says(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('zh')
+        server.upload('synthetic.png', uibrowser.synthetic_png(320, 480))
+        page.goto(server.url + '/')
+        page.wait_for('!document.body.classList.contains("no-doc")', what='the document to show')
+        page.evaluate(WATCH + '("", "/undo")')
+        page.click('[data-tool="pen"]')
+        canvas_mark(page, 'left', dx=2)
+        note = '线太短，请拖出一段更长的线'
+        assert page.evaluate(f'[{STATUS_MSG}, document.querySelector("#btn-undo").disabled]') == [note, True]
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.wait_for('window.__answered > 0', what='the answer to the undo')
+        page.evaluate('new Promise(resolve => setTimeout(resolve, 100))')
+        assert page.evaluate(STATUS_MSG) == note
+
+
+def test_a_mirror_receipt_that_arrives_on_the_texture_page_is_still_the_guides_pages(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('zh')
+        before = uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('document.querySelector("#btn-mirror").getAttribute("aria-disabled") === "false"',
+                      what='Mirror to be available')
+        page.evaluate(WATCH + '("/mirror", "/undo")')
+        page.click('#btn-mirror')
+        page.click('#tab-look')
+        assert page.evaluate('[document.body.dataset.mode, window.__said.length]') == ['look', 0]
+        page.wait_for(f'{STATUS_MSG} === {RECEIPT!r}', what='mirror feedback')
+        assert page.evaluate('[document.body.dataset.mode, document.querySelector("#btn-undo").disabled]') == ['look', True]
+        # this page has nothing to undo: the receipt is about the other page's history, whichever page it showed on
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.wait_for('window.__answered > 0', what='the answer to the undo')
+        page.evaluate('new Promise(resolve => setTimeout(resolve, 100))')
+        assert page.evaluate(STATUS_MSG) == RECEIPT
+        page.click('#tab-edit')
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.wait_for('!document.querySelector("#btn-redo").disabled', what='the mirror to be undone')
+        assert server.api('/api/doc')['strokes'] == before['strokes']
+        assert 'Ctrl+Z' not in page.evaluate(STATUS_MSG)
+
+
+def test_a_texture_undo_answered_after_going_back_to_guides_leaves_the_mirror_receipt(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('zh')
+        uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('document.querySelector("#btn-mirror").getAttribute("aria-disabled") === "false"',
+                      what='Mirror to be available')
+        page.evaluate(WATCH + '("look?merge=", "/undo?page=look")')
+        page.click('#btn-mirror')
+        page.wait_for(f'{STATUS_MSG}.includes("Ctrl+Z")', what='mirror feedback')
+        page.wait_for('document.querySelector("#tab-look").getAttribute("aria-disabled") === "false"',
+                      what='the mirrored direction lines to solve')
+        mirrored = server.api('/api/doc')['strokes']
+        page.click('#tab-look')
+        page.wait_for('document.body.dataset.mode === "look" && !!document.querySelector("#strength-val").textContent',
+                      what='the 纹理 page')
+        # a setting changed here is saved late: the undo waits for that save, and is asked for only after it
+        page.evaluate('''[...document.querySelectorAll('[data-style]')]
+            .find((b) => b.getAttribute('aria-checked') !== 'true' && b.getAttribute('aria-pressed') !== 'true').click()''')
+        assert page.evaluate(STATUS_MSG) == RECEIPT
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.click('#tab-edit')
+        # the case: back on 引导 before the 纹理 page's undo is even sent
+        assert page.evaluate('[document.body.dataset.mode, window.__answered]') == ['edit', 0]
+        page.wait_for('window.__answered > 0', what='the answer to the undo')
+        page.evaluate('new Promise(resolve => setTimeout(resolve, 100))')
+        # it took back the setting, not the mirror: what the receipt offers still holds
+        assert server.api('/api/doc')['strokes'] == mirrored
+        assert page.evaluate(STATUS_MSG) == RECEIPT
+
+
+def test_the_next_guides_edit_ends_the_mirror_receipt(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('zh')
+        uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('document.querySelector("#btn-mirror").getAttribute("aria-disabled") === "false"',
+                      what='Mirror to be available')
+        page.click('#btn-mirror')
+        page.wait_for(f'{STATUS_MSG}.includes("Ctrl+Z")', what='mirror feedback')
+        page.wait_for('!document.querySelector("#region-list .busy-dot")', what='the mirrored direction lines to solve')
+        mirrored = len(server.api('/api/doc')['strokes'])
+        assert page.evaluate(STATUS_MSG) == RECEIPT
+        page.click('[data-tool="pen"]')
+        canvas_mark(page, 'left', dx=80)
+        # Ctrl+Z would now take back this line, not the mirror: the receipt is over, and the line's solve is the news
+        page.wait_for(f'{STATUS_MSG}.includes("横纹已更新")', timeout=4, what='the news of the solve')
+        assert len(server.api('/api/doc')['strokes']) == mirrored + 1
+
+
+def test_a_solved_direction_line_replaces_the_note_about_the_short_one_before_it(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('zh')
+        before = uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('!document.body.classList.contains("no-doc")', what='the document to show')
+        page.click('[data-tool="pen"]')
+        canvas_mark(page, 'left', dx=2)
+        assert page.evaluate(STATUS_MSG) == '线太短，请拖出一段更长的线'
+        canvas_mark(page, 'left', dx=80)
+        # the long line is drawn and solved while the note about the short one is still up: it is the old news now
+        page.wait_for(f'{STATUS_MSG}.includes("横纹已更新")', timeout=4, what='the news of the solve')
+        assert len(server.api('/api/doc')['strokes']) == len(before['strokes']) + 1
+
+
+TIP = 'document.querySelector("#tooltip")'
+
+
+def tip_text(page):
+    return page.evaluate(f'{TIP}.hidden ? null : {TIP}.textContent')
+
+
+@pytest.mark.parametrize('lang, starts', (
+    ('zh', ('点选', '画笔', '橡皮', '切开', '走向', '隔开', '把')),
+    ('en', ('Pick', 'Brush', 'Eraser', 'Split', 'Direction', 'Divider', 'Flips')),
+))
+def test_guides_tools_offer_the_same_description_to_pointer_and_keyboard(ui, lang, starts):
+    page = show(ui, lang, 100, (1280, 720))
+    tools = tuple(f'[data-tool="{tool}"]' for tool in ('segment', 'brush', 'erase', 'cut', 'pen', 'wall'))
+    for tool, start in zip((*tools, '#btn-mirror'), starts):
+        page.hover(tool)
+        visible = tip_text(page)
+        assert visible and visible.startswith(start), (tool, visible)
+        assert page.evaluate(f'''(() => {{
+            const el = document.querySelector('{tool}');
+            return [el.getAttribute('aria-description'), el.hasAttribute('title')];
+        }})()''') == [visible, False]
+        if tool == tools[0]:
+            pick_tip = visible
+    page.hover('#view')
+    page.evaluate('document.querySelector("#region-list .current .more").focus()')
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.dataset.tool') == 'segment'
+    assert tip_text(page) == pick_tip
+    press(page, 'Escape', 'Escape', 27)
+    assert tip_text(page) is None
+
+
+def test_a_long_tool_tip_fits_a_narrow_window(ui):
+    page = show(ui, 'en', 125, (360, 840))
+    # Scroll the control into view before moving the pointer, not in the same frame as the hover.
+    page.evaluate('''new Promise(resolve => {
+        document.querySelector('[data-tool="wall"]').scrollIntoView({block: 'center', inline: 'nearest'});
+        requestAnimationFrame(resolve);
+    })''')
+    page.hover('[data-tool="wall"]')
+    assert (tip_text(page) or '').startswith('Divider')
+    assert page.evaluate(f'''(() => {{
+        const r = {TIP}.getBoundingClientRect();
+        return r.left >= 8 && r.right <= innerWidth - 8 && r.top >= 0 && r.bottom <= innerHeight;
+    }})()''')
+
+
+def test_a_tip_goes_when_its_control_is_hidden(ui):
+    page = show(ui, 'zh', 100, (1280, 720))
+    page.click('[data-tool="cut"]')
+    page.wait_for('!document.querySelector("#cutbar").hidden', what='the Split bar')
+    page.hover('#btn-auto-cut')
+    assert (tip_text(page) or '').startswith('把左右一对')
+    press(page, 'b', 'KeyB', 66)
+    assert page.evaluate('document.querySelector("#cutbar").hidden')
+    # long enough for the browser to tell the page that the pointer is over something else, if it is going to
+    page.evaluate('new Promise(resolve => setTimeout(resolve, 400))')
+    assert tip_text(page) is None
+
+
+def test_a_tip_the_keyboard_brought_goes_when_its_control_is_hidden(ui):
+    # the keyboard's way to the same end: the pointer is nowhere near, so only the lost focus can take the tip away
+    page = show(ui, 'zh', 100, (1280, 720))
+    page.click('[data-tool="cut"]')
+    page.wait_for('!document.querySelector("#cutbar").hidden', what='the Split bar')
+    page.hover('#status-msg')
+    page.evaluate('document.querySelector("#cut-snap").focus()')
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.id') == 'btn-auto-cut'
+    assert (tip_text(page) or '').startswith('把左右一对')
+    press(page, 'b', 'KeyB', 66)
+    assert page.evaluate('document.querySelector("#cutbar").hidden')
+    page.evaluate('new Promise(resolve => setTimeout(resolve, 400))')
+    assert tip_text(page) is None
+
+
+def test_a_key_pressed_after_a_click_does_not_pin_the_tip_when_the_pointer_leaves(ui):
+    # the focus is the click's, not the keyboard's, whatever was pressed since: the tip goes with the pointer
+    page = show(ui, 'zh', 100, (1280, 720))
+    page.click('[data-tool="brush"]')
+    assert (tip_text(page) or '').startswith('画笔')
+    press(page, ']', 'BracketRight', 221)
+    assert page.evaluate('document.activeElement.dataset.tool') == 'brush'
+    page.hover('#view')
+    assert tip_text(page) is None
+
+
+def test_a_key_pressed_after_a_click_does_not_pin_the_tip_through_a_scroll(ui):
+    page = show(ui, 'en', 125, (360, 600))
+    page.click('[data-tool="brush"]')
+    assert (tip_text(page) or '').startswith('Brush')
+    press(page, ']', 'BracketRight', 221)
+    # a little: the tool stays in view, with the focus the click gave it
+    scrolled, in_view, focused, hidden = page.evaluate(f'''(async () => {{
+        const side = document.querySelector('.side'), was = side.scrollTop;
+        side.scrollTop = was > 6 ? was - 6 : was + 6;
+        for (let i = 0; i < 2; i++) await new Promise(requestAnimationFrame);
+        const el = document.activeElement, r = el.getBoundingClientRect();
+        const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return [side.scrollTop !== was, !!at && el.contains(at), el.dataset.tool, {TIP}.hidden];
+    }})()''')
+    assert (scrolled, in_view, focused) == (True, True, 'brush'), 'the case needs the panel to scroll with the tool in view'
+    assert hidden
+
+
+def test_a_tool_that_tab_scrolls_into_view_keeps_its_tip(ui):
+    page = show(ui, 'en', 125, (360, 600))
+    page.evaluate('''(() => {
+        document.querySelector('.side').scrollTop = 0;
+        document.querySelector('#show-coverage').focus({ preventScroll: true });
+        window.__scrolled = false;
+        window.addEventListener('scroll', () => { window.__scrolled = true; }, true);
+    })()''')
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.dataset.tool') == 'pen'
+    page.evaluate('new Promise(resolve => setTimeout(resolve, 400))')
+    assert page.evaluate('window.__scrolled'), 'the case needs the panel to scroll to the tool'
+    assert (tip_text(page) or '').startswith('Direction')
+    assert page.evaluate(f'''(() => {{
+        const t = {TIP}.getBoundingClientRect();
+        const a = document.activeElement.getBoundingClientRect();
+        return t.left >= 0 && t.right <= innerWidth && t.top >= 0 && t.bottom <= innerHeight
+            && a.top >= 0 && a.bottom <= innerHeight && (t.bottom <= a.top || t.top >= a.bottom);
+    }})()''')
+
+
+@pytest.mark.parametrize('lang, labels, guides, texture', (
+    ('zh', ('撤销', '重做'), ('撤销引导页上一步 (Ctrl+Z)', '重做引导页上一步 (Ctrl+Shift+Z)'),
+     ('撤销纹理页上一步 (Ctrl+Z)', '重做纹理页上一步 (Ctrl+Shift+Z)')),
+    ('en', ('Undo', 'Redo'), ('Undo on the Guides page (Ctrl+Z)', 'Redo on the Guides page (Ctrl+Shift+Z)'),
+     ('Undo on the Texture page (Ctrl+Z)', 'Redo on the Texture page (Ctrl+Shift+Z)')),
+))
+def test_history_tooltips_name_the_current_page_without_changing_the_button_labels(ui, lang, labels, guides, texture):
+    page = show(ui, lang, 100, (1280, 720))
+    page.evaluate('document.querySelector("#tab-edit").focus()')
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.id') == 'btn-undo'
+    assert tip_text(page) == guides[0]
+
+    for tab, expected in (('#tab-look', texture), ('#tab-edit', guides)):
+        page.click(tab)
+        for selector, label, description in zip(('#btn-undo', '#btn-redo'), labels, expected):
+            page.hover(selector)
+            assert tip_text(page) == description
+            assert page.evaluate(f'''(() => {{
+                const el = document.querySelector('{selector}');
+                return [el.textContent, el.hasAttribute('title')];
+            }})()''') == [label, False]
+
+
+@pytest.mark.parametrize('lang, where, avoid, more', (
+    ('zh', '选择导出位置和文件名', '保存', '选择导出什么'),
+    ('en', 'choose where to export it and its name', 'save', 'Choose what to export'),
+))
+def test_the_export_buttons_describe_themselves_to_the_keyboard_like_the_rest_of_the_bar(ui, lang, where, avoid, more):
+    page = show(ui, lang, 100, (1280, 720))
+    page.evaluate('document.querySelector("#btn-100").focus()')
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.id') == 'btn-export'
+    main = tip_text(page)
+    assert main and '(Ctrl+E)' in main and where in main and avoid not in main.lower(), main
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.id') == 'btn-export-more'
+    assert tip_text(page) == more
+    assert page.evaluate('''['#btn-export', '#btn-export-more'].map((s) => {
+        const el = document.querySelector(s);
+        return [el.getAttribute('aria-description'), el.hasAttribute('title'), el.getAttribute('aria-label')];
+    })''') == [[main, False, None], [more, False, more]]
+    press(page, 'Escape', 'Escape', 27)
+
+
 @pytest.mark.parametrize('lang, names', (('zh', ['点选', '隔开']), ('en', ['Pick', 'Divider'])))
 def test_guides_tool_shortcuts_match_their_labels_and_s_is_unassigned(ui, lang, names):
     page = show(ui, lang, 100, (1280, 720))

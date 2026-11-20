@@ -155,7 +155,12 @@ const tooltip = $('#tooltip');
 let tipFor = null;
 
 function setTip(el, text) {
-  if (text) { el.dataset.tip = text; el.setAttribute('aria-description', text); } else {
+  if (text) {
+    const changed = el.dataset.tip !== text;
+    el.dataset.tip = text;
+    el.setAttribute('aria-description', text);
+    if (changed && tipFor === el) showTip(el);
+  } else {
     delete el.dataset.tip;
     el.removeAttribute('aria-description');
     if (tipFor === el) hideTip();
@@ -171,7 +176,7 @@ function showTip(el) {
   const w = tooltip.offsetWidth, h = tooltip.offsetHeight;
   const below = r.bottom + 8 + h <= window.innerHeight - 8;
   tooltip.style.left = `${Math.round(Math.min(Math.max(8, r.left), window.innerWidth - w - 8))}px`;
-  tooltip.style.top = `${Math.round(below ? r.bottom + 8 : r.top - 8 - h)}px`;
+  tooltip.style.top = `${Math.round(Math.max(8, below ? r.bottom + 8 : r.top - 8 - h))}px`;
 }
 
 function hideTip(el = tipFor) {
@@ -190,7 +195,7 @@ document.addEventListener('pointerover', (e) => {
 document.addEventListener('pointerout', (e) => {
   const el = e.target instanceof Element && e.target.closest('[data-tip]');
   if (el && !(e.relatedTarget instanceof Node && el.contains(e.relatedTarget))
-    && !(el === document.activeElement && lastInput === 'key')) hideTip(el);
+    && !(el === document.activeElement && !focusByPointer)) hideTip(el);
 });
 document.addEventListener('focusin', (e) => {
   const el = e.target instanceof Element && e.target.closest('[data-tip]');
@@ -201,7 +206,16 @@ document.addEventListener('focusout', (e) => {
   if (el) hideTip(el);
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && tipFor) hideTip(); }, true);
-window.addEventListener('scroll', () => hideTip(), true);
+// A scroll takes the pointer's tip away. The tip of what the keyboard focused follows it while it is still in view: Tab
+// scrolls the panel to a tool that was out of view, and that scroll must not take the tip it just got.
+window.addEventListener('scroll', () => {
+  const el = tipFor;
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+  if (el === document.activeElement && !focusByPointer && at && el.contains(at)) showTip(el); else hideTip();
+}, true);
+window.addEventListener('resize', () => { if (tipFor) showTip(tipFor); });
 
 // ------------------------------------------------------------------ server
 
@@ -231,7 +245,15 @@ function queue(fn) {
 function edit(method, path, body) {
   if (!S.doc) return Promise.resolve(null);
   const id = S.doc.id;
+  // A mirror's receipt offers Ctrl+Z for the mirror. That holds until the 引导 page's next edit is done: an undo takes
+  // the mirror back, anything else puts a newer step in front of it. So an edit asked for on that page ends the
+  // receipt when it is done, not when it is asked for: the receipt of a mirror still on its way shows in between.
+  // Not a redo (while the receipt shows there is nothing to redo, so nothing changes), nor an edit of the 纹理 page,
+  // which has a history of its own: one asked for there, or a step of its history, which names its page and may be
+  // sent after the user has gone back to 引导 (it waits for a save).
+  const ends = S.mode !== 'look' && !path.startsWith('/redo') && !path.includes('page=look');
   return queue(() => request(method, `/api/doc/${id}${path}`, body)).then((st) => {
+    if (ends && receipt === id) flash('');
     applyState(st);
     return st;
   }).catch((e) => { flash(e.message, true); return null; });
@@ -511,8 +533,11 @@ let renaming = null;
 // 撤销 and 重做 work on the page shown: 纹理 has a history of its own (its settings and 颜色排除), 引导 has the rest.
 function renderHistory() {
   const d = S.doc, look = S.mode === 'look';
-  $('#btn-undo').disabled = !d || !(look ? d.can_undo_look : d.can_undo);
-  $('#btn-redo').disabled = !d || !(look ? d.can_redo_look : d.can_redo);
+  const undo = $('#btn-undo'), redo = $('#btn-redo');
+  undo.disabled = !d || !(look ? d.can_undo_look : d.can_undo);
+  redo.disabled = !d || !(look ? d.can_redo_look : d.can_redo);
+  setTip(undo, look ? t('撤销纹理页上一步 (Ctrl+Z)') : t('撤销引导页上一步 (Ctrl+Z)'));
+  setTip(redo, look ? t('重做纹理页上一步 (Ctrl+Shift+Z)') : t('重做引导页上一步 (Ctrl+Shift+Z)'));
 }
 
 function stepHistory(kind) {
@@ -525,12 +550,12 @@ function stepHistory(kind) {
 function renderChrome() {
   const d = S.doc;
   document.body.classList.toggle('no-doc', !d);
+  $('.side').inert = !d;
   $('#empty').hidden = !!d;
   renderHistory();
   $('.mode[data-mode="edit"]').setAttribute('aria-disabled', String(!d));
   lookTab.setAttribute('aria-disabled', String(!canLook()));
-  lookTab.title = canLook() ? t('选样式、调参数，看纹理') : '';
-  setTip(lookTab, d && !canLook() ? LOOK_LOCKED : null);
+  setTip(lookTab, canLook() ? t('选样式、调参数，看纹理') : d ? LOOK_LOCKED : null);
   for (const id of ['#btn-add-region', '#btn-fit', '#btn-100']) $(id).disabled = !d;
   renderExport();
   const r = currentRegion();
@@ -705,14 +730,17 @@ function renderHint() {
     : HINTS[S.tool] + t('；空格或中键拖动画面，方向键平移，+ − 缩放');
 }
 
-let flashTimer = 0;
+// receipt: the id of the document while the bar shows the receipt of a mirror made in it (which offers Ctrl+Z), else
+// null. Any other message replaces the receipt, and the next edit of the 引导 page ends it: see edit().
+let flashTimer = 0, receipt = null;
 function flash(text, isError = false) {
   const el = $('#status-msg');
   el.textContent = text;
   el.title = text;                       // the whole of a message too long for the bar
   el.classList.toggle('error', isError);
+  receipt = null;
   clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { el.textContent = ''; el.title = ''; }, isError ? 9000 : 5000);
+  flashTimer = setTimeout(() => { el.textContent = ''; el.title = ''; receipt = null; }, isError ? 9000 : 5000);
 }
 
 function busy(text) {
@@ -1217,6 +1245,7 @@ cv.addEventListener('pointerdown', (e) => {
     if (S.tool === 'pen' && e.button === 2) {
       const id = strokeAt(p);
       if (id !== null) deleteStroke(id);
+      else flash(t('指针下没有走向线：把指针移到走向线上再右键'));
       return;
     }
     if (S.tool === 'wall' && e.button === 2) {
@@ -1284,7 +1313,11 @@ function endDrag(e) {
   } else if (d.kind === 'pen' || d.kind === 'cut' || d.kind === 'wall') {
     let len = 0;
     for (let i = 1; i < d.pts.length; i++) len += Math.hypot(d.pts[i].x - d.pts[i - 1].x, d.pts[i].y - d.pts[i - 1].y);
-    if (len < (d.kind === 'pen' ? 10 : 6)) { redraw(); return; }
+    if (len < (d.kind === 'pen' ? 10 : 6)) {
+      if (e.type === 'pointerup') flash(t('线太短，请拖出一段更长的线'));
+      redraw();
+      return;
+    }
     if (d.kind === 'cut') { cutAlong(d); redraw(); return; }
     if (d.kind === 'wall') {
       const pts = flat(d.pts);
@@ -1341,8 +1374,8 @@ function renderExport() {
   main.textContent = EXPORTS[exportKind].main;
   const blocked = exportBlocked(exportKind);
   main.setAttribute('aria-disabled', String(!d || blocked !== null));
-  main.title = !d ? '' : blocked
-    || t('{what} (Ctrl+E)：选择保存位置和文件名，原文件不会被改动', { what: EXPORTS[exportKind].main });
+  setTip(main, !d ? null : blocked
+    || t('{what} (Ctrl+E)：选择导出位置和文件名，原文件不会被改动', { what: EXPORTS[exportKind].main }));
   $('#btn-export-more').disabled = !d;
   if (!d) closeExportMenu();
 }
@@ -1736,10 +1769,16 @@ function renderMirror() {
   if (blocked !== null) closeMirrorMenu();
 }
 
-function mirrorTo(r, o) {
+function mirrorTo(r, o, { automatic = false } = {}) {
   closeMirrorMenu();
   edit('POST', `/regions/${r.id}/mirror`, { into: o.id }).then((st) => {
-    if (st) flash(t('已把“{name}”的走向线镜像到“{into}”，Ctrl+Z 可以撤销', { name: r.name, into: o.name }));
+    if (!st) return;
+    const names = { name: r.name, into: o.name };
+    const n = st.mirrored.replaced;
+    flash(!automatic ? t('已把“{name}”的走向线镜像到“{into}”，Ctrl+Z 可以撤销', names)
+      : n ? t('已自动配对：把“{name}”的走向线镜像到“{into}”，替换 {n} 条。Ctrl+Z 可以撤销', { ...names, n })
+      : t('已自动配对：把“{name}”的走向线镜像到“{into}”。Ctrl+Z 可以撤销', names));
+    receipt = st.id;              // the mirrored lines are solved next: that news must not take this away
   });
 }
 
@@ -1786,7 +1825,7 @@ $('#btn-mirror').addEventListener('click', (e) => {
   const blocked = S.doc ? mirrorBlocked(r) : '';
   if (blocked !== null) { if (blocked) flash(blocked); return; }
   const p = mirrorPartner(r);
-  if (p) mirrorTo(r, p); else openMirrorMenu(r, b);
+  if (p) mirrorTo(r, p, { automatic: true }); else openMirrorMenu(r, b);
 });
 $('#mirror-menu').addEventListener('keydown', (e) => {
   const items = [...$('#mirror-menu').querySelectorAll('button')];
@@ -1945,7 +1984,11 @@ function connectEvents() {
       if (ev.type === 'solved') {
         const r = S.doc.regions.find((x) => x.id === ev.region);
         if (r && ev.error) flash(t('{name}：{error}', { name: r.name, error: ev.error }), true);
-        else if (r) flash(t('“{name}”的横纹已更新，用时 {s} 秒', { name: r.name, s: ev.seconds }));
+        // A fast solve must not erase the receipt the user just got for an action (the mirror it solves). Anything
+        // else in the bar is older news than this: the note about a line too short, the solve before this one.
+        else if (r && !receipt) {
+          flash(t('“{name}”的横纹已更新，用时 {s} 秒', { name: r.name, s: ev.seconds }));
+        }
       }
       refresh();
     }

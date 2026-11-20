@@ -69,17 +69,17 @@ If the install files download too slowly, or the computer has no internet connec
 
 ### 1. Open a picture
 
-Drop a PNG, JPG or PSD on the window, or press Ctrl+O. A PSD is read as its flattened image.
+Drop a PNG, JPG or PSD on the window, or press Ctrl+O. A PSD is read as its flattened image. Until you open an image, the left panel is inactive and skipped by the keyboard.
 
 ### 2. Paint the regions
 
 ![The Guides page: the left and right leg each painted as a region, in blue and orange](docs/images/regions-page-en.jpg)
 
-Step 1, Regions, on the left. There are two to start with, Left leg and Right leg.
+Step 1, Regions, on the left. There are two to start with, Left leg and Right leg. Hover over a tool or focus it with the keyboard to see how to use it.
 
 - **Pick (W):** left-click a leg to select all of it; right-click subtracts. After a click, Small / Medium / Large appears beside it, and Tab switches between them. Fill in anything missed with another click at Small. When several picks make up one region, the thin gaps the line art leaves between the pieces are filled in automatically (the Fill gaps switch beside the range turns that off).
 - **Brush (B) / Eraser (E):** touch up the edges by hand; `[` and `]` change the brush size.
-- **Split (K):** draw a line across a region to cut it in two. A Snap to line art switch appears above the picture: with it on, the line snaps to nearby line art. If two breasts or two legs ended up in one region, Auto split there cuts it down the middle.
+- **Split (K):** draw a line across a region to cut it in two. A Snap to line art switch appears above the picture: with it on, the line snaps to nearby line art. If two breasts or two legs ended up in one region, Auto split there cuts it down the middle. If you draw too short a line with Split, Direction or Divider, the status bar asks you to drag farther.
 
 Give each side of a crease its own region: left and right thigh, crotch, left and right breast. It works beyond legs too, for instance a top split into collar, left chest and right chest:
 
@@ -96,8 +96,8 @@ Step 2, Direction: choose Direction (P) and draw a line along one course of the 
 ![Left: a knee, ∩ above and ∪ below; right: the front of an ankle, ∪ above and ∩ below](docs/images/courses-knee-ankle.jpg)
 
 - A line may cross a hand or hair; the courses carry on underneath.
-- Right-click or Delete removes the line under the pointer. Each line re-solves only its own region, in a second or two.
-- **Mirror:** once the left leg is done, select it and click Mirror; the right leg gets a flipped copy of its lines, which you can then edit as usual.
+- Right-click or Delete removes the direction line under the pointer. Right-clicking where there is no line tells you to move onto one. Each line re-solves only its own region, in a second or two.
+- **Mirror:** once the left leg is done, select it and click Mirror; the right leg gets a flipped copy of its lines, which you can then edit as usual. When the regions are paired automatically, the status bar names both and says how many direction lines were replaced, if any. Press Ctrl+Z to undo.
 
 With direction lines drawn on both legs, the thin white lines are the solved courses:
 
@@ -215,7 +215,7 @@ Kase's share 0% / 30% / 70% / 100% (the rest is Fine lines; left to right), the 
 
 **Color exclusion** (on by default): parts of a region whose color is far from the stocking's (gold trim, gloves, bare skin) get no texture. Now and then a sheer knee showing skin gets excluded too; turn it off then.
 
-**Undo and redo:** the Undo and Redo buttons at the top right (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) work on the page you are on, and each page keeps its own history. On the Texture page they cover what you do there: style, density, tilt, strength, adding and deleting layers and their mix, sparkles, highlight particles, the moiré effect, loading a preset, Reset all, and the Color exclusion switch; one drag of a slider is one step. Saving, deleting, importing and exporting presets are not part of it. Undo on the Guides page still covers regions and direction lines. The history is not saved with the image and is cleared when you close it.
+**Undo and redo:** the Undo and Redo buttons at the top right (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) work on the page you are on, and each page keeps its own history. Hover over either button or focus it with the keyboard to see which page it applies to. On the Texture page they cover what you do there: style, density, tilt, strength, adding and deleting layers and their mix, sparkles, highlight particles, the moiré effect, loading a preset, Reset all, and the Color exclusion switch; one drag of a slider is one step. Saving, deleting, importing and exporting presets are not part of it. Undo on the Guides page still covers regions and direction lines. The history is not saved with the image and is cleared when you close it.
 
 ### 6. Show problems
 
