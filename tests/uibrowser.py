@@ -59,6 +59,29 @@ def _free_port():
             return port
 
 
+def _end(proc):
+    """End a process this module started, with everything it started, and nothing else. Raises if it will not go."""
+    if proc.poll() is not None:
+        return
+    if os.name == 'nt':      # a venv's python.exe starts the real one as a child, Edge is a tree of processes
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True, timeout=20)
+    else:
+        proc.kill()
+    try:
+        proc.wait(10)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(10)
+
+
+# The tool's own launcher, with the two places a model is looked for in the checkout pointed at nothing: with the
+# empty home folder and no network that leaves no model to load, whatever this checkout has installed.
+_CHILD = ('import sys; from stocking import depth, sam; sam.checkpoint_path = lambda: None; '
+          'depth.LOCAL += "-not-used-by-tests"; from stocking.__main__ import main; '
+          'sys.argv = ["stocking"] + sys.argv[1:]; main()')
+
+
 def _wait(what, test, timeout, every=0.1):
     end = time.monotonic() + timeout
     while True:
@@ -74,8 +97,12 @@ def _wait(what, test, timeout, every=0.1):
 
 class Server:
     """An --isolated server in a folder of its own. Its settings (language, 界面大小) start empty and are thrown away
-    with it; the user's are never read or written. No model is found (the home folder is an empty one) and none is
-    downloaded, so 点选 and the depth model report themselves unavailable, as on a computer without them."""
+    with it (its temporary files are in the folder too); the user's are never read or written. It finds no model and
+    downloads none, so 点选 and the depth model report themselves unavailable, as on a computer without them.
+
+    It is ours only once our own process has said it is serving on our port: a tool that merely answers there (another
+    program can take a port between the moment it is picked and the moment it is bound) is never sent anything, and
+    stopping ends our process, not whatever listens on the port."""
 
     def __init__(self, folder):
         self.folder = str(folder)
@@ -89,53 +116,42 @@ class Server:
 
     def start(self, timeout=90):
         self.port = _free_port()
-        home = os.path.join(self.folder, 'home')
-        os.makedirs(home, exist_ok=True)
+        home, tmp = os.path.join(self.folder, 'home'), os.path.join(self.folder, 'tmp')
+        for d in (home, tmp):
+            os.makedirs(d, exist_ok=True)
         env = dict(os.environ, LOCALAPPDATA=os.path.join(self.folder, 'localappdata'), USERPROFILE=home,
-                   HF_HOME=os.path.join(home, 'hf'), HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
-                   CUDA_VISIBLE_DEVICES='-1', PYTHONUTF8='1', PYTHONPATH=ROOT)
+                   TEMP=tmp, TMP=tmp, TMPDIR=tmp, HF_HOME=os.path.join(home, 'hf'), HF_HUB_OFFLINE='1',
+                   TRANSFORMERS_OFFLINE='1', CUDA_VISIBLE_DEVICES='-1', PYTHONUTF8='1', PYTHONPATH=ROOT)
         with open(self.log, 'w', encoding='utf-8') as log:
             self.proc = subprocess.Popen(
-                [sys.executable, '-m', 'stocking', '--isolated', '--no-window', '--stay', '--port', str(self.port)],
+                [sys.executable, '-c', _CHILD, '--isolated', '--no-window', '--stay', '--port', str(self.port)],
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         try:
             _wait('the server', self._up, timeout)
-        except Exception:
+        except BaseException:           # an interruption too: nothing started here is left running
             self.stop()
             raise
         return self
 
     def _up(self):
+        """Whether our process has said it is serving (the launcher prints its address once its server has the port;
+        had another program taken the port first, ours could not bind it and would have ended instead)."""
         if self.proc.poll() is not None:
-            raise RuntimeError(f'the server exited with {self.proc.returncode}:\n{self._log_tail()}')
-        try:
-            return self.api('/api/ping', timeout=1).get('app') == 'stocking-texture'
-        except (OSError, ValueError):
-            return False
+            raise RuntimeError(f'the server exited with {self.proc.returncode}:\n{self._log()[-2000:]}')
+        return f'http://127.0.0.1:{self.port}/' in self._log()
 
-    def _log_tail(self):
+    def _log(self):
         try:
             with open(self.log, encoding='utf-8', errors='replace') as f:
-                return f.read()[-2000:]
+                return f.read()
         except OSError:
             return ''
 
     def stop(self):
-        if self.proc is None:
-            return
-        try:
-            self.api('/api/shutdown', 'POST', {}, timeout=5)      # the launcher's own way out: its child goes with it
-            self.proc.wait(10)
-        except Exception:
-            pass
-        if self.proc.poll() is None:
-            if os.name == 'nt':     # a venv's python.exe starts the real one as a child: end the whole tree
-                subprocess.run(['taskkill', '/F', '/T', '/PID', str(self.proc.pid)], capture_output=True)
-            else:
-                self.proc.kill()
-            self.proc.wait(10)
-        self.proc = None
+        proc, self.proc = self.proc, None
+        if proc is not None:
+            _end(proc)          # an isolated server has no session to save: ending it loses nothing
 
     def api(self, path, method='GET', body=None, timeout=30, headers=None, data=None):
         """A request to this server, as the launcher sends them (no Origin); the answer's JSON."""
@@ -238,7 +254,7 @@ class Browser:
         try:
             self.port = _wait('the browser', port, timeout)
             _wait('the browser to answer', lambda: self._ask('/json/version', quiet=True), timeout)
-        except Exception:
+        except BaseException:
             self.stop()
             raise
         return self
@@ -258,18 +274,9 @@ class Browser:
         return Page(self._ask('/json/new?about:blank', 'PUT')['webSocketDebuggerUrl'], width, height)
 
     def stop(self):
-        if self.proc is None:
-            return
-        if self.proc.poll() is None:
-            if os.name == 'nt':     # Edge is a tree of processes
-                subprocess.run(['taskkill', '/F', '/T', '/PID', str(self.proc.pid)], capture_output=True)
-            else:
-                self.proc.kill()
-            try:
-                self.proc.wait(10)
-            except subprocess.TimeoutExpired:
-                pass
-        self.proc = None
+        proc, self.proc = self.proc, None
+        if proc is not None:
+            _end(proc)
 
 
 class Page:
@@ -278,7 +285,11 @@ class Page:
     def __init__(self, ws_url, width, height):
         from websockets.sync.client import connect
         self._closing = contextlib.ExitStack()
-        self.ws = self._closing.enter_context(connect(ws_url, max_size=None, open_timeout=20, proxy=None))
+        try:                    # this computer only: never through a proxy
+            conn = connect(ws_url, max_size=None, open_timeout=20, proxy=None)
+        except TypeError:       # websockets before 15 has no proxies to keep out of the way
+            conn = connect(ws_url, max_size=None, open_timeout=20)
+        self.ws = self._closing.enter_context(conn)
         self.errors = []
         self._id = 0
         self.send('Page.enable')
@@ -290,7 +301,10 @@ class Page:
         self.ws.send(json.dumps({'id': self._id, 'method': method, 'params': params}))
         end = time.monotonic() + timeout
         while True:
-            msg = json.loads(self.ws.recv(timeout=max(0.1, end - time.monotonic())))
+            left = end - time.monotonic()       # the deadline is the command's, however many events come in before
+            if left <= 0:
+                raise TimeoutError(f'{method}: no answer within {timeout} s')
+            msg = json.loads(self.ws.recv(timeout=left))
             if msg.get('id') == self._id:
                 if 'error' in msg:
                     raise RuntimeError(f'{method}: {msg["error"]}')
@@ -315,8 +329,12 @@ class Page:
 
     def goto(self, url, timeout=30):
         """Load the tool's page and wait until it is translated and its scripts have started."""
-        self.send('Page.navigate', url=url)          # answered once the new document has taken the old one's place
-        self.wait_for(f'{json.dumps(url)}.startsWith(location.origin) && document.readyState === "complete"'
+        self.evaluate('window.__leaving = true')        # the document being left: only a new one is without this
+        failed = self.send('Page.navigate', url=url).get('errorText')
+        if failed:
+            raise RuntimeError(f'{url} did not load: {failed}')
+        self.wait_for(f'!window.__leaving && {json.dumps(url)}.startsWith(location.origin)'
+                      ' && document.readyState === "complete"'
                       ' && document.documentElement.classList.contains("i18n-done")', timeout, f'{url} to load')
 
     def _centre(self, selector):
@@ -351,22 +369,39 @@ class Page:
         return path
 
     def close(self):
-        try:
+        with contextlib.suppress(Exception):
             self.send('Page.close', timeout=5)
-        except Exception:
-            pass
-        self._closing.close()
+        with contextlib.suppress(Exception):
+            self._closing.close()
+
+
+@contextlib.contextmanager
+def running(folder):
+    """(server, browser), started in `folder` and both ended on the way out, whatever happened in between and
+    whichever of them failed to start or to stop: an interruption too."""
+    with contextlib.ExitStack() as stack:
+        server, browser = Server(folder), Browser(folder)
+        stack.callback(server.stop)
+        stack.callback(browser.stop)
+        server.start()
+        browser.start()
+        yield server, browser
 
 
 # ------------------------------------------------------------------ what a test asks of the page
 
-def out_of_reach(page, scope):
+def out_of_reach(page, scope, must=()):
     """The controls inside `scope` (a selector) that are shown but that the pointer cannot get to: partly or wholly
-    outside the window, or with something else on top of their middle. A list of descriptions, empty when all can
-    be reached."""
+    outside the window, or with something else on top of their middle; and those of `must` (selectors) that are not
+    there or not shown, since a control taken off the page cannot be reached either (one that is disabled for now,
+    like 撤销 with nothing to undo, counts as there). A list of descriptions, empty when all can be reached."""
     return page.evaluate(f'''(() => {{
         const vw = innerWidth, vh = innerHeight, out = [];
         const scope = document.querySelector({json.dumps(scope)});
+        for (const s of {json.dumps(list(must))}) {{
+            const el = document.querySelector(s);
+            if (!el || !el.checkVisibility({{ visibilityProperty: true }}) || !el.getBoundingClientRect().width) out.push(`${{s}} is not shown`);
+        }}
         for (const el of scope.querySelectorAll('button, select, input, a[href]')) {{
             if (!el.checkVisibility({{ visibilityProperty: true }})) continue;
             const r = el.getBoundingClientRect();
@@ -384,9 +419,20 @@ def out_of_reach(page, scope):
     }})()''')
 
 
+def contrast(a, b):
+    """The WCAG 2 contrast ratio of two colours written #rrggbb."""
+    def lum(c):
+        v = [int(c[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        r, g, b_ = (x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in v)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b_
+    hi, lo = sorted((lum(a), lum(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
 def text_contrast(page, selector):
     """The WCAG 2 contrast ratio of an element's text against the fill behind it, as the element is drawn now (so
-    under the pointer after Page.hover). Returns {'ratio', 'text', 'fill'}."""
+    under the pointer after Page.hover). Returns {'ratio', 'text', 'fill'}. Colours only: it refuses an element that
+    is faded (an opacity below 1 on it or around it)."""
     return page.evaluate(f'''(() => {{
         const rgba = (s) => {{
             const m = s.match(/^rgba?\\(\\s*([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:\\s*[,\\/]\\s*([\\d.]+))?\\s*\\)$/);
@@ -396,7 +442,12 @@ def text_contrast(page, selector):
         const over = (f, b) => [0, 1, 2].map((i) => f[i] * f[3] + b[i] * (1 - f[3])).concat(1);
         const el = document.querySelector({json.dumps(selector)});
         const fills = [];
-        for (let e = el; e; e = e.parentElement) fills.push(rgba(getComputedStyle(e).backgroundColor));
+        for (let e = el; e; e = e.parentElement) {{
+            const cs = getComputedStyle(e);
+            // a faded element shows less contrast than its colours have: say so rather than report the colours' ratio
+            if (+cs.opacity < 1) throw new Error(`text_contrast cannot measure a faded element (opacity ${{cs.opacity}})`);
+            fills.push(rgba(cs.backgroundColor));
+        }}
         let fill = [255, 255, 255, 1];                      // the browser's own white, under everything
         for (const f of fills.reverse()) fill = over(f, fill);
         const text = over(rgba(getComputedStyle(el).color), fill);
