@@ -1829,10 +1829,48 @@ def test_undo_never_goes_past_a_texture_change_that_could_not_be_saved(tmp_path)
         assert page.evaluate('window.__order') == ['save', 'undo', 'save', 'undo']
 
 
-@pytest.mark.parametrize('lang, reason', (
-    ('zh', '当前设置与所选预设一致，改动后再保存'), ('en', 'The settings match the selected preset. Change them before saving.'),
-))
-def test_an_unchanged_preset_explains_save_without_writing(ui, lang, reason):
+@pytest.mark.parametrize('lang, scope', (
+    ('zh', '保存纹理设置。不含颜色排除、部位和走向线。'),
+    ('en', 'Saves texture settings, not color exclusion, regions or direction lines.'),
+), ids=('zh', 'en'))
+def test_the_save_preset_tooltip_explains_what_an_overwrite_keeps(ui, lang, scope):
+    server, _ = ui
+    name = 'Sample weave'
+    server.api('/api/look/presets', 'PUT', {'name': name, 'params': {'density': 125}})
+    page = show(ui, lang, 100, (1280, 720), look=1)
+    preset = 'document.querySelector("#preset-select")'
+    save = 'document.querySelector("#btn-preset-save")'
+    page.wait_for(f'[...{preset}.options].some(o => o.value === {json.dumps(name)})', what='the saved name to be available')
+    pick_preset(page, name)
+    assert page.evaluate(f'{save}.getAttribute("aria-disabled")') == 'true'
+    page.click('[data-style=loops]')
+    assert page.evaluate(f'{save}.getAttribute("aria-disabled")') == 'false'
+    page.wait_for('/^(缩到窗口|Scaled)/.test(document.querySelector("#fit-status").textContent)',
+                  what='Whole to be drawn')
+
+    page.hover('#btn-preset-save')
+    mouse_tip = tip_text(page)
+    page.screenshot(f'preset-save-{lang}-1280x720-tooltip')
+    assert mouse_tip and scope in mouse_tip and name in mouse_tip, mouse_tip
+    # what is saved and what the button does now are two sentences, each on its own line of the tip
+    lines = mouse_tip.split('\n')
+    assert len(lines) == 2 and lines[0] == scope and name in lines[1], mouse_tip
+    assert page.evaluate(f'getComputedStyle({TIP}).whiteSpace') in ('pre-line', 'pre-wrap')
+    page.hover('.status')
+    page.evaluate(f'{preset}.focus()')
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.id') == 'btn-preset-save'
+    assert tip_text(page) == mouse_tip
+    assert page.evaluate(f'{save}.getAttribute("aria-description")') == mouse_tip
+    page.check_errors()
+
+
+@pytest.mark.parametrize('lang, reason, scope', (
+    ('zh', '当前设置与所选预设一致，改动后再保存', '保存纹理设置。不含颜色排除、部位和走向线。'),
+    ('en', 'The settings match the selected preset. Change them before saving.',
+     'Saves texture settings, not color exclusion, regions or direction lines.'),
+), ids=('zh', 'en'))
+def test_an_unchanged_preset_explains_save_without_writing(ui, lang, reason, scope):
     server, _ = ui
     server.api('/api/look/presets', 'PUT', {'name': 'Example', 'params': {'density': 125}})
     page = show(ui, lang, 100, (360, 840), look=1)
@@ -1849,25 +1887,27 @@ def test_an_unchanged_preset_explains_save_without_writing(ui, lang, reason):
     save = 'document.querySelector("#btn-preset-save")'
     assert page.evaluate(f'[{save}.disabled, {save}.getAttribute("aria-disabled")]') == [False, 'true']
     page.click('#btn-preset-save')
-    assert tip_text(page) == reason
+    unchanged_tip = tip_text(page)
+    assert unchanged_tip == f'{scope}\n{reason}', unchanged_tip
     assert page.evaluate(STATUS_MSG) == reason
     page.hover('#status-msg')
     page.evaluate(f'{preset}.focus()')
     press(page, 'Tab', 'Tab', 9)
     assert page.evaluate('document.activeElement.id') == 'btn-preset-save'
-    assert tip_text(page) == reason
+    assert tip_text(page) == unchanged_tip
     press(page, 'Enter', 'Enter', 13)
     press(page, ' ', 'Space', 32)
     assert page.evaluate('[window.__saveClicks, window.__presetWrites]') == [3, 0]
+    assert page.evaluate(STATUS_MSG) == reason
 
     page.evaluate('''const el = document.querySelector('#density');
         el.value = 126; el.dispatchEvent(new Event('input', {bubbles:true}));''')
     assert page.evaluate(f'{save}.getAttribute("aria-disabled")') == 'false'
-    assert tip_text(page) not in (None, reason)
+    assert scope in (tip_text(page) or '') and reason not in tip_text(page)
     press(page, 'Enter', 'Enter', 13)
     page.wait_for(f'{save}.getAttribute("aria-disabled") === "true"', what='the edited settings to be saved')
     assert page.evaluate('window.__presetWrites') == 1
-    assert tip_text(page) == reason
+    assert tip_text(page) == unchanged_tip
 
 
 @pytest.mark.parametrize('lang, size, limited', (
@@ -2519,6 +2559,54 @@ def save_new_preset(page, name):
     page.click('#btn-preset-ok')
     page.wait_for(f'document.querySelector("#preset-select").value === {json.dumps(name)}'
                   ' && !document.querySelector("#preset-dialog").open', what=f'the preset {name} to be saved')
+
+
+@pytest.mark.parametrize('size', ((1280, 720), (360, 840)), ids=('desktop', 'narrow'))
+@pytest.mark.parametrize('lang, name, scope, collision', (
+    ('zh', '示例纹理', '预设带上：纹理层、样式和滑杆、亮点、高光粒子、摩尔纹效果、纹理减弱。不带：颜色排除、部位和走向线。',
+     '已有同名预设，保存会覆盖它。'),
+    ('en', 'Sample weave', 'A preset keeps: texture layers, style and sliders, sparkles, highlight particles, '
+     'moiré effect, texture fade. It leaves out: color exclusion, regions and direction lines.',
+     'A preset with this name exists; saving replaces it.'),
+), ids=('zh', 'en'))
+def test_the_new_preset_dialog_keeps_its_scope_visible_with_a_duplicate_name(ui, size, lang, name, scope, collision):
+    server, _ = ui
+    server.api('/api/look/presets', 'PUT', {'name': name, 'params': {'density': 125}})
+    page = show(ui, lang, 100, size, look=1)
+    page.wait_for(f'[...document.querySelector("#preset-select").options].some(o => o.value === {json.dumps(name)})',
+                  what='the saved name to be available')
+    page.wait_for('/^(缩到窗口|Scaled)/.test(document.querySelector("#fit-status").textContent)',
+                  what='Whole to be drawn')
+    pick_preset(page, None)
+    page.wait_for('document.querySelector("#preset-dialog").matches(":modal") && document.activeElement.id === "preset-name"',
+                  what='the new preset dialog to ask for a name')
+    visible_scope = '''(() => {
+        const d = document.querySelector('#preset-dialog');
+        const p = document.getElementById(d.getAttribute('aria-describedby'));
+        return p && p.checkVisibility() ? p.textContent.trim() : null;
+    })()'''
+    before_name = page.evaluate(visible_scope)
+    page.send('Input.insertText', text=name)
+    page.screenshot(f'preset-dialog-{lang}-{size[0]}x{size[1]}-duplicate')
+    assert before_name == scope
+    assert page.evaluate(visible_scope) == scope
+    assert page.evaluate('''(() => {
+        const p = document.querySelector('#preset-dialog-note');
+        return p.checkVisibility() ? p.textContent : null;
+    })()''') == collision
+    assert page.evaluate('''(() => {
+        const d = document.querySelector('#preset-dialog'), r = d.getBoundingClientRect();
+        const scope = document.getElementById(d.getAttribute('aria-describedby')).getBoundingClientRect();
+        const name = d.querySelector('#preset-name').getBoundingClientRect();
+        const warning = d.querySelector('#preset-dialog-note').getBoundingClientRect();
+        return r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight
+            && d.scrollWidth === d.clientWidth && d.scrollHeight === d.clientHeight
+            && name.bottom <= scope.top && scope.bottom <= warning.top;
+    })()''')
+    assert uibrowser.out_of_reach(page, '#preset-dialog', must=('#btn-preset-ok', '#btn-preset-cancel')) == []
+    page.click('#btn-preset-cancel')
+    assert not page.evaluate('document.querySelector("#preset-dialog").open')
+    page.check_errors()
 
 
 def saved_preset(server, name):

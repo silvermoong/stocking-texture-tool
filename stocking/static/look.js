@@ -1141,6 +1141,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
   const presetDlg = $('#preset-dialog');
   const presetNameInput = $('#preset-name');
   const presetDlgNote = $('#preset-dialog-note');
+  const presetUnchanged = t('当前设置与所选预设一致，改动后再保存');
+  const presetSaveScope = t('保存纹理设置。不含颜色排除、部位和走向线。');
 
   function presetOf(name) { return name ? L.presets.find((p) => p.name === name) : undefined; }
 
@@ -1180,8 +1182,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     presetSave.textContent = p ? t('保存') : t('保存…');          // with none selected it asks for a name
     presetSave.disabled = !L.params;
     presetSave.setAttribute('aria-disabled', String(unchanged));
-    setTip(presetSave, !L.params ? null : unchanged ? t('当前设置与所选预设一致，改动后再保存')
-      : p ? t('用现在的设置更新“{name}”', { name: p.name }) : t('把现在的设置存成新预设'));
+    const action = unchanged ? presetUnchanged
+      : p ? t('用现在的设置更新“{name}”', { name: p.name }) : t('把现在的设置存成新预设');
+    setTip(presetSave, L.params ? `${presetSaveScope}\n${action}` : null);      // two lines: what is saved, then what it does now
     $('#btn-preset-delete').disabled = !p;
     $('#btn-preset-export').disabled = !p || !p.params || L.presetFileBusy;       // an unreadable preset cannot be handed on
     $('#btn-preset-import').disabled = L.presetFileBusy;
@@ -1355,7 +1358,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
   });
   presetSave.addEventListener('click', () => {
     // Enter and Space also activate the button, but an unchanged preset must not be written again.
-    if (presetSave.getAttribute('aria-disabled') === 'true') { flash(presetSave.dataset.tip); return; }
+    if (presetSave.getAttribute('aria-disabled') === 'true') { flash(presetUnchanged); return; }
     if (presetOf(L.presetName)) updatePreset(); else openSavePreset();
   });
   $('#btn-preset-delete').addEventListener('click', deletePreset);

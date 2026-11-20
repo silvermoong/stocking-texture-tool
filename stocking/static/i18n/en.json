@@ -53,6 +53,8 @@
  "保存…": "Save…",
  "保存为新预设…": "Save as new preset…",
  "保存预设": "Save preset",
+ "保存纹理设置。不含颜色排除、部位和走向线。": "Saves texture settings, not color exclusion, regions or direction lines.",
+ "预设带上：纹理层、样式和滑杆、亮点、高光粒子、摩尔纹效果、纹理减弱。不带：颜色排除、部位和走向线。": "A preset keeps: texture layers, style and sliders, sparkles, highlight particles, moiré effect, texture fade. It leaves out: color exclusion, regions and direction lines.",
  "像油光那样顺着画面里的受光处找出高光带（深色丝袜上同样会延续到整条腿），但把高光画成细密的粒子，中间密、往两侧渐渐散开。默认关，打开开关才有，可以叠加在任何样式上。": "Finds the highlight bands along the lit parts of the picture the way Glossy does (running the whole length of the leg on dark stockings too), and draws them as fine particles, dense along the middle and scattering outward. Off by default; turn the switch on to lay it over any style.",
  "先在“{name}”上画走向线，再镜像到另一边": "Draw direction lines on “{name}” first, then mirror them to the other side",
  "先在上面选一个部位": "First pick a region above",

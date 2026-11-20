@@ -311,7 +311,7 @@ body.no-doc .step-body > :not(.step-head), body.no-doc .step h2 { opacity: .4; }
 /* a short note shown beside whatever has one (data-tip) on hover or keyboard focus */
 .tip.float {
   position: fixed; left: 0; top: 0; width: max-content; max-width: min(calc(300px * var(--k)), calc(100vw - 16px));
-  white-space: normal; overflow-wrap: anywhere; line-height: 1.55;
+  white-space: pre-line; overflow-wrap: anywhere; line-height: 1.55;      /* a tip of two sentences gives each its line */
 }
 /* asking before opening another image would lose the current one's regions and 走向 lines */
 .dialog {

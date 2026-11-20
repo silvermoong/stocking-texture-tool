@@ -419,13 +419,14 @@
   </form>
 </dialog>
 
-<dialog id="preset-dialog" class="dialog" aria-labelledby="preset-dialog-title">
+<dialog id="preset-dialog" class="dialog" aria-labelledby="preset-dialog-title" aria-describedby="preset-dialog-scope">
   <form id="preset-form" method="dialog">
     <h2 id="preset-dialog-title">保存预设</h2>
     <label class="dialog-field">
       <span>预设名</span>
       <input id="preset-name" type="text" maxlength="40" autocomplete="off" spellcheck="false">
     </label>
+    <p id="preset-dialog-scope" class="note dialog-note">预设带上：纹理层、样式和滑杆、亮点、高光粒子、摩尔纹效果、纹理减弱。不带：颜色排除、部位和走向线。</p>
     <p id="preset-dialog-note" class="note dialog-note" role="status"></p>
     <div class="actions">
       <button id="btn-preset-ok" class="btn primary" type="submit">保存</button>
