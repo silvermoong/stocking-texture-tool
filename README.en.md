@@ -139,7 +139,7 @@ Within one region, where one stretch of stocking lies in front of another with a
 
 ### 5. Choose a style and adjust it
 
-Switch to the Texture page at the top. The settings are on the left; Whole shows the full picture (drag the comparison slider to compare the original with the result) and Detail shows a square at 100% or 200%, updating as you drag a slider. What Detail shows is exactly what gets exported.
+Switch to the Texture page at the top. The settings are on the left; Whole shows the full picture (drag the comparison slider to compare the original with the result) and Detail shows a square at 100% or 200%, updating as you drag a slider. What Detail shows is exactly what gets exported. If a preview fails, the status bar names it until it updates successfully.
 
 ![The Texture page](docs/images/texture-page-en.jpg)
 
@@ -207,13 +207,13 @@ Kase's share 0% / 30% / 70% / 100% (the rest is Fine lines; left to right), the 
 
 ![Fine lines and Kase mixed in different ratios: from left to right Fine lines, Fine lines 70% with Kase 30%, Fine lines 30% with Kase 70%, Kase](docs/images/layers-mix.png)
 
-**Presets** (top of the panel): save a tuned style, density, tilt, strength, texture layers, sparkles, highlight particles and moiré effect, and load them in one click on other images. Pick one in the list to load it; after tweaking, Save writes the current settings into the selected preset. To make a new one, pick “Save as new preset…” at the bottom of the list and give it a name (Save does the same when no preset is selected); Delete removes the selected one. Presets are kept on this computer, not with the image; if Strength is on Auto, it is set again from this image's stockings when you load. Loading replaces the current settings; press Ctrl+Z (or Undo in the top bar) to go back, and the preset selected in the list goes back with them. After tweaking, Restore beside it puts the preset's settings back. Regions and direction lines belong to each image and are not part of a preset.
+**Presets** (top of the panel): save a tuned style, density, tilt, strength, texture layers, sparkles, highlight particles and moiré effect, and load them in one click on other images. Pick one in the list to load it; after tweaking, Save writes the current settings into the selected preset. If the settings already match, Save is greyed out and explains what to do. To make a new one, pick “Save as new preset…” at the bottom of the list and give it a name (Save does the same when no preset is selected); Delete removes the selected one. Presets are kept on this computer, not with the image; if Strength is on Auto, it is set again from this image's stockings when you load. Loading replaces the current settings; press Ctrl+Z (or Undo in the top bar) to go back, and the preset selected in the list goes back with them. After tweaking, Restore beside it puts the preset's settings back. Regions and direction lines belong to each image and are not part of a preset.
 
 **Exporting and importing presets:** to give a tuned preset to someone, select it and click Export… beside the heading to save it as a small file (`.json`); they click Import…, pick the file, and it shows up in their presets. An imported preset whose name is already taken gets a number after it (say “Black (2)”) and never replaces one they already have. The file holds only the settings (style, density, tilt, strength, texture layers, sparkles, highlight particles and moiré effect), no picture and no direction lines.
 
 ![Exporting and importing a preset. Top: a preset is selected, Export… is clicked, and the status bar says where the file went, D:\presets. Bottom: Import… is clicked and the file picked; a preset with that name already exists, so the imported one is called “Black · Fine lines (2)” and nothing is replaced](docs/images/presets-share-en.png)
 
-**Color exclusion** (on by default): parts of a region whose color is far from the stocking's (gold trim, gloves, bare skin) get no texture. Now and then a sheer knee showing skin gets excluded too; turn it off then.
+**Color exclusion** (on by default): parts of a region whose color is far from the stocking's (gold trim, gloves, bare skin) get no texture. Now and then a sheer knee showing skin gets excluded too; turn it off then. This switch is saved with the current work, not in presets. Reset all leaves it unchanged.
 
 **Undo and redo:** the Undo and Redo buttons at the top right (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) work on the page you are on, and each page keeps its own history. Hover over either button or focus it with the keyboard to see which page it applies to. On the Texture page they cover what you do there: style, density, tilt, strength, adding and deleting layers and their mix, sparkles, highlight particles, the moiré effect, loading a preset, Reset all, and the Color exclusion switch; one drag of a slider is one step. Saving, deleting, importing and exporting presets are not part of it. Undo on the Guides page still covers regions and direction lines. The history is not saved with the image and is cleared when you close it.
 
@@ -223,11 +223,11 @@ Click Show problems in the panel. Red marks where the courses are so dense that 
 
 ![Left: density 140%, a large red patch behind the knee; right: density 85%, almost gone](docs/images/show-problems.png)
 
-On a small picture (832×1216, say) the course spacing soon reaches its lower limit, and the panel says how high the density can go on this picture. For denser texture, enlarge the picture 1.5× first.
+On a small picture (832×1216, say) the course spacing soon reaches its 3.2 px minimum. The Density readout then shows both the chosen value and the effective value, with this image's limit explained below. For denser texture, enlarge the picture 1.5× first.
 
 ### 7. Export
 
-Click Export image at the top right. The arrow beside it switches to the other three kinds, and the button remembers your last choice (Ctrl+E does the same). Each export opens a save window where you choose the folder and the file name. It starts next to the original, then in the folder you last saved to; the suggested names are below, numbered (2), (3)… when that name is taken, so exporting several variants in a row never overwrites one. Picking an existing file asks before replacing it.
+Click Export image at the top right. Use the arrow beside it to export in one of the other three formats. The main button (and Ctrl+E) repeats the last format that wrote a file successfully; canceling or a failed write leaves it unchanged. Each export opens a file dialog where you choose the folder and the file name. It starts next to the original, then in the folder you last exported to; the suggested names are below, numbered (2), (3)… when that name is taken, so exporting several variants in a row never overwrites one. Picking an existing file asks before replacing it.
 
 | Export | Suggested name | Use |
 | --- | --- | --- |

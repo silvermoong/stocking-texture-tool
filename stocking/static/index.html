@@ -103,13 +103,13 @@
   <section class="group" id="preset-section">
     <div class="group-head preset-head">
       <h2 id="preset-title">预设</h2>
-      <button id="btn-preset-import" class="text-btn small" type="button" title="读入别人发来的预设文件；重名的不会被覆盖，会加个序号">导入…</button>
-      <button id="btn-preset-export" class="text-btn small" type="button" title="把选中的预设存成一个小文件，发给别人用" disabled>导出…</button>
+      <button id="btn-preset-import" class="text-btn small" type="button" data-tip="读入别人发来的预设文件；重名的不会被覆盖，会加个序号">导入…</button>
+      <button id="btn-preset-export" class="text-btn small" type="button" data-tip="把选中的预设存成一个小文件，发给别人用" disabled>导出…</button>
     </div>
     <div class="preset-row">
       <select id="preset-select" class="select" aria-labelledby="preset-title"></select>
       <button id="btn-preset-save" class="btn small" type="button">保存</button>
-      <button id="btn-preset-delete" class="btn small danger" type="button" title="删除选中的预设">删除</button>
+      <button id="btn-preset-delete" class="btn small danger" type="button" data-tip="删除选中的预设">删除</button>
     </div>
     <p class="note preset-note"><span id="preset-note"></span> <button id="btn-preset-undo" class="text-btn small" type="button" hidden></button></p>
   </section>
@@ -146,7 +146,7 @@
       <button class="opt" data-style="lines" role="radio">斜单线</button>
       <button class="opt" data-style="grain" role="radio">加濑风</button>
       <button class="opt" data-style="oily" role="radio"
-              title="试验样式：正对的地方透出肤色、深色丝袜的边缘发黑，亮的一侧整片泛光，光照最亮处是一条连续的反光带：细而亮的芯，外面一片宽而柔的光，随腿的粗细变宽变窄。深色丝袜上这条反光会一直延续到整条腿：画里高光变暗或没画的地方，会自动补一条淡淡的光线，被丝带、头发隔开的同一条腿也接得上。适合纯色黑丝。">油光<span class="exp-tag">试验</span></button>
+              data-tip="试验样式：正对的地方透出肤色、深色丝袜的边缘发黑，亮的一侧整片泛光，光照最亮处是一条连续的反光带：细而亮的芯，外面一片宽而柔的光，随腿的粗细变宽变窄。深色丝袜上这条反光会一直延续到整条腿：画里高光变暗或没画的地方，会自动补一条淡淡的光线，被丝带、头发隔开的同一条腿也接得上。适合纯色黑丝。">油光<span class="exp-tag">试验</span></button>
     </div>
     <p id="style-note" class="note style-note"></p>
     <div class="field">
@@ -206,7 +206,7 @@
           <input id="sparkle-bright" type="range" min="0" max="300" step="5" value="100">
         </div>
         <button id="btn-sparkle-link" class="link-btn" aria-pressed="true" aria-label="关联"
-                title="关联：两个数量保持一样，拖其中一个，另一个跟着变；打开时以“按深度”的值为准"></button>
+                data-tip="关联：两个数量保持一样，拖其中一个，另一个跟着变；打开时以“按深度”的值为准"></button>
       </div>
       <div class="field unlinked">
         <div class="field-head"><label for="sparkle-even">均匀分布</label><span id="sparkle-even-val" class="val num"></span></div>
@@ -266,7 +266,7 @@
 
   <section class="group exclude">
     <button id="btn-check" class="btn small toggle" aria-pressed="false"
-            title="在整体和细节上标出没有纹理或纹理很弱的地方（只在预览里显示，不会导出）">标出问题</button>
+            data-tip="在整体和细节上标出没有纹理或纹理很弱的地方（只在预览里显示，不会导出）">标出问题</button>
     <div class="field-head">
       <label class="switch-label" for="fade">纹理减弱</label>
       <button class="info-btn" aria-expanded="false" aria-controls="fade-info" aria-label="纹理减弱说明">?</button>
@@ -280,14 +280,15 @@
     <div class="field-head">
       <label class="switch-label" for="exclude">颜色排除</label>
       <button class="info-btn" aria-expanded="false" aria-controls="exclude-info" aria-label="颜色排除说明">?</button>
-      <span class="switch"><input type="checkbox" role="switch" id="exclude" checked><span class="switch-track"></span></span>
+      <span class="switch"><input type="checkbox" role="switch" id="exclude" aria-describedby="exclude-scope" checked><span class="switch-track"></span></span>
     </div>
+    <p id="exclude-scope" class="note">随当前图保存，不进入预设。</p>
     <div id="exclude-info" class="info-pop" role="note" hidden>
       <p>打开时，部位里颜色和丝袜差得远的地方不加纹理，比如金边、手套、露出来的皮肤。</p>
       <p>薄丝袜透出肤色的地方（膝盖、脚尖）偏暖，有时会被误当成皮肤排除掉。这时关掉它，部位里每一处都加纹理。点上面的“标出问题”可以看到哪里被排除了（蓝色）。</p>
     </div>
     <p id="exclude-note" class="note"></p>
-    <button id="btn-look-reset" class="text-btn" title="纹理层、样式、密度、斜度、强度、亮点和摩尔纹效果都回到默认值">全部恢复默认</button>
+    <button id="btn-look-reset" class="text-btn" data-tip="将纹理层、融合、样式、滑杆、亮点、高光粒子、摩尔纹效果和纹理减弱恢复默认。颜色排除不变，Ctrl+Z 可以撤销。">全部恢复默认</button>
   </section>
  </div>
 </aside>
@@ -335,12 +336,12 @@
     <section class="pane whole-pane">
       <div class="pane-head"><h3>整体</h3><span id="fit-status" class="pane-note"></span></div>
       <div class="pane-body">
-        <canvas id="fit" role="img" aria-label="整体预览" title="点一下，把细节挪到这里"></canvas>
+        <canvas id="fit" role="img" aria-label="整体预览" data-tip="点一下，把细节挪到这里"></canvas>
         <div id="compare-tags" class="compare-tags" aria-hidden="true">
           <span id="compare-before">原图</span><span id="compare-after">效果</span>
         </div>
         <div id="compare" class="compare" role="slider" tabindex="0" aria-label="原图与效果对比拖杆"
-             aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" title="左右拖动，对比原图（左）和效果（右）">
+             aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" data-tip="左右拖动，对比原图（左）和效果（右）">
           <span class="compare-grip" aria-hidden="true"></span>
         </div>
       </div>
@@ -352,10 +353,10 @@
           <button class="seg-btn num" data-zoom="1" role="radio">100%</button>
           <button class="seg-btn num" data-zoom="2" role="radio">200%</button>
         </span>
-        <button id="btn-densest" class="btn small" title="把细节挪回横纹最密的地方">回到最密处</button>
+        <button id="btn-densest" class="btn small" data-tip="把细节挪回横纹最密的地方">回到最密处</button>
       </div>
       <div class="pane-body"><canvas id="crop" tabindex="0" role="img" aria-label="细节预览，方向键移动查看的位置"
-              title="拖动或用方向键看别处"></canvas></div>
+              data-tip="拖动或用方向键看别处"></canvas></div>
       <div class="pane-foot">
         <span id="peek-hint" class="peek"><kbd>空格</kbd>按住看这里的原图</span>
         <span id="check-legend" class="legend" hidden>
@@ -369,6 +370,7 @@
 </main>
 
 <footer class="status">
+  <span id="preview-error" class="preview-error look-only" role="status"></span>
   <span id="status-msg" class="msg" role="status"></span>
   <span class="spacer"></span>
   <span id="status-hint" class="hint"></span>

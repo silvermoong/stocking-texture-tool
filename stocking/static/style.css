@@ -443,6 +443,7 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .field-head { display: flex; align-items: baseline; gap: calc(6px * var(--k)); margin-bottom: 1px; }
 .field-head .val { margin-left: auto; font-size: calc(15px * var(--k)); }
 .val .unit { margin-left: 1px; font-size: calc(12px * var(--k)); color: var(--muted); }
+.density-effective { font: calc(12px * var(--k)) var(--ui); color: var(--muted); white-space: nowrap; }
 .field .note { margin-top: 2px; }
 .field-head:has(> .btn) { align-items: center; }
 .text-btn.small { font-size: calc(11px * var(--k)); }
@@ -540,3 +541,11 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .status .pos { flex: none; }
 .status .msg.error { color: var(--error); }
 .status .pos { min-width: calc(86px * var(--k)); text-align: right; }
+/* Preview failures outlast transient messages. Give them the room usually taken by the interaction hint. A notice
+   that is no error is cut short beside them: the failure may be mended before the notice goes, and would never have
+   been seen. Like the hint they give way to an error message (a save that failed), and are whole again when it goes. */
+.status .preview-error { flex: 0 0 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--error); }
+.status:has(.msg.error:not(:empty)) .preview-error { flex-shrink: 1000000; }
+.status .preview-error:empty { position: absolute; }  /* keep the live region mounted, without a gap */
+/* only on 纹理: a failure kept while 引导 is shown is out of sight there, and takes nothing from that page's bar */
+body[data-mode="look"] .status:has(.preview-error:not(:empty)) :is(.hint, .pos:empty) { display: none; }

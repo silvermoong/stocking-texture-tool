@@ -64,17 +64,24 @@ export function fillRange(el) {
 document.addEventListener('input', (e) => { if (e.target.type === 'range') fillRange(e.target); }, true);
 
 function latest(fn) {
-  let running = false;
-  let again = false;
+  let running = false, again = false, rev = 0, timer;
   const go = async () => {
     if (running) { again = true; return; }
     running = true;
-    try { await fn(); } catch (e) { console.warn(e); } finally {
+    again = false;
+    const sent = rev;
+    try { await fn(() => sent === rev); } catch (e) { console.warn(e); } finally {
       running = false;
-      if (again) { again = false; go(); }
+      if (again) go();
     }
   };
-  return go;
+  // Scheduling a newer preview supersedes the last one immediately, even while the new one is debounced.
+  return (delay = 0) => {
+    rev++;
+    again = false;
+    clearTimeout(timer);
+    if (delay) timer = setTimeout(go, delay); else go();
+  };
 }
 
 function debounce(fn, ms) {
@@ -88,6 +95,16 @@ export function setVal(el, n, unit) {
   u.className = 'unit';
   u.textContent = unit;
   el.replaceChildren(String(Math.round(n)), u);
+}
+
+async function fetchRender(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+  return res;
+}
+
+async function renderBitmap(url) {
+  return createImageBitmap(await (await fetchRender(url)).blob());
 }
 
 const PCT = [0, 1].map((d) => new Intl.NumberFormat('zh-CN', { style: 'percent', minimumFractionDigits: d, maximumFractionDigits: d }));
@@ -119,7 +136,7 @@ function sameLook(a, b) {
   return same(a, b) && la.length === lb.length && la.every((x, i) => same(x, lb[i]));
 }
 
-export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboard = () => false,
+export function createLook({ getDoc, getArt, request, edit, flash, setTip, focusByKeyboard = () => false,
   canLook = () => true, onHistory = () => {} }) {
   const L = {
     active: false,
@@ -143,6 +160,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     cropImg: null,
     cropRect: null,
     fitBusy: false,
+    previewSession: 0,
+    previewFailed: { fit: false, crop: false },
     drag: null,
     presets: [],           // the saved presets, as the server lists them: [{ name, params }], params null if unreadable
     presetsLoaded: false,  // the list has come from the server: only then is a name it lacks a preset that is gone
@@ -287,7 +306,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   function renderAdd() {
     const why = addBlocked();
     addBtn.setAttribute('aria-disabled', String(why !== null));
-    addBtn.title = why || t('添加一层纹理，和现有的纹理层按比例融合，最多 {n} 层', { n: MAX_LAYERS });
+    setTip(addBtn, why || t('添加一层纹理，和现有的纹理层按比例融合，最多 {n} 层', { n: MAX_LAYERS }));
   }
 
   addBtn.addEventListener('click', () => {
@@ -346,12 +365,13 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       row.classList.toggle('on', i === L.layer);
       name.textContent = layerName(i);
       name.setAttribute('aria-current', String(i === L.layer));
-      name.title = t('调“{name}”的样式、密度、斜度和强度', called);
+      setTip(name, t('调“{name}”的样式、密度、斜度和强度', called));
       slider.setAttribute('aria-label', t('“{name}”的融合比例', called));
       slider.value = level;
       setVal(val, level, '%');
-      x.setAttribute('aria-label', t('删除“{name}”', called));
-      x.title = t('删除“{name}”', called);
+      const remove = t('删除“{name}”', called);
+      x.setAttribute('aria-label', remove);
+      setTip(x, remove);
     });
     blendAuto.setAttribute('aria-pressed', String(lock));
     const total = $('#blend-total');
@@ -415,8 +435,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   }
 
   function localPeriod(doc, density) {
-    const raw = 4.6 / (density / 100) * Math.sqrt(doc.width * doc.height / REF_AREA);
-    return { raw, period: Math.max(raw, 3.2), clamped: raw < 3.2 };
+    const scaled = 4.6 * Math.sqrt(doc.width * doc.height / REF_AREA);
+    const raw = scaled / (density / 100);
+    return { period: Math.max(raw, 3.2), clamped: raw < 3.2, maxDensity: 100 * scaled / 3.2 };
   }
 
   function set(changes, { immediate = true, gesture = null } = {}) {
@@ -519,6 +540,54 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     return changed;
   }
 
+  // ---------------------------------------------------------------- previews
+
+  // Keep the last good preview while retrying. Only the newest request of this pane may change its error notice,
+  // and only while the coverage it was asked for still holds: after 颜色排除 or a mask changed, its picture is of
+  // the coverage before (it neither draws nor reports), and the one now due is asked for once the settings are read.
+  async function updatePreview(pane, doc, isLatest, run) {
+    const session = L.previewSession, coverage = L.coverageV;
+    const current = () => L.active && session === L.previewSession && getDoc()?.id === doc.id
+      && coverage === L.coverageV;
+    try {
+      await run(current);
+    } catch (e) {
+      if (current() && isLatest() && e?.name !== 'AbortError') {
+        console.warn(e);
+        L.previewFailed[pane] = true;
+        renderPreviewErrors();
+      }
+      return;
+    }
+    if (current() && isLatest()) {
+      L.previewFailed[pane] = false;
+      renderPreviewErrors();
+    }
+  }
+
+  function renderPreviewErrors() {
+    const { fit, crop } = L.previewFailed;
+    const message = fit && crop ? t('整体和细节预览失败') : fit ? t('整体预览失败') : crop ? t('细节预览失败') : '';
+    const error = $('#preview-error');
+    if (error.textContent !== message) error.textContent = message;
+  }
+
+  // The page is left: the previews still on their way are not the next visit's (they neither draw nor report), and
+  // nothing is updating. A preview that failed stays failed, as its picture stays the old one, until it succeeds;
+  // the notice is out of sight with the page.
+  function endPreviews() {
+    L.previewSession++;
+    L.fitBusy = false;
+    renderFitStatus();
+  }
+
+  // Another image: its previews have not failed.
+  function resetPreviewStatus() {
+    endPreviews();
+    L.previewFailed.fit = L.previewFailed.crop = false;
+    renderPreviewErrors();
+  }
+
   // ---------------------------------------------------------------- 细节
 
   function cropRect() {
@@ -531,25 +600,26 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     return { x0, y0, w: Math.min(w, doc.width), h: Math.min(h, doc.height) };
   }
 
-  const requestCrop = latest(async () => {
+  const requestCrop = latest(async (isLatest) => {
     const doc = getDoc();
     if (!L.active || !doc || !L.size || !L.params || !L.info) return;
-    const r = cropRect();
-    const q = query({ x0: r.x0, y0: r.y0, w: r.w, h: r.h });
-    const [res, check] = await Promise.all([
-      fetch(`/api/doc/${doc.id}/render/crop?${q}`),
-      L.showCheck ? fetch(`/api/doc/${doc.id}/render/check?${q}`).then((x) => x.blob()).then(createImageBitmap) : null,
-    ]);
-    if (!res.ok) throw new Error(await res.text());
-    const meta = JSON.parse(res.headers.get('X-Look') || '{}');
-    const img = await createImageBitmap(await res.blob());
-    if (!getDoc() || getDoc().id !== doc.id) return;
-    L.cropImg = img;
-    L.cropCheckImg = check;
-    L.cropRect = { x0: meta.x0, y0: meta.y0, w: meta.w, h: meta.h };
-    L.cropMs = meta.ms;
-    drawCrop();
-    drawFit();
+    await updatePreview('crop', doc, isLatest, async (current) => {
+      const r = cropRect();
+      const q = query({ x0: r.x0, y0: r.y0, w: r.w, h: r.h });
+      const [res, check] = await Promise.all([
+        fetchRender(`/api/doc/${doc.id}/render/crop?${q}`),
+        L.showCheck ? renderBitmap(`/api/doc/${doc.id}/render/check?${q}`) : null,
+      ]);
+      const meta = JSON.parse(res.headers.get('X-Look') || '{}');
+      const img = await createImageBitmap(await res.blob());
+      if (!current()) return;
+      L.cropImg = img;
+      L.cropCheckImg = check;
+      L.cropRect = { x0: meta.x0, y0: meta.y0, w: meta.w, h: meta.h };
+      L.cropMs = meta.ms;
+      drawCrop();
+      drawFit();
+    });
   });
 
   function drawCrop() {
@@ -581,27 +651,29 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
 
   // ---------------------------------------------------------------- 整体 and the check overlay
 
-  const requestFit = latest(async () => {
+  const requestFit = latest(async (isLatest) => {
     const doc = getDoc();
     if (!L.active || !doc || !L.size || !L.params || !L.info || !L.info.textured) return;
     L.fitBusy = true;
     renderFitStatus();
-    const q = query({ w: L.size.fitW, h: L.size.fitH });
     try {
-      const [fit, check] = await Promise.all([
-        fetch(`/api/doc/${doc.id}/render/fit?${q}`).then((r) => r.blob()).then(createImageBitmap),
-        L.showCheck ? fetch(`/api/doc/${doc.id}/render/check?${q}`).then((r) => r.blob()).then(createImageBitmap) : null,
-      ]);
-      if (!getDoc() || getDoc().id !== doc.id) return;
-      L.fitImg = fit;
-      L.checkImg = check;
-      drawFit();
+      await updatePreview('fit', doc, isLatest, async (current) => {
+        const q = query({ w: L.size.fitW, h: L.size.fitH });
+        const [fit, check] = await Promise.all([
+          renderBitmap(`/api/doc/${doc.id}/render/fit?${q}`),
+          L.showCheck ? renderBitmap(`/api/doc/${doc.id}/render/check?${q}`) : null,
+        ]);
+        if (!current()) return;
+        L.fitImg = fit;
+        L.checkImg = check;
+        drawFit();
+      });
     } finally {
       L.fitBusy = false;
       renderFitStatus();
     }
   });
-  const fitSoon = debounce(requestFit, 200);
+  const fitSoon = () => requestFit(200);
 
   function drawFit() {
     const c = fitCv.getContext('2d');
@@ -674,18 +746,24 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     const p = layerAt(L.layer);          // style, density, tilt and strength: the layer shown, in the card
     for (const b of document.querySelectorAll('.styles .opt')) b.setAttribute('aria-checked', String(b.dataset.style === p.style));
     $('#style-note').textContent = STYLE_NOTES[p.style];
-    $('#density').value = p.density;
-    setVal($('#density-val'), p.density, '%');
+    const density = $('#density'), densityVal = $('#density-val');
+    density.value = p.density;
+    setVal(densityVal, p.density, '%');
     const g = localPeriod(doc, p.density);
     const note = $('#density-note');
     if (g.clamped) {
-      const max = Math.floor(100 * 4.6 * Math.sqrt(doc.width * doc.height / REF_AREA) / 3.2);
+      const max = Math.floor(g.maxDensity);
+      const effective = document.createElement('span');
+      effective.className = 'density-effective';
+      effective.textContent = t('（实际 {max}%）', { max });
+      densityVal.append(effective);
       note.textContent = t('横纹间距已到 3.2\u00a0px 下限，再密就会出摩尔纹，这张图最多 {max}%。想更密，先把图放大（比如 1.5 倍）再来。', { max });
       note.className = 'note warn';
     } else {
       note.textContent = t('横纹间距 {p}\u00a0px', { p: g.period.toFixed(2) });
       note.className = 'note';
     }
+    density.setAttribute('aria-valuetext', densityVal.textContent);
     $('#tilt-section').hidden = p.style !== 'lines';
     $('#tilt').value = p.tilt;
     setVal($('#tilt-val'), p.tilt, '°');
@@ -753,8 +831,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     const tip = t('部位已经涂好，但还没画走向线，所以不生成纹理。')
       + (i.untextured.length ? t('没有走向线的部位：{names}。', { names: i.untextured.join(t('、')) }) : '')
       + (i.solving.length ? t('{names}正在求解，求解完再看。', { names: i.solving.join(t('、')) }) : '');
-    ns.parentElement.dataset.tip = tip;
-    ns.parentElement.setAttribute('aria-description', tip);
+    setTip(ns.parentElement, tip);
     $('#sparkle-painted-field').hidden = !i.has_sparkle_layer;
     const sn = $('#sparkle-note');
     sn.className = 'note';
@@ -784,6 +861,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   // The server keeps the name with the look and with each step of the 纹理 history, so 撤销 and 重做 (the only way
   // to take back a load or 全部恢复默认) bring it back with the settings: load() reads it, every save sends it.
   const presetSel = $('#preset-select');
+  const presetSave = $('#btn-preset-save');
   const presetDlg = $('#preset-dialog');
   const presetNameInput = $('#preset-name');
   const presetDlgNote = $('#preset-dialog-note');
@@ -822,10 +900,12 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     presetSel.disabled = !L.params;
     const modified = presetModified(p);
     // an unreadable preset can be written over, which mends it
-    const save = $('#btn-preset-save');
-    save.textContent = p ? t('保存') : t('保存…');          // with none selected it asks for a name
-    save.disabled = !L.params || (!!p && !!p.params && !modified);
-    save.title = p ? t('用现在的设置更新“{name}”', { name: p.name }) : t('把现在的设置存成新预设');
+    const unchanged = !!L.params && !!p?.params && !modified;
+    presetSave.textContent = p ? t('保存') : t('保存…');          // with none selected it asks for a name
+    presetSave.disabled = !L.params;
+    presetSave.setAttribute('aria-disabled', String(unchanged));
+    setTip(presetSave, !L.params ? null : unchanged ? t('当前设置与所选预设一致，改动后再保存')
+      : p ? t('用现在的设置更新“{name}”', { name: p.name }) : t('把现在的设置存成新预设'));
     $('#btn-preset-delete').disabled = !p;
     $('#btn-preset-export').disabled = !p || !p.params || L.presetFileBusy;       // an unreadable preset cannot be handed on
     $('#btn-preset-import').disabled = L.presetFileBusy;
@@ -997,7 +1077,11 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     } else if (presetSel.value) applyPreset(presetSel.value);
     else { namePreset(null); renderPresetState(); }
   });
-  $('#btn-preset-save').addEventListener('click', () => (presetOf(L.presetName) ? updatePreset() : openSavePreset()));
+  presetSave.addEventListener('click', () => {
+    // Enter and Space also activate the button, but an unchanged preset must not be written again.
+    if (presetSave.getAttribute('aria-disabled') === 'true') { flash(presetSave.dataset.tip); return; }
+    if (presetOf(L.presetName)) updatePreset(); else openSavePreset();
+  });
   $('#btn-preset-delete').addEventListener('click', deletePreset);
   $('#btn-preset-export').addEventListener('click', exportPreset);
   $('#btn-preset-import').addEventListener('click', importPreset);
@@ -1231,7 +1315,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       load().catch((e) => flash(e.message, true));
       loadPresets().catch((e) => flash(e.message, true));
     },
-    leave() { L.active = false; setPeek(false); },
+    leave() { L.active = false; endPreviews(); setPeek(false); },
     onArt() { if (L.active) { drawFit(); drawCrop(); } },
     onState(st) {
       if (!st || st.id !== L.docId) {
@@ -1245,6 +1329,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
           gesture: null, newStep: true,
           cropCheckImg: null,
           cropRect: null });
+        resetPreviewStatus();
         renderPresetState();
         renderLayers();                           // the last document's layers are not this one's to show
         if (L.active && st) load().catch((e) => flash(e.message, true));

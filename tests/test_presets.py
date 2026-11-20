@@ -481,6 +481,7 @@ const lookUI = createLook({{
   }},
   edit: async () => null,
   flash: (text) => {{ flashes.push(text); }},
+  setTip: (el, text) => {{ el.dataset.tip = text; }},
 }});
 
 const settle = () => new Promise((r) => setTimeout(r, 250));      // a change is saved 150 ms after it is made

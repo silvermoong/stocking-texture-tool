@@ -2,6 +2,7 @@
 colours of a pressed toggle button under the pointer. Runs the real page in the system's Edge (see uibrowser.py);
 skipped where there is no Edge. Every case leaves a full-size screenshot in out/ui-browser (ignored by git)."""
 import contextlib
+import json
 
 import pytest
 
@@ -232,8 +233,8 @@ def test_texture_layers_live_in_the_panel_and_the_bar_only_switches_pages(ui, la
         page.click('#layer-add')
         page.wait_for(f'{LAYER_ROWS} === {n}', what=f'纹理层 {n}')
     full = page.evaluate('(() => { const a = document.querySelector("#layer-add"); a.click(); '
-                         'return [a.getAttribute("aria-disabled"), a.title, document.querySelector("#status-msg").textContent]; })()')
-    assert full[0] == 'true' and '4' in full[1] and '4' in full[2], full
+                         'return [a.getAttribute("aria-disabled"), a.dataset.tip, document.querySelector("#status-msg").textContent]; })()')
+    assert full[0] == 'true' and '4' in (full[1] or '') and '4' in full[2], full
     assert page.evaluate(LAYER_ROWS) == 4
     page.hover('#status-msg')
     page.screenshot(f'{tag}-4')
@@ -258,8 +259,9 @@ def test_texture_layers_live_in_the_panel_and_the_bar_only_switches_pages(ui, la
 def press(page, key, code, vk, ctrl=False):
     """A key pressed and released, as the keyboard sends it to whatever has the focus."""
     for kind in ('keyDown', 'keyUp'):
+        text = {'Enter': '\r', ' ': ' '}.get(key, '') if kind == 'keyDown' and not ctrl else ''
         page.send('Input.dispatchKeyEvent', type=kind, key=key, code=code, windowsVirtualKeyCode=vk,
-                  modifiers=2 if ctrl else 0)
+                  text=text, modifiers=2 if ctrl else 0)
 
 
 def test_the_side_panel_cannot_be_used_until_an_image_opens(tmp_path):
@@ -698,6 +700,526 @@ def test_the_export_buttons_describe_themselves_to_the_keyboard_like_the_rest_of
     press(page, 'Escape', 'Escape', 27)
 
 
+@pytest.mark.parametrize('lang, errors, normal', (
+    ('zh', ('整体和细节预览失败', '整体预览失败'), '缩到窗口大小，看整体观感'),
+    ('en', ('Whole and Detail previews failed', 'Whole preview failed'), 'Scaled to the window, for the overall look'),
+))
+def test_preview_failures_clear_independently_on_the_next_success(ui, lang, errors, normal):
+    page = show(ui, lang, 100, (360, 840))
+    page.evaluate('''window.__failFit = window.__failCrop = true;
+        const real = window.fetch;
+        window.fetch = (url, opt) => {
+            if (window.__failFit && String(url).includes('/render/fit?'))
+                return Promise.resolve(new Response('unavailable', {status: 503}));
+            if (window.__failCrop && String(url).includes('/render/crop?'))
+                return Promise.reject(new TypeError('network failed'));
+            return real(url, opt);
+        };''')
+    page.click('#tab-look')
+    error = 'document.querySelector("#preview-error")'
+    message = f'{error}?.textContent'
+    fit = 'document.querySelector("#fit-status").textContent'
+    page.wait_for(f'{message} === {json.dumps(errors[0])}', timeout=5, what='both preview errors')
+    assert page.evaluate(f'{fit} === {json.dumps(normal)}')
+    assert page.evaluate(f'''(() => {{
+        const text = document.createRange(); text.selectNodeContents({error});
+        const r = text.getBoundingClientRect(), footer = {error}.parentElement.getBoundingClientRect();
+        return r.left >= 0 && r.right <= innerWidth && r.top >= footer.top && r.bottom <= footer.bottom;
+    }})()'''), 'all of the error should be visible even at 360 px'
+
+    page.evaluate('window.__failCrop = false; document.querySelector("[data-zoom=\'1\']").click()')
+    page.wait_for(f'{message} === {json.dumps(errors[1])}', timeout=5, what='only the failed Whole preview')
+    page.evaluate('window.__failFit = false; document.querySelector("[data-style=\'knit\']").click()')
+    page.wait_for(f'{message} === "" && {fit} === {json.dumps(normal)}', timeout=5,
+                  what='both previews to recover')
+
+
+@pytest.mark.parametrize('pane, next_control', (('fit', '[data-style=knit]'), ('crop', '[data-zoom="1"]')))
+def test_a_superseded_preview_failure_is_not_shown(ui, pane, next_control):
+    page = show(ui, 'en', 100, (1280, 900))
+    page.evaluate('''window.__failFirst = null; window.__renders = 0;
+        const real = window.fetch;
+        window.fetch = (url, opt) => {
+            if (!String(url).includes('/render/' + ''' + json.dumps(pane) + ''' + '?')) return real(url, opt);
+            window.__renders++;
+            if (window.__renders === 1) return new Promise((go, fail) => { window.__failFirst = fail; });
+            return real(url, opt);
+        };
+        window.__previewMessages = [];
+        new MutationObserver(records => {
+            for (const r of records) for (const n of r.addedNodes) if (n.textContent)
+                window.__previewMessages.push(n.textContent);
+        }).observe(document.querySelector('.status'), {childList:true, subtree:true});''')
+    page.click('#tab-look')
+    page.wait_for('!!window.__failFirst', what='the first preview request')
+    page.evaluate(f'document.querySelector({json.dumps(next_control)}).click(); '
+                  'void window.__failFirst(new TypeError("network failed"))')
+    page.wait_for('window.__renders >= 2', what='the newer preview request')
+    assert not any('preview failed' in message for message in page.evaluate('window.__previewMessages'))
+
+
+@pytest.mark.parametrize('pane, control, failed', (
+    ('fit', '[data-style=knit]', 'Whole preview failed'), ('crop', '[data-zoom="1"]', 'Detail preview failed')))
+def test_a_preview_asked_for_before_color_exclusion_changed_does_not_report_its_failure(tmp_path, pane, control, failed):
+    # 颜色排除 changes what is textured: a preview still on its way shows the coverage before, so its failure is no
+    # news of the picture now due, which is asked for once the settings have been read again
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('en')
+        uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('!document.body.classList.contains("no-doc")', what='the document to show')
+        # this pane's previews pass, wait to be failed by hand, or fail; the reading after a change can be made to wait
+        page.evaluate('''window.__pane = ''' + json.dumps(pane) + ''';
+            window.__previews = 'pass'; window.__held = []; window.__holdLook = false; window.__looks = [];
+            window.__done = {fit: 0, crop: 0};
+            const real = window.fetch;
+            window.fetch = (url, opt) => {
+                const to = String(url);
+                if (window.__holdLook && (!opt?.method || opt.method === 'GET') && to.includes('/look?'))
+                    return new Promise((go) => window.__looks.push(() => go(real(url, opt))));
+                const of = to.includes('/render/fit?') ? 'fit' : to.includes('/render/crop?') ? 'crop' : null;
+                if (!of) return real(url, opt);
+                if (of !== window.__pane || window.__previews === 'pass')
+                    return real(url, opt).then((r) => { window.__done[of]++; return r; });
+                if (window.__previews === 'fail') return Promise.resolve(new Response('unavailable', {status: 503}));
+                return new Promise((go, fail) => window.__held.push(() => fail(new TypeError('network failed'))));
+            };
+            window.__said = [];
+            new MutationObserver(() => window.__said.push(document.querySelector('#preview-error').textContent))
+                .observe(document.querySelector('#preview-error'), {childList: true, characterData: true, subtree: true});''')
+        error = 'document.querySelector("#preview-error").textContent'
+        exclude = 'document.querySelector("#exclude")'
+        press = f'document.querySelector({json.dumps(control)}).click()'
+        page.click('#tab-look')
+        page.wait_for('window.__done.fit > 0 && window.__done.crop > 0', what='both previews of a good picture')
+        assert page.evaluate(f'[{error}, {exclude}.checked]') == ['', True]
+
+        # a preview is on its way when 颜色排除 is switched off; the server has it, and the reading it calls for is out
+        page.evaluate(f'window.__previews = "hold"; {press}')
+        page.wait_for('window.__held.length > 0', what='a preview to be on its way')
+        page.evaluate(f'window.__holdLook = true; {exclude}.click()')
+        page.wait_for(f'{exclude}.checked === false', what='颜色排除 to be off, as the server has it')
+        page.wait_for('window.__looks.length > 0', what='the settings to be read again')
+        page.evaluate('void window.__held.splice(0).forEach((fail) => fail())')
+        page.evaluate('new Promise((resolve) => setTimeout(resolve, 200))')
+        assert page.evaluate(f'[{error}, window.__said]') == ['', []]
+
+        # the preview of the coverage now in force still says so when it fails, and the notice goes when it succeeds
+        page.evaluate('window.__previews = "fail"; window.__holdLook = false; '
+                      'void window.__looks.splice(0).forEach((go) => go())')
+        page.wait_for(f'{error} === {failed!r}', timeout=10, what='the failure of the preview now due')
+        page.evaluate(f'window.__previews = "pass"; {press}')
+        page.wait_for(f'{error} === ""', timeout=10, what='the preview to recover')
+
+
+def test_a_preview_failure_lasts_until_that_preview_succeeds_or_another_image_opens(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('en')
+        uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/')
+        page.wait_for('!document.body.classList.contains("no-doc")', what='the document to show')
+        # the previews fail, wait to be settled by hand, or pass; reading the settings can fail too
+        page.evaluate('''window.__previews = 'fail'; window.__held = []; window.__failLook = false;
+            const real = window.fetch;
+            window.fetch = (url, opt) => {
+                const to = String(url);
+                if (window.__failLook && (!opt?.method || opt.method === 'GET') && /\\/look(\\?|$)/.test(to))
+                    return Promise.resolve(new Response('unavailable', {status: 503}));
+                if (!to.includes('/render/fit?') && !to.includes('/render/crop?')) return real(url, opt);
+                if (window.__previews === 'fail') return Promise.resolve(new Response('unavailable', {status: 503}));
+                if (window.__previews === 'hold') return new Promise((go, fail) => window.__held.push({
+                    go: () => go(real(url, opt)), fail: () => fail(new TypeError('network failed'))}));
+                return real(url, opt);
+            };
+            window.__said = [];
+            new MutationObserver(() => window.__said.push(document.querySelector('#preview-error').textContent))
+                .observe(document.querySelector('#preview-error'), {childList: true, characterData: true, subtree: true});''')
+        error = 'document.querySelector("#preview-error")'
+        both = 'Whole and Detail previews failed'
+        shown = f'[{error}.textContent, {error}.checkVisibility()]'
+        hint = 'document.querySelector("#status-hint")'
+        page.click('#tab-look')
+        page.wait_for(f'{error}.textContent === {both!r}', timeout=5, what='both preview errors')
+
+        # on 引导 the notice is out of sight, and the bar there is as it always is
+        page.click('#tab-edit')
+        assert page.evaluate(f'[{error}.checkVisibility(), {hint}.checkVisibility(), !!{hint}.textContent]') \
+            == [False, True, True]
+        # back on the same image, the last pictures are still the ones that failed to update: so is the notice,
+        # while the new previews are on their way
+        page.evaluate('window.__previews = "hold"')
+        page.click('#tab-look')
+        page.wait_for('window.__held.length > 0', what='a preview to be asked for again')
+        assert page.evaluate(shown) == [both, True]
+        # those previews are answered only after the page was left and come back to: they are no news of this visit
+        page.click('#tab-edit')
+        page.click('#tab-look')
+        page.evaluate('void window.__held.splice(0).forEach((h) => h.fail())')
+        page.wait_for('window.__held.length > 0', what='the previews of this visit')
+        assert page.evaluate(shown) == [both, True]
+        page.evaluate('window.__previews = "pass"; void window.__held.splice(0).forEach((h) => h.go())')
+        page.wait_for(f'{error}.textContent === ""', timeout=10, what='the previews to succeed')
+
+        # a preview that fails after its page was left says nothing, then or on coming back
+        page.evaluate('window.__said = []; window.__previews = "hold"; '
+                      'document.querySelector("[data-zoom=\'1\']").click()')
+        page.wait_for('window.__held.length > 0', what='a preview to be on its way')
+        page.click('#tab-edit')
+        page.evaluate('window.__previews = "pass"; void window.__held.splice(0).forEach((h) => h.fail())')
+        page.click('#tab-look')
+        page.wait_for('document.querySelector("#fit-status").textContent === "Scaled to the window, for the overall look"',
+                      what='the previews to settle')
+        page.evaluate('new Promise((resolve) => setTimeout(resolve, 300))')
+        assert page.evaluate('window.__said') == []
+
+        # nor does the notice go when the settings themselves cannot be read on coming back
+        page.evaluate('window.__previews = "fail"; document.querySelector("[data-zoom=\'2\']").click()')
+        page.wait_for(f'{error}.textContent === "Detail preview failed"', timeout=5, what='the Detail preview error')
+        page.click('#tab-edit')
+        page.evaluate('window.__failLook = true')
+        page.click('#tab-look')
+        page.wait_for('document.querySelector("#status-msg").matches(".error")', what='the settings to fail to load')
+        assert page.evaluate(shown) == ['Detail preview failed', True]
+
+        # another image has no failed preview
+        page.evaluate('window.__failLook = false; window.__previews = "pass"')
+        server.upload('other.png', uibrowser.synthetic_png(320, 480))
+        page.wait_for(f'{error}.textContent === ""', timeout=10, what='the notice to go with the image')
+
+
+def test_a_preview_failure_is_not_hidden_by_an_older_notice_in_a_narrow_window(ui):
+    # a long notice that is no error is up when a preview fails: the failure is the newer news and may be mended
+    # before the notice goes, so it is the notice that is cut short
+    server, _ = ui
+    name = 'A preset with quite a long name'
+    server.api('/api/look/presets', 'PUT', {'name': name, 'params': {'density': 111, 'style': 'loops'}})
+    page = show(ui, 'en', 100, (360, 840), look=1)
+    preset = 'document.querySelector("#preset-select")'
+    page.wait_for(f'[...{preset}.options].some(o => o.value === {json.dumps(name)})', what='the preset to be listed')
+    page.evaluate('''window.__failCrop = false;
+        const real = window.fetch;
+        window.fetch = (url, opt) => {
+            if (window.__failCrop && String(url).includes('/render/crop?'))
+                return Promise.resolve(new Response('unavailable', {status: 503}));
+            return real(url, opt);
+        };''')
+    page.evaluate(f'{preset}.value = {json.dumps(name)}; {preset}.dispatchEvent(new Event("change", {{bubbles:true}}))')
+    assert name in page.evaluate(STATUS_MSG)
+    page.evaluate('window.__failCrop = true; document.querySelector("[data-zoom=\'1\']").click()')
+    error = 'document.querySelector("#preview-error")'
+    page.wait_for(f'{error}.textContent === "Detail preview failed"', timeout=4, what='the Detail preview error')
+    notice, is_error, whole, width = page.evaluate(f'''(() => {{
+        const msg = document.querySelector('#status-msg'), e = {error};
+        return [msg.textContent, msg.matches('.error'), e.scrollWidth <= e.clientWidth,
+                e.getBoundingClientRect().width];
+    }})()''')
+    assert name in notice and not is_error, 'the case is a failure while the older notice is still up'
+    assert whole and width > 1, f'the preview failure has {width} px under the older notice'
+    page.screenshot('preview-failure-under-an-older-notice-en-360x840')
+    page.evaluate('window.__failCrop = false; document.querySelector("[data-zoom=\'2\']").click()')
+    page.wait_for(f'{error}.textContent === ""', timeout=5, what='the Detail preview to recover')
+
+
+def test_a_preview_failure_gives_way_to_a_message_in_a_narrow_window(ui):
+    # a server that stops answering fails the previews and the save together: the newer message must not be cut
+    # short to keep the standing preview notice whole
+    page = show(ui, 'en', 100, (360, 840))
+    page.evaluate('''const real = window.fetch;
+        window.fetch = (url, opt) => {
+            const to = String(url);
+            if (to.includes('/render/fit?') || to.includes('/render/crop?')
+                || (opt?.method === 'PUT' && to.includes('/look?')))
+                return Promise.resolve(new Response('unavailable', {status: 503}));
+            return real(url, opt);
+        };''')
+    page.click('#tab-look')
+    error = 'document.querySelector("#preview-error")'
+    page.wait_for(f'{error}.textContent === "Whole and Detail previews failed"', timeout=5,
+                  what='both preview errors')
+    page.evaluate('document.querySelector("[data-style=\'loops\']").click()')
+    page.wait_for('document.querySelector("#status-msg").matches(".error")', what='the save failure')
+    whole, room = page.evaluate(f'''(() => {{
+        const msg = document.querySelector('#status-msg');
+        return [msg.scrollWidth <= msg.clientWidth, {error}.getBoundingClientRect().width];
+    }})()''')
+    assert whole or room < 1, f'the message is cut short while the preview notice keeps {room} px'
+
+
+@pytest.mark.parametrize('lang, scope', (
+    ('zh', '随当前图保存，不进入预设。'), ('en', 'Saved with this image, not in presets.'),
+))
+def test_color_exclusion_says_it_is_saved_with_the_image_not_presets(ui, lang, scope):
+    page = show(ui, lang, 100, (360, 840), look=1)
+    exclude = 'document.querySelector("#exclude")'
+    assert page.evaluate(f'document.getElementById({exclude}.getAttribute("aria-describedby"))?.textContent') == scope
+    assert page.evaluate('document.querySelector("#exclude-scope").innerText') == scope
+
+
+@pytest.mark.parametrize('lang, reset', (
+    ('zh', ('高光粒子', '纹理减弱', '颜色排除不变', 'Ctrl+Z')),
+    ('en', ('highlight particles', 'moiré effect and texture fade', 'Color exclusion stays as is', 'Ctrl+Z')),
+))
+def test_reset_all_tooltip_says_what_changes_and_how_to_undo(ui, lang, reset):
+    page = show(ui, lang, 100, (360, 840), look=1)
+    page.evaluate('''new Promise(go => {
+        document.querySelector('#btn-look-reset').scrollIntoView({block: 'center'});
+        requestAnimationFrame(() => requestAnimationFrame(go));
+    })''')
+    page.hover('#btn-look-reset')
+    got = tip_text(page)
+    assert got and all(word in got for word in reset), got
+    assert page.evaluate(f'''(() => {{
+        const r = {TIP}.getBoundingClientRect();
+        return r.left >= 8 && r.right <= innerWidth - 8 && r.top >= 0 && r.bottom <= innerHeight;
+    }})()''')
+
+
+def test_undo_never_goes_past_a_texture_change_that_could_not_be_saved(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('zh')
+        doc = uibrowser.synthetic_document(server, w=320, h=480)['id']
+        page.goto(server.url + '/?page=look')
+        page.wait_for('document.body.dataset.mode === "look" && !!document.querySelector("#strength-val").textContent',
+                      what='the 纹理 page')
+
+        def look():
+            got = server.api(f'/api/doc/{doc}/look')['params']
+            return got['style'], got['fade']
+
+        # an older step, saved
+        page.evaluate('document.querySelector("[data-style=loops]").click()')
+        uibrowser._wait('the style to be saved', lambda: look() == ('loops', True), 10)
+        # saves of the settings wait to be answered by hand, fail, or pass; undos asked of the server are counted
+        # and of the requests that reach the server, the order is kept
+        page.evaluate('''window.__saves = 'hold'; window.__held = []; window.__undos = 0; window.__order = [];
+            const real = window.fetch;
+            window.fetch = (url, opt) => {
+                const to = String(url);
+                if (to.includes('/undo')) { window.__undos++; window.__order.push('undo'); }
+                if (opt?.method !== 'PUT' || !to.includes('/look?')) return real(url, opt);
+                if (window.__saves === 'pass') { window.__order.push('save'); return real(url, opt); }
+                const down = () => new Response('unavailable', {status: 503});
+                if (window.__saves === 'fail') return Promise.resolve(down());
+                return new Promise((go) => window.__held.push(() => go(down())));
+            };''')
+        failed = 'document.querySelector("#status-msg").matches(".error")'
+        pause = 'new Promise((resolve) => setTimeout(resolve, 300))'
+
+        # the case: 撤销 is pressed with nothing left to send, while the save of the last change is on its way; then
+        # that save fails
+        page.evaluate('document.querySelector("#fade").click()')
+        page.wait_for('window.__held.length === 1', what='the save of 纹理减弱 to be on its way')
+        page.evaluate('window.__saves = "fail"')
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.evaluate('void window.__held.splice(0).forEach((answer) => answer())')
+        page.wait_for(failed, what='the save failure')
+        page.evaluate(pause)
+        # the older step is not taken back in its place, and the change stays on screen to send again
+        assert page.evaluate('[window.__undos, document.querySelector("#fade").checked]') == [0, False]
+        assert look() == ('loops', True)
+        # once saves work, 撤销 sends it and takes that back
+        page.evaluate('window.__saves = "pass"')
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.wait_for('!document.querySelector("#btn-redo").disabled && document.querySelector("#fade").checked',
+                      what='纹理减弱 to be undone')
+        # it is that change the undo took back, after the save that was tried again: going past the failure would
+        # have taken the style back instead, with no save before it
+        assert look() == ('loops', True)
+        assert page.evaluate('window.__order') == ['save', 'undo']
+        assert page.evaluate('!document.querySelector("#btn-undo").disabled')
+
+        # the same when 全部恢复默认 follows a change at once and the save of that change fails
+        page.evaluate('''window.__saves = 'hold';
+            document.querySelector('#fade').click();
+            document.querySelector('#btn-look-reset').click();''')
+        page.wait_for('window.__held.length === 1', what='the save of 纹理减弱 to be on its way')
+        page.evaluate('window.__saves = "fail"')
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.evaluate('void window.__held.splice(0).forEach((answer) => answer())')
+        page.wait_for(failed, what='the save failure')
+        page.evaluate(pause)
+        assert page.evaluate('window.__order') == ['save', 'undo']
+        assert look() == ('loops', True)
+        assert page.evaluate('document.querySelector("[data-style=knit]").getAttribute("aria-checked")') == 'true'
+        # what is on screen then goes as one step, and 撤销 takes back that and no more
+        page.evaluate('window.__saves = "pass"')
+        press(page, 'z', 'KeyZ', 90, ctrl=True)
+        page.wait_for('window.__undos === 2', what='the undo to be asked for')
+        page.wait_for('document.querySelector("[data-style=loops]").getAttribute("aria-checked") === "true"',
+                      timeout=10, what='the reset to be undone')
+        assert look() == ('loops', True)
+        assert page.evaluate('window.__order') == ['save', 'undo', 'save', 'undo']
+
+
+@pytest.mark.parametrize('lang, reason', (
+    ('zh', '当前设置与所选预设一致，改动后再保存'), ('en', 'The settings match the selected preset. Change them before saving.'),
+))
+def test_an_unchanged_preset_explains_save_without_writing(ui, lang, reason):
+    server, _ = ui
+    server.api('/api/look/presets', 'PUT', {'name': 'Example', 'params': {'density': 125}})
+    page = show(ui, lang, 100, (360, 840), look=1)
+    preset = 'document.querySelector("#preset-select")'
+    page.wait_for(f'[...{preset}.options].some(o => o.value === "Example")', what='the Example preset to be listed')
+    page.evaluate(f'{preset}.value = "Example"; {preset}.dispatchEvent(new Event("change", {{bubbles:true}}))')
+    page.evaluate('''window.__presetWrites = window.__saveClicks = 0;
+        document.querySelector('#btn-preset-save').addEventListener('click', () => window.__saveClicks++);
+        const real = window.fetch;
+        window.fetch = (url, opt) => {
+            if (url === '/api/look/presets' && opt?.method === 'PUT') window.__presetWrites++;
+            return real(url, opt);
+        };''')
+    save = 'document.querySelector("#btn-preset-save")'
+    assert page.evaluate(f'[{save}.disabled, {save}.getAttribute("aria-disabled")]') == [False, 'true']
+    page.click('#btn-preset-save')
+    assert tip_text(page) == reason
+    assert page.evaluate(STATUS_MSG) == reason
+    page.hover('#status-msg')
+    page.evaluate(f'{preset}.focus()')
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.id') == 'btn-preset-save'
+    assert tip_text(page) == reason
+    press(page, 'Enter', 'Enter', 13)
+    press(page, ' ', 'Space', 32)
+    assert page.evaluate('[window.__saveClicks, window.__presetWrites]') == [3, 0]
+
+    page.evaluate('''const el = document.querySelector('#density');
+        el.value = 126; el.dispatchEvent(new Event('input', {bubbles:true}));''')
+    assert page.evaluate(f'{save}.getAttribute("aria-disabled")') == 'false'
+    assert tip_text(page) not in (None, reason)
+    press(page, 'Enter', 'Enter', 13)
+    page.wait_for(f'{save}.getAttribute("aria-disabled") === "true"', what='the edited settings to be saved')
+    assert page.evaluate('window.__presetWrites') == 1
+    assert tip_text(page) == reason
+
+
+@pytest.mark.parametrize('lang, size, limited', (
+    ('zh', (640, 840), '140%（实际 71%）'), ('en', (360, 840), '140% (71% effective)'),
+))
+def test_density_shows_the_effective_value_only_at_the_spacing_floor(ui, lang, size, limited):
+    page = show(ui, lang, 100, size, look=1)  # 640×960 source; the last whole percent above the floor is 71%
+    density = 'document.querySelector("#density")'
+    readout = 'document.querySelector("#density-val")'
+    for value, text in ((140, limited), (70, '70%')):
+        page.evaluate(f'{density}.value = {value}; {density}.dispatchEvent(new Event("input", {{bubbles:true}}))')
+        assert page.evaluate(f'[{density}.value, {readout}.textContent]') == [str(value), text]
+        assert page.evaluate('document.querySelector("#density-note").matches(".warn")') == (value == 140)
+    page.evaluate(f'{density}.value = 140; {density}.dispatchEvent(new Event("input", {{bubbles:true}}))')
+    assert page.evaluate(f'{density}.getAttribute("aria-valuetext")') == limited
+    assert page.evaluate(f'''(() => {{
+        const el = {readout}, head = el.parentElement.getBoundingClientRect();
+        const label = el.previousElementSibling.getBoundingClientRect();
+        const text = document.createRange();
+        text.selectNodeContents(el);
+        const r = text.getBoundingClientRect();
+        return r.left >= label.right && r.right <= head.right && r.height <= head.height;
+    }})()'''), 'the selected and effective values must fit beside Density'
+
+
+# the kinds the open 导出 menu marks as the one the main button exports: [by aria-checked, by a ✓ that shows]
+EXPORT_MARKED = '''(() => {
+    const items = [...document.querySelectorAll('#export-menu [role=menuitemradio]')];
+    const name = (b) => b.querySelector('.what > span').textContent;
+    const ticked = (b) => b.querySelector('.tick').checkVisibility() && b.querySelector('.tick').innerText.trim() === '✓';
+    return [items.filter((b) => b.getAttribute('aria-checked') === 'true').map(name), items.filter(ticked).map(name)];
+})()'''
+
+
+@pytest.mark.parametrize('outcome', ('cancel', 'ask_error', 'write_error', 'written'))
+def test_the_export_menu_only_remembers_a_format_after_the_file_is_written(ui, tmp_path, outcome):
+    page = show(ui, 'en', 100, (1280, 720), look=1)
+    target = tmp_path / 'stockings.png' if outcome != 'write_error' else tmp_path / 'missing' / 'stockings.png'
+    answer = f'Response.json({json.dumps({"cancelled": True} if outcome == "cancel" else {"path": str(target)})})'
+    if outcome == 'ask_error':          # the request for the dialog itself fails
+        answer = 'new Response("unavailable", {status: 503})'
+    # Only the native dialog is replaced; accepting it writes through the real isolated server.
+    page.evaluate('''window.__answerExport = null; window.__startWrite = null;
+        const real = window.fetch;
+        window.fetch = (url, opt) => {
+            if (String(url).endsWith('/export/ask')) return new Promise(go => { window.__answerExport = go; });
+            if (String(url).endsWith('/export')) return new Promise(go => { window.__startWrite = go; })
+                .then(() => real(url, opt));
+            return real(url, opt);
+        };''')
+    select = '#export-menu [role=menuitemradio]'
+    page.click('#btn-export-more')
+    page.click(f'{select}:nth-child(2)')
+    page.wait_for('!!window.__answerExport', what='the export dialog to be asked for')
+    main = 'document.querySelector("#btn-export").textContent'
+    assert page.evaluate(main) == 'Export image…'
+    page.evaluate(f'void window.__answerExport({answer})')
+    if outcome in ('write_error', 'written'):
+        page.wait_for('!!window.__startWrite', what='the write to be requested')
+        assert page.evaluate(main) == 'Export image…'
+        assert not target.exists()
+        page.click('#btn-export-more')  # the menu can be reopened while the write continues
+        assert page.evaluate(EXPORT_MARKED) == [['Finished image']] * 2
+        page.evaluate('void window.__startWrite()')
+    if outcome == 'written':
+        page.wait_for('!document.querySelector("#exported").hidden', what='the export receipt')
+        assert target.is_file()
+    elif outcome == 'write_error':
+        page.wait_for('document.querySelector("#status-msg").matches(".error")', what='the write error')
+    else:
+        if outcome == 'ask_error':
+            page.wait_for('document.querySelector("#status-msg").matches(".error")', what='the failure to ask')
+        page.wait_for('document.querySelector("#busy").hidden', what='the export dialog to close')
+        assert page.evaluate('window.__startWrite') is None
+    assert page.evaluate(main) == ('Export stockings…' if outcome == 'written' else 'Export image…')
+    if page.evaluate('document.querySelector("#export-menu").hidden'):
+        page.click('#btn-export-more')
+    assert page.evaluate(EXPORT_MARKED) == [['Stockings only' if outcome == 'written' else 'Finished image']] * 2
+    page.screenshot(f'export-menu-after-{outcome}-en-1280x720')
+    press(page, 'Escape', 'Escape', 27)
+
+
+def test_exporting_the_guides_before_opening_another_image_leaves_the_remembered_format(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        server.set_lang('en')
+        uibrowser.synthetic_document(server, w=320, h=480)
+        page.goto(server.url + '/?page=look')
+        page.wait_for('document.body.dataset.mode === "look" && !!document.querySelector("#strength-val").textContent',
+                      what='the 纹理 page')
+        stockings, guides = tmp_path / 'chosen' / 'stockings.png', tmp_path / 'chosen' / 'guides.psd'
+        stockings.parent.mkdir()
+        # Only the system's dialogs are replaced: the save dialog names these paths, the open dialog is cancelled.
+        # The files are written by the real isolated server.
+        page.evaluate(f'''window.__paths = {json.dumps([str(stockings), str(guides)])}; window.__opens = 0;
+            const real = window.fetch;
+            window.fetch = (url, opt) => {{
+                const to = String(url);
+                if (to.endsWith('/export/ask')) return Promise.resolve(Response.json({{path: window.__paths.shift()}}));
+                if (to.endsWith('/api/open/dialog')) {{
+                    window.__opens++;
+                    return Promise.resolve(Response.json({{cancelled: true}}));
+                }}
+                return real(url, opt);
+            }};''')
+        main = 'document.querySelector("#btn-export").textContent'
+        page.click('#btn-export-more')
+        page.click('#export-menu [role=menuitemradio]:nth-child(2)')
+        page.wait_for('!document.querySelector("#exported").hidden', what='the export receipt')
+        assert stockings.is_file() and page.evaluate(main) == 'Export stockings…'
+        page.click('#btn-exported-close')
+
+        # the case: another image is asked for, and the guides are exported first from the question that brings
+        page.click('#btn-open')
+        page.wait_for('document.querySelector("#confirm-open").open', what='the question before opening another image')
+        page.click('#confirm-open button[value="export"]')
+        page.wait_for('window.__opens === 1', what='the open dialog, after the guides are exported')
+        assert guides.is_file()
+        page.wait_for('document.querySelector("#busy").hidden', what='the open dialog to close')
+        # the main button still exports what the user last chose there
+        assert page.evaluate(main) == 'Export stockings…'
+        page.click('#btn-exported-close')
+        page.click('#btn-export-more')
+        assert page.evaluate(EXPORT_MARKED) == [['Stockings only']] * 2
+        page.screenshot('export-menu-after-guides-before-open-en-1280x720')
+
+
 @pytest.mark.parametrize('lang, names', (('zh', ['点选', '隔开']), ('en', ['Pick', 'Divider'])))
 def test_guides_tool_shortcuts_match_their_labels_and_s_is_unassigned(ui, lang, names):
     page = show(ui, lang, 100, (1280, 720))
@@ -752,6 +1274,12 @@ def test_the_focus_stays_with_the_layers_when_their_rows_are_made_anew(ui):
     page = show(ui, 'zh', 100, (1280, 720), look=3)
     thrown = len(page.errors)
     n = page.evaluate(LAYER_ROWS)
+    # the layers show() added are saved a moment after they appear: 撤销 can only bring back a layer deleted from a
+    # look the server already has (the first layer is the look's own keys, the others are its `layers`)
+    server, _ = ui
+    doc = server.api('/api/doc')['id']
+    uibrowser._wait('the added 纹理层 to be saved',
+                    lambda: 1 + len(server.api(f'/api/doc/{doc}/look')['params']['layers']) == n, 10)
     focus = 'document.activeElement.id || document.activeElement.className || document.activeElement.tagName'
     page.evaluate('document.querySelector("#blend-rows > :last-child .blend-name").focus()')
     press(page, 'Delete', 'Delete', 46)

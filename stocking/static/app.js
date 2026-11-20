@@ -46,7 +46,7 @@ const TOKENS = { stage: css.getPropertyValue('--stage').trim(), ink: css.getProp
 const cv = $('#view');
 const ctx = cv.getContext('2d');
 const stage = $('#stage');
-const lookUI = createLook({ getDoc: () => S.doc, getArt: () => S.art, request, edit, flash,
+const lookUI = createLook({ getDoc: () => S.doc, getArt: () => S.art, request, edit, flash, setTip,
   focusByKeyboard: () => !focusByPointer, canLook: () => canLook(),
   onHistory: (undo, redo) => {
     if (!S.doc) return;
@@ -1350,7 +1350,7 @@ cv.addEventListener('wheel', (e) => {
 
 // ------------------------------------------------------------------ export
 
-// what can be exported, one file at a time; the main half of 导出 exports the last one picked (成品图 at first)
+// What can be exported, one file at a time; the main half of 导出 repeats the last successful kind (成品图 at first).
 const EXPORTS = {
   png: { label: t('成品图'), desc: t('PNG，合成好的整张图'), main: t('导出成品图…'), doing: t('正在导出成品图…'),
     done: t('已导出成品图到 {folder}'), needsLook: true },
@@ -1378,6 +1378,11 @@ function renderExport() {
     || t('{what} (Ctrl+E)：选择导出位置和文件名，原文件不会被改动', { what: EXPORTS[exportKind].main }));
   $('#btn-export-more').disabled = !d;
   if (!d) closeExportMenu();
+  for (const item of $('#export-menu').children) {
+    const selected = item.dataset.kind === exportKind;
+    item.setAttribute('aria-checked', String(selected));
+    item.querySelector('.tick').textContent = selected ? '✓' : '';
+  }
 }
 
 // Returns true once the file is written. remember: the main half of 导出 exports this kind from now on.
@@ -1385,12 +1390,11 @@ async function exportDoc(kind = exportKind, { remember = true } = {}) {
   if (!S.doc || exporting) return false;
   const blocked = exportBlocked(kind);
   if (blocked) { flash(blocked); return false; }
-  if (remember) { exportKind = kind; renderExport(); }
   const id = S.doc.id;
   exporting = true;
   $('#exported').hidden = true;
   try {
-    busy(t('在弹出的窗口里选择保存位置和文件名…'));
+    busy(t('在弹出的窗口里选择导出位置和文件名…'));
     const to = await request('POST', `/api/doc/${id}/export/ask`, { kind });
     busy(null);
     if (!to || to.cancelled) return false;
@@ -1398,6 +1402,7 @@ async function exportDoc(kind = exportKind, { remember = true } = {}) {
     const body = { kind, path: to.path };
     if (EXPORTS[kind].needsLook) body.params = lookUI.params();
     const res = await request('POST', `/api/doc/${id}/export`, body);
+    if (remember) { exportKind = kind; renderExport(); }
     busy(null);
     showExported(res);
     flash(t(EXPORTS[kind].done, { folder: res.folder }));
@@ -1433,8 +1438,8 @@ function openExportMenu() {
   m.replaceChildren(...Object.entries(EXPORTS).map(([k, e]) => {
     const b = document.createElement('button');
     b.setAttribute('role', 'menuitemradio');
-    b.setAttribute('aria-checked', String(k === exportKind));
-    const tick = document.createElement('span'); tick.className = 'tick'; tick.textContent = k === exportKind ? '✓' : '';
+    b.dataset.kind = k;
+    const tick = document.createElement('span'); tick.className = 'tick';
     tick.setAttribute('aria-hidden', 'true');
     const what = document.createElement('span'); what.className = 'what';
     const name = document.createElement('span'); name.textContent = e.label;
@@ -1448,6 +1453,7 @@ function openExportMenu() {
     b.addEventListener('click', () => { closeExportMenu(); $('#btn-export').focus(); exportDoc(k); });
     return b;
   }));
+  renderExport();
   const at = $('.split').getBoundingClientRect();
   m.hidden = false;
   m.style.left = `${Math.round(Math.max(8, at.right - m.offsetWidth))}px`;
