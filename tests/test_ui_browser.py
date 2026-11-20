@@ -24,7 +24,7 @@ def ui(tmp_path_factory):
 
 # what the bar must always offer, 界面大小 first: a rule that hid one of them would leave nothing out of the window
 BAR = ('#ui-scale', '.lang [data-lang="zh"]', '.lang [data-lang="en"]', '#btn-export', '#btn-export-more',
-       '#btn-open', '#tab-edit', '#tab-look', '#btn-undo', '#btn-redo')
+       '#btn-open', '#tab-edit', '#tab-look', '#btn-undo', '#btn-redo', '#btn-shortcuts')
 
 # the 纹理层 of the panel: a row for each when there are several, none for a lone layer
 LAYER_ROWS = 'document.querySelectorAll("#blend-rows > *").length'
@@ -119,6 +119,85 @@ def test_the_bar_is_one_row_at_the_default_interface_size(ui, lang, look):
                          '.map((e) => { const r = e.getBoundingClientRect(); return Math.round(r.top + r.height / 2); })')
     assert len(set(tops)) == 1, tops
     assert page.evaluate('document.querySelector("#zoom-pct").checkVisibility()') is not look
+
+
+@pytest.mark.parametrize('look', (False, 1), ids=('guides', 'texture'))
+@pytest.mark.parametrize('scale', (100, 150, 175))
+@pytest.mark.parametrize('lang', ('zh', 'en'))
+def test_the_shortcut_entry_shares_the_bar_in_a_360px_window(ui, lang, scale, look):
+    page = show(ui, lang, scale, (360, 840), look)
+    assert bar_out_of_reach(page) == []
+    assert page.evaluate('document.querySelector(".bar").scrollWidth <= innerWidth')
+    page.check_errors()
+
+
+@pytest.mark.parametrize('scale', (100, 150, 175))
+@pytest.mark.parametrize('lang', ('zh', 'en'))
+def test_tab_into_the_guides_panel_keeps_the_bar_in_a_360px_window(ui, lang, scale):
+    # the panel of 引导 is as wide as the window at a large 界面大小: the focus going into it with Tab must not scroll the
+    # page sideways and carry the bar, 界面大小 and the shortcut entry with it, out of the window
+    page = show(ui, lang, scale, (360, 840))
+    page.evaluate('document.querySelector(".lang [aria-checked=\\"true\\"], .lang .seg-btn").focus()')
+    assert page.evaluate('!!document.activeElement.closest(".lang")')
+    for _ in range(12):
+        press(page, 'Tab', 'Tab', 9)
+        if page.evaluate('document.activeElement.id') == 'btn-add-region':
+            break
+    assert page.evaluate('document.activeElement.id') == 'btn-add-region'
+    assert page.evaluate('[document.documentElement.scrollLeft, document.body.scrollLeft, '
+                         'Math.round(document.querySelector(".bar").getBoundingClientRect().left)]') == [0, 0, 0]
+    assert bar_out_of_reach(page) == []
+    # and the control the focus went to is itself in the window, not cut by its right edge
+    assert page.evaluate('''(() => {
+        const r = document.querySelector('#btn-add-region').getBoundingClientRect();
+        return r.width > 0 && r.left >= 0 && r.right <= innerWidth;
+    })()''')
+    page.check_errors()
+
+
+@pytest.mark.parametrize('scale, size, look', ((100, (1440, 900), False), (175, (360, 840), 1)),
+                         ids=('guides-1440x900-100', 'texture-360x840-175'))
+@pytest.mark.parametrize('lang, title, uses', (
+    ('zh', '快捷键与手势', ('按住空格拖动画面', '按住空格查看细节原图', '键盘聚焦的控件自己用空格', '可用「跳到画面」',
+                        '悬停高亮该范围的轮廓，单击直接选这一档')),
+    ('en', 'Shortcuts and gestures', ('Hold Space and drag', 'Hold Space to see the original in Detail',
+                                      'Space stays with keyboard-focused controls', '(Skip to the picture)',
+                                      'hover to highlight that range\'s outline; click to choose it')),
+))
+def test_the_shortcut_sheet_explains_both_space_gestures_and_fits(ui, lang, title, uses, scale, size, look):
+    page = show(ui, lang, scale, size, look)
+    canvas = '#fit' if look else '#view'
+    page.wait_for(f'''(() => {{
+        const c = document.querySelector('{canvas}');
+        const pixel = c.getContext('2d').getImageData(c.width >> 1, c.height >> 1, 1, 1).data;
+        return pixel[3] && pixel[0] !== 84;
+    }})()''', what='the synthetic artwork to be drawn')
+    tag = f'shortcuts-{lang}-{scale}-{size[0]}x{size[1]}'
+    page.screenshot(f'{tag}-bar')
+
+    page.click('#btn-shortcuts')
+    assert page.evaluate('''(() => {
+        const d = document.querySelector('#shortcut-help:modal');
+        return d && document.getElementById(d.getAttribute('aria-labelledby')).textContent;
+    })()''') == title
+    contents = page.evaluate('document.querySelector("#shortcut-help").innerText')
+    assert all(use in contents for use in uses), contents
+    assert uibrowser.out_of_reach(page, '#shortcut-help', must=('#btn-shortcuts-close',)) == []
+    assert page.evaluate('''(() => {
+        const d = document.querySelector('#shortcut-help'), r = d.getBoundingClientRect();
+        return r.left > 0 && r.right < innerWidth && r.top > 0 && r.bottom < innerHeight
+            && d.scrollWidth === d.clientWidth;
+    })()''')
+    # the title stays beside Close in at most two lines, so the reference keeps most of a small window
+    assert page.evaluate('''(() => {
+        const h = document.querySelector('#shortcut-help-title');
+        return Math.round(h.getBoundingClientRect().height / parseFloat(getComputedStyle(h).lineHeight));
+    })()''') <= 2
+    page.screenshot(f'{tag}-open')
+
+    page.click('#btn-shortcuts-close')
+    assert page.evaluate('!document.querySelector("#shortcut-help").open && document.activeElement.id === "btn-shortcuts"')
+    page.check_errors()
 
 
 @pytest.mark.parametrize('lang', ('zh', 'en'))
@@ -437,12 +516,369 @@ def test_texture_layers_live_in_the_panel_and_the_bar_only_switches_pages(ui, la
     assert page.errors[thrown:] == []
 
 
-def press(page, key, code, vk, ctrl=False):
+def press(page, key, code, vk, ctrl=False, shift=False):
     """A key pressed and released, as the keyboard sends it to whatever has the focus."""
     for kind in ('keyDown', 'keyUp'):
-        text = {'Enter': '\r', ' ': ' '}.get(key, '') if kind == 'keyDown' and not ctrl else ''
+        text = (key if len(key) == 1 else {'Enter': '\r'}.get(key, '')) if kind == 'keyDown' and not ctrl else ''
         page.send('Input.dispatchKeyEvent', type=kind, key=key, code=code, windowsVirtualKeyCode=vk,
-                  text=text, modifiers=2 if ctrl else 0)
+                  text=text, modifiers=(2 if ctrl else 0) | (8 if shift else 0))
+
+
+def test_the_shortcut_sheet_opens_before_a_picture_and_closes_without_click_through(tmp_path):
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page()) as page:
+        page.goto(server.url + '/')
+        page.evaluate('document.querySelector("#stage").focus()')
+        is_open = 'document.querySelector("#shortcut-help").open'
+        press(page, '?', 'Slash', 191, ctrl=True, shift=True)
+        assert not page.evaluate(is_open)
+        press(page, '?', 'Slash', 191, shift=True)
+        assert page.evaluate(is_open)
+        assert page.evaluate('document.activeElement.id') == 'btn-shortcuts-close'
+        press(page, '?', 'Slash', 191, shift=True)
+        assert not page.evaluate(is_open)
+        assert page.evaluate('document.activeElement.id') == 'stage'
+
+        press(page, '?', 'Slash', 191, shift=True)
+        press(page, 'Escape', 'Escape', 27)
+        assert not page.evaluate(is_open)
+        assert page.evaluate('document.activeElement.id') == 'stage'
+
+        page.click('#btn-shortcuts')
+        page.click('#shortcut-help-title')
+        assert page.evaluate(is_open)
+        # The click only closes this sheet; it must not activate anything under the backdrop.
+        page.evaluate('''window.__backdropClicks = 0;
+            document.querySelector('#btn-open').addEventListener('click', (e) => {
+                window.__backdropClicks++;
+                e.stopImmediatePropagation();
+            }, true);''')
+        page.click('#btn-open')
+        assert not page.evaluate(is_open)
+        assert page.evaluate('window.__backdropClicks') == 0
+        assert page.evaluate('document.activeElement.id') == 'btn-shortcuts'
+
+
+def test_question_mark_does_not_interrupt_an_input_a_menu_or_existing_help(ui):
+    page = show(ui, 'en', 100, (1280, 900))
+    is_open = 'document.querySelector("#shortcut-help").open'
+    page.evaluate('document.querySelector("#region-list .current .pick").focus()')
+    press(page, 'F2', 'F2', 113)
+    press(page, '?', 'Slash', 191, shift=True)
+    assert page.evaluate('document.activeElement.value') == '?'
+    assert not page.evaluate(is_open)
+    press(page, 'Escape', 'Escape', 27)
+
+    page.click('#btn-export-more')
+    press(page, '?', 'Slash', 191, shift=True)
+    assert page.evaluate('!document.querySelector("#export-menu").hidden')
+    assert not page.evaluate(is_open)
+    press(page, 'Escape', 'Escape', 27)
+    assert page.evaluate('document.querySelector("#export-menu").hidden')
+
+    page.evaluate('document.querySelector("#ui-scale").focus()')
+    press(page, '?', 'Slash', 191, shift=True)
+    assert not page.evaluate(is_open)
+
+    page = show(ui, 'en', 100, (1280, 900), look=1)
+    page.click('[aria-controls="sparkle-info"]')
+    press(page, '?', 'Slash', 191, shift=True)
+    assert page.evaluate('document.querySelector("#sparkle-info").checkVisibility()')
+    assert not page.evaluate(is_open)
+    page.click('#btn-preset-save')
+    assert page.evaluate('document.querySelector("#preset-dialog").open')
+    press(page, '?', 'Slash', 191, shift=True)
+    assert page.evaluate('document.activeElement.value') == '?'
+    assert not page.evaluate(is_open)
+    press(page, 'Escape', 'Escape', 27)
+    assert not page.evaluate('document.querySelector("#preset-dialog").open')
+    page.check_errors()
+
+
+def test_space_still_pans_guides_and_peeks_in_texture_after_closing_the_sheet(ui):
+    page = show(ui, 'en', 100, (1280, 900))
+    page.evaluate('document.querySelector("#stage").focus()')
+    press(page, '?', 'Slash', 191, shift=True)
+    press(page, 'Escape', 'Escape', 27)
+    page.hover('#view')
+    position = 'document.querySelector("#status-pos").textContent'
+    before = page.evaluate(position)
+    assert before
+    page.send('Input.dispatchKeyEvent', type='keyDown', key=' ', code='Space', windowsVirtualKeyCode=32, text=' ')
+    canvas_mark(page, 'left', dx=60)
+    page.send('Input.dispatchKeyEvent', type='keyUp', key=' ', code='Space', windowsVirtualKeyCode=32)
+    page.hover('#view')
+    assert page.evaluate(position) and page.evaluate(position) != before
+
+    page = show(ui, 'en', 100, (1280, 900), look=1)
+    page.evaluate('document.querySelector("#crop").focus()')
+    press(page, '?', 'Slash', 191, shift=True)
+    press(page, 'Escape', 'Escape', 27)
+    assert page.evaluate('document.activeElement.id') == 'crop'
+    peek = 'document.querySelector("#peek-hint").classList.contains("on")'
+    page.send('Input.dispatchKeyEvent', type='keyDown', key=' ', code='Space', windowsVirtualKeyCode=32, text=' ')
+    assert page.evaluate(peek)
+    page.send('Input.dispatchKeyEvent', type='keyUp', key=' ', code='Space', windowsVirtualKeyCode=32)
+    assert not page.evaluate(peek)
+    page.check_errors()
+
+
+def test_the_sheet_returns_the_focus_without_changing_what_space_does_on_that_control(ui):
+    # A control the mouse clicked keeps the focus and Space still pans or peeks; a control the keyboard reached keeps
+    # Space for itself. The sheet hands the focus back when it closes, and must hand it back as it found it.
+    is_open = 'document.querySelector("#shortcut-help").open'
+    focused = 'document.activeElement.id || document.activeElement.dataset.zoom'
+
+    def through_the_sheet(page, close):
+        if close is None:
+            return
+        press(page, '?', 'Slash', 191, shift=True)
+        assert page.evaluate(is_open)
+        if close == 'outside':
+            page.click('#btn-open')
+        elif close == '?':
+            press(page, '?', 'Slash', 191, shift=True)
+        else:
+            press(page, 'Escape', 'Escape', 27)
+        assert not page.evaluate(is_open)
+
+    def space(page, kind):
+        page.send('Input.dispatchKeyEvent', type=kind, key=' ', code='Space', windowsVirtualKeyCode=32,
+                  **({'text': ' '} if kind == 'keyDown' else {}))
+
+    page = show(ui, 'en', 100, (1280, 900))
+    position = 'document.querySelector("#status-pos").textContent'
+    for close in (None, 'Escape', '?'):
+        page.click('#btn-fit')
+        through_the_sheet(page, close)
+        assert page.evaluate(focused) == 'btn-fit'
+        page.hover('#view')
+        before = page.evaluate(position)
+        assert before
+        space(page, 'keyDown')
+        canvas_mark(page, 'left', dx=60)
+        space(page, 'keyUp')
+        page.hover('#view')
+        assert page.evaluate(position) != before, f'Space did not pan after a clicked control (sheet closed by {close})'
+
+    page = show(ui, 'en', 100, (1280, 900), look=1)
+    zoom = '.seg-btn[data-zoom][aria-checked="true"]'
+    peek = 'document.querySelector("#peek-hint").classList.contains("on")'
+    for close in (None, 'Escape', '?'):
+        page.click(zoom)
+        through_the_sheet(page, close)
+        assert page.evaluate(focused) == page.evaluate(f"document.querySelector('{zoom}').dataset.zoom")
+        space(page, 'keyDown')
+        assert page.evaluate(peek), f'Space did not peek after a clicked control (sheet closed by {close})'
+        space(page, 'keyUp')
+        assert not page.evaluate(peek)
+
+    # the same control, reached with the keyboard this time: Space presses it, whichever way the sheet closed
+    for close in (None, 'Escape', '?', 'outside'):
+        press(page, 'Shift', 'ShiftLeft', 16)
+        page.evaluate(f"(() => {{ const b = document.querySelector('{zoom}'); b.blur(); b.focus(); }})()")
+        through_the_sheet(page, close)
+        assert page.evaluate(focused) == page.evaluate(f"document.querySelector('{zoom}').dataset.zoom")
+        space(page, 'keyDown')
+        assert not page.evaluate(peek), f'Space peeked on a control the keyboard reached (sheet closed by {close})'
+        space(page, 'keyUp')
+    page.check_errors()
+
+
+def test_a_question_over_the_sheet_does_not_lose_how_the_control_got_the_focus(tmp_path):
+    # A file handed over from outside asks its question on top of the open sheet. The sheet stays open under it, `?`
+    # is the question's, and the clicked control still gets the focus back as a clicked one: Space pans after it.
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page(1280, 900)) as page:
+        server.set_lang('en')
+        uibrowser.synthetic_document(server, w=320, h=480)
+        second = tmp_path / 'second.png'
+        second.write_bytes(uibrowser.synthetic_png(320, 480))
+        page.goto(server.url + '/')
+        page.wait_for('!document.body.classList.contains("no-doc")', what='the document to show')
+        help_open = 'document.querySelector("#shortcut-help").open'
+        asking = 'document.querySelector("#confirm-open").open'
+        position = 'document.querySelector("#status-pos").textContent'
+
+        page.click('#btn-fit')
+        press(page, '?', 'Slash', 191, shift=True)
+        assert page.evaluate(help_open)
+        assert server.api('/api/open/path', 'POST', {'path': str(second), 'ask': True})['pending'] is True
+        page.wait_for(asking, what='the question about the guides not exported')
+        press(page, '?', 'Slash', 191, shift=True)
+        assert page.evaluate(asking) and page.evaluate(help_open)
+        press(page, 'Escape', 'Escape', 27)
+        page.wait_for(f'!{asking}', what='the question to close')
+        assert page.evaluate(help_open)
+        press(page, 'Escape', 'Escape', 27)
+        assert not page.evaluate(help_open)
+        assert page.evaluate('document.activeElement.id') == 'btn-fit'
+
+        page.hover('#view')
+        before = page.evaluate(position)
+        assert before
+        page.send('Input.dispatchKeyEvent', type='keyDown', key=' ', code='Space', windowsVirtualKeyCode=32, text=' ')
+        canvas_mark(page, 'left', dx=60)
+        page.send('Input.dispatchKeyEvent', type='keyUp', key=' ', code='Space', windowsVirtualKeyCode=32)
+        page.hover('#view')
+        assert page.evaluate(position) != before, 'Space did not pan after the clicked control got the focus back'
+        page.check_errors()
+
+
+def test_keys_do_not_reach_the_page_behind_the_open_sheet_wherever_it_was_clicked(ui):
+    # a click on the sheet's title, the empty part of its head or its text leaves the focus in the sheet: the tool keys
+    # and Space stay with it and do nothing to the page behind
+    is_open = 'document.querySelector("#shortcut-help").open'
+    in_sheet = '!!document.activeElement.closest("#shortcut-help")'
+    segment = 'document.querySelector("#stage").classList.contains("tool-segment")'
+    page = show(ui, 'en', 100, (1280, 900))
+    assert page.evaluate(segment)
+    press(page, '?', 'Slash', 191, shift=True)
+    for spot in ('#shortcut-help-title', '.shortcuts-head', '.shortcuts-space dd', '.shortcut-rows dd'):
+        page.click(spot)
+        assert page.evaluate(is_open) and page.evaluate(in_sheet), spot
+        press(page, 'b', 'KeyB', 66)
+        assert page.evaluate(segment), f'B changed the tool behind the sheet after a click on {spot}'
+    page.click('#shortcut-help-title')
+    where = '[document.hasFocus(), document.activeElement.id || document.activeElement.tagName]'
+    for n in range(8):                      # Tab goes round the sheet and past its end, where nothing of the page is
+        press(page, 'Tab', 'Tab', 9)
+        at = page.evaluate(where)
+        press(page, 'b', 'KeyB', 66)
+        assert page.evaluate(segment), f'B changed the tool behind the sheet after Tab {n + 1}, focus at {at}'
+        assert page.evaluate(is_open)
+    press(page, 'Escape', 'Escape', 27)
+
+    page = show(ui, 'en', 100, (1280, 900), look=1)
+    peek = 'document.querySelector("#peek-hint").classList.contains("on")'
+    press(page, '?', 'Slash', 191, shift=True)
+    for spot in ('#shortcut-help-title', '.shortcuts-head', '.shortcuts-space dd'):
+        page.click(spot)
+        assert page.evaluate(is_open) and page.evaluate(in_sheet), spot
+        page.send('Input.dispatchKeyEvent', type='keyDown', key=' ', code='Space', windowsVirtualKeyCode=32, text=' ')
+        peeked = page.evaluate(peek)
+        page.send('Input.dispatchKeyEvent', type='keyUp', key=' ', code='Space', windowsVirtualKeyCode=32)
+        assert not peeked, f'Space showed the original behind the sheet after a click on {spot}'
+        assert page.evaluate(is_open), f'Space closed the sheet after a click on {spot}'
+    page.click('#shortcut-help-title')
+    for n in range(8):
+        press(page, 'Tab', 'Tab', 9)
+        at = page.evaluate(where)
+        if at[1] == 'btn-shortcuts-close':  # Space is that button's: it closes the sheet, as it says
+            continue
+        page.send('Input.dispatchKeyEvent', type='keyDown', key=' ', code='Space', windowsVirtualKeyCode=32, text=' ')
+        peeked = page.evaluate(peek)
+        page.send('Input.dispatchKeyEvent', type='keyUp', key=' ', code='Space', windowsVirtualKeyCode=32)
+        assert not peeked, f'Space showed the original behind the sheet after Tab {n + 1}, focus at {at}'
+        assert page.evaluate(is_open)
+    press(page, 'Escape', 'Escape', 27)
+    page.check_errors()
+
+
+def test_the_sheet_returns_the_focus_to_a_region_whose_row_was_made_anew_under_it(tmp_path):
+    # The region rows are made anew on every state change, a solve that ends while the sheet is open among them. The
+    # button that had the focus is gone by then: the focus goes back to the same button of the same region's new row.
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page(1280, 900)) as page:
+        server.set_lang('zh')
+        before = uibrowser.synthetic_document(server)
+        doc, left = before['id'], before['regions'][0]['id']
+        page.goto(server.url + '/')
+        page.wait_for('!!document.querySelector("#region-list .current .pick")', what='the region list')
+        help_open = 'document.querySelector("#shortcut-help").open'
+        page.evaluate('document.querySelector("#region-list .current .pick").focus()')
+        assert page.evaluate('document.activeElement.closest(".region").dataset.id') == str(left)
+        press(page, '?', 'Slash', 191, shift=True)
+        assert page.evaluate(help_open)
+
+        server.api(f'/api/doc/{doc}/strokes', 'POST',
+                   {'pts': [190, 445, 220, 450, 250, 452, 285, 449, 300, 444], 'hint': left})
+        page.wait_for('/^4 条走向线，求解/.test(document.querySelector("#region-list .current .meta").textContent)',
+                      timeout=60, what='the fourth direction line to be solved and shown')
+        assert page.evaluate(help_open)
+
+        press(page, 'Escape', 'Escape', 27)
+        assert not page.evaluate(help_open)
+        press(page, 'F2', 'F2', 113)
+        assert page.evaluate('[document.activeElement.name, document.activeElement.closest(".region")?.dataset.id]') \
+            == ['region-name', str(left)], 'F2 did not rename the region that had the focus before the sheet'
+        press(page, 'Escape', 'Escape', 27)
+        page.check_errors()
+
+
+def test_a_refresh_from_the_server_keeps_how_a_region_button_got_the_focus(tmp_path):
+    # The region rows are made anew when a solve ends, and the focus is put back on the same button of the new row.
+    # That is not the user moving the focus: a button the mouse clicked is still a clicked one, and Space still pans,
+    # whatever key was pressed last (the ones that opened and closed the sheet, here).
+    uibrowser.require()
+    with uibrowser.running(tmp_path) as (server, browser), contextlib.closing(browser.page(1280, 900)) as page:
+        server.set_lang('zh')
+        before = uibrowser.synthetic_document(server)
+        doc, left = before['id'], before['regions'][0]['id']
+        page.goto(server.url + '/')
+        page.wait_for('!!document.querySelector("#region-list .current .pick")', what='the region list')
+        position = 'document.querySelector("#status-pos").textContent'
+        on_pick = ('document.activeElement.matches("#region-list .current .pick") && '
+                   f'document.activeElement.closest(".region").dataset.id === "{left}"')
+
+        def space_pans():
+            page.hover('#view')
+            was = page.evaluate(position)
+            assert was
+            page.send('Input.dispatchKeyEvent', type='keyDown', key=' ', code='Space', windowsVirtualKeyCode=32, text=' ')
+            canvas_mark(page, 'left', dx=60)
+            page.send('Input.dispatchKeyEvent', type='keyUp', key=' ', code='Space', windowsVirtualKeyCode=32)
+            page.hover('#view')
+            return page.evaluate(position) != was
+
+        page.click('#region-list .current .pick')
+        assert page.evaluate(on_pick)
+        press(page, '?', 'Slash', 191, shift=True)
+        assert page.evaluate('document.querySelector("#shortcut-help").open')
+        press(page, 'Escape', 'Escape', 27)
+        assert not page.evaluate('document.querySelector("#shortcut-help").open')
+        assert page.evaluate(on_pick)
+        # Space is the picture's after the sheet closed (no pointer press here: one would itself say "clicked" again)
+        page.send('Input.dispatchKeyEvent', type='keyDown', key=' ', code='Space', windowsVirtualKeyCode=32, text=' ')
+        panning = page.evaluate('document.querySelector("#stage").classList.contains("panning")')
+        page.send('Input.dispatchKeyEvent', type='keyUp', key=' ', code='Space', windowsVirtualKeyCode=32)
+        assert panning, 'Space did not start panning after the sheet closed'
+        assert page.evaluate(on_pick)
+
+        server.api(f'/api/doc/{doc}/strokes', 'POST',
+                   {'pts': [190, 445, 220, 450, 250, 452, 285, 449, 300, 444], 'hint': left})
+        page.wait_for('/^4 条走向线，求解/.test(document.querySelector("#region-list .current .meta").textContent)',
+                      timeout=60, what='the fourth direction line to be solved and shown')
+        assert page.evaluate(on_pick)
+        assert space_pans(), 'Space did not pan after the rows were made anew under a clicked button'
+
+        # the other way round: the same button reached with the keyboard, the sheet closed with the mouse. Space is
+        # still the button's after the next news from the server
+        press(page, 'ArrowDown', 'ArrowDown', 40)
+        press(page, 'ArrowUp', 'ArrowUp', 38)
+        assert page.evaluate(on_pick)
+        press(page, '?', 'Slash', 191, shift=True)
+        assert page.evaluate('document.querySelector("#shortcut-help").open')
+        page.click('#btn-open')                     # outside the sheet: closes it, and nothing else
+        assert not page.evaluate('document.querySelector("#shortcut-help").open')
+        assert page.evaluate(on_pick)
+        server.api(f'/api/doc/{doc}/strokes', 'POST',
+                   {'pts': [190, 600, 220, 605, 250, 607, 285, 604, 300, 599], 'hint': left})
+        page.wait_for('/^5 条走向线，求解/.test(document.querySelector("#region-list .current .meta").textContent)',
+                      timeout=60, what='the fifth direction line to be solved and shown')
+        assert page.evaluate(on_pick)
+        page.send('Input.dispatchKeyEvent', type='keyDown', key=' ', code='Space', windowsVirtualKeyCode=32, text=' ')
+        panning = page.evaluate('document.querySelector("#stage").classList.contains("panning")')
+        page.send('Input.dispatchKeyEvent', type='keyUp', key=' ', code='Space', windowsVirtualKeyCode=32)
+        assert not panning, 'Space panned on a button the keyboard reached, after the rows were made anew'
+
+        # and a click is still a click: the same button, focused with the keyboard, then clicked by the user. The row
+        # is made anew because of that click, and is judged by it
+        assert page.evaluate(on_pick)
+        page.click('#region-list .current .pick')
+        assert page.evaluate(on_pick)
+        assert space_pans(), 'Space did not pan after the user clicked the button the keyboard had focused'
+        page.check_errors()
 
 
 def test_the_side_panel_cannot_be_used_until_an_image_opens(tmp_path):

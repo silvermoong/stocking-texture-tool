@@ -34,6 +34,8 @@
     </button>
   </div>
   <div class="sep"></div>
+  <button id="btn-shortcuts" class="btn num" type="button" aria-haspopup="dialog" aria-controls="shortcut-help"
+          aria-label="快捷键与手势" aria-keyshortcuts="Shift+/" data-tip="快捷键与手势 (?)">?</button>
   <select id="ui-scale" class="select num" aria-label="界面大小" title="界面大小">
     <option value="100">100%</option>
     <option value="115">115%</option>
@@ -423,6 +425,83 @@
       <button class="btn" value="cancel" autofocus>取消</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="shortcut-help" class="dialog shortcuts-dialog" aria-labelledby="shortcut-help-title" closedby="any">
+  <div class="shortcuts-head">
+    <h2 id="shortcut-help-title">快捷键与手势</h2>
+    <form method="dialog"><button id="btn-shortcuts-close" class="btn" autofocus>关闭</button></form>
+  </div>
+  <div class="shortcuts-content" tabindex="0" role="region" aria-labelledby="shortcut-help-title">
+    <section class="shortcuts-space">
+      <h3>空格在两页的用途</h3>
+      <dl>
+        <div><dt>引导</dt><dd>按住空格拖动画面。</dd></div>
+        <div><dt>纹理</dt><dd>按住空格查看细节原图，松开恢复效果。</dd></div>
+      </dl>
+      <p>键盘聚焦的控件自己用空格。先把焦点移到画面（可用「跳到画面」）或细节。</p>
+    </section>
+    <div class="shortcuts-groups">
+      <div>
+        <section>
+          <h3>通用操作</h3>
+          <dl class="shortcut-rows">
+            <div><dt><kbd>Ctrl+O</kbd> <span>拖入文件</span></dt><dd>打开图片或 PSD</dd></div>
+            <div><dt><kbd>Ctrl+E</kbd></dt><dd>按顶栏主按钮的当前方式导出</dd></div>
+            <div><dt><kbd>Ctrl+Z</kbd></dt><dd>撤销当前页的上一步</dd></div>
+            <div><dt><kbd>Ctrl+Shift+Z</kbd> <kbd>Ctrl+Y</kbd></dt><dd>重做当前页的一步</dd></div>
+            <div><dt><kbd>?</kbd> <kbd>Esc</kbd></dt><dd>用问号打开或关闭速查表，也可按 Esc 或点弹窗外关闭。</dd></div>
+            <div><dt><kbd>Tab</kbd> <kbd>Shift+Tab</kbd></dt><dd>聚焦下一个或上一个控件</dd></div>
+            <div><dt><kbd>Enter</kbd> <kbd>空格</kbd></dt><dd>激活用键盘聚焦的按钮</dd></div>
+            <div><dt><kbd>← ↑ ↓ →</kbd> <kbd>Home</kbd> <kbd>End</kbd></dt><dd>在页签或单选组中切换；Home / End 选首项或末项。</dd></div>
+            <div><dt>菜单内</dt><dd>↑ / ↓ 切换项目，Esc 或 Tab 退出。→ 进入「合并到」，← 或 Esc 返回上一级。</dd></div>
+          </dl>
+          <p>文件与撤销重做的 Ctrl 组合键也可用 Command。</p>
+        </section>
+        <section>
+          <h3>纹理页预览</h3>
+          <dl class="shortcut-rows">
+            <div><dt>点击整体</dt><dd>把细节预览移到点击处</dd></div>
+            <div><dt>拖动对比拖杆</dt><dd>整体预览左边显示原图，右边显示效果。</dd></div>
+            <div><dt><kbd>← →</kbd> <kbd>Home</kbd> <kbd>End</kbd></dt><dd>对比拖杆有焦点时，左右键移动拖杆，加按 Shift 移得更远；Home 全看效果，End 全看原图。</dd></div>
+            <div><dt>拖动细节</dt><dd>平移查看的位置；细节有焦点时也可用方向键，加按 Shift 移得更远。</dd></div>
+            <div><dt><kbd>Delete</kbd></dt><dd>纹理层名有焦点时删除该层</dd></div>
+          </dl>
+        </section>
+      </div>
+      <div>
+        <section>
+          <h3>引导页工具</h3>
+          <dl class="shortcut-rows">
+            <div><dt><kbd>W</kbd></dt><dd>点选：左键加进当前部位，右键减去。</dd></div>
+            <div><dt><kbd>Tab</kbd> <kbd>Shift+Tab</kbd></dt><dd>点选后，画面有焦点时，向前或向后切换小 / 中 / 大范围。</dd></div>
+            <div><dt>悬停或单击 小 / 中 / 大</dt><dd>点选后，悬停高亮该范围的轮廓，单击直接选这一档。</dd></div>
+            <div><dt><kbd>B</kbd></dt><dd>画笔：左键拖动涂抹，右键拖动擦除。</dd></div>
+            <div><dt><kbd>E</kbd></dt><dd>橡皮：用左键或右键拖动擦除当前部位。</dd></div>
+            <div><dt><kbd>K</kbd></dt><dd>切开：左键拖线分割当前部位。</dd></div>
+            <div><dt><kbd>Esc</kbd></dt><dd>切开时取消正在画的线；没在画线时回到上一工具。</dd></div>
+            <div><dt><kbd>P</kbd></dt><dd>走向：左键拖动画走向线。</dd></div>
+            <div><dt><kbd>D</kbd></dt><dd>隔开：左键沿交界拖动画隔开线。</dd></div>
+            <div><dt><kbd>Delete</kbd> <kbd>Backspace</kbd> <span>右键单击</span></dt><dd>用走向或隔开工具时，删除指针下的相应线。</dd></div>
+            <div><dt><kbd>[</kbd> <kbd>]</kbd></dt><dd>缩小或放大笔刷</dd></div>
+            <div><dt><kbd>↑ ↓</kbd></dt><dd>部位列表有焦点时切换部位</dd></div>
+            <div><dt><kbd>F2</kbd> <span>双击部位名</span></dt><dd>给部位改名（F2 要先聚焦列表）；Enter 确认，Esc 取消。</dd></div>
+          </dl>
+        </section>
+        <section>
+          <h3>引导页视图</h3>
+          <dl class="shortcut-rows">
+            <div><dt>中键拖动</dt><dd>平移画面</dd></div>
+            <div><dt><kbd>← ↑ ↓ →</kbd></dt><dd>画面有焦点时平移，加按 Shift 移得更远。</dd></div>
+            <div><dt>滚轮</dt><dd>以指针为中心缩放，加按 Ctrl 缩放更快。</dd></div>
+            <div><dt><kbd>+</kbd> <kbd>=</kbd> <kbd>-</kbd> <kbd>_</kbd></dt><dd>从视图中心放大（+ / =）或缩小（- / _）</dd></div>
+            <div><dt><kbd>F</kbd></dt><dd>适应窗口</dd></div>
+            <div><dt><kbd>1</kbd></dt><dd>实际像素（100%）</dd></div>
+          </dl>
+        </section>
+      </div>
+    </div>
+  </div>
 </dialog>
 
 <script type="module" src="/static/app.js"></script>

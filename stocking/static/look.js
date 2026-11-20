@@ -1266,6 +1266,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     const a = document.activeElement;
     if (a && a !== document.body && a !== cropCv && a.id !== 'stage' && focusByKeyboard()) return;
     if (a && a.closest && a.closest('dialog, .menu')) return;
+    if (document.querySelector('dialog:modal')) return;     // the focus can be on the body behind an open dialog
     e.preventDefault();
     setPeek(true);
   });

@@ -263,7 +263,16 @@ let refreshTimer = 0;
 function refresh(delay = 40) {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(() => {
-    queue(() => request('GET', '/api/doc')).then(applyState).catch((e) => flash(e.message, true));
+    queue(() => request('GET', '/api/doc')).then((st) => {
+      // News from the server makes the region rows anew and puts the focus back on the same button of the new row.
+      // The user did not move it: that button keeps the way it got the focus (a click or the keyboard), whatever
+      // was pressed last. Only here: a row made anew because the user clicked it is judged by that click.
+      const held = regionButton(document.activeElement);
+      const byPointer = focusByPointer;
+      applyState(st);
+      const now = held && regionButton(document.activeElement);
+      if (now && now.doc === held.doc && now.id === held.id && now.part === held.part) focusByPointer = byPointer;
+    }).catch((e) => flash(e.message, true));
   }, delay);
 }
 
@@ -592,8 +601,15 @@ function renderRegions() {
   const open = menuFor;
   const was = document.activeElement;
   const focused = ul.contains(was) ? { id: was.closest('.region')?.dataset.id, part: was.classList.contains('more') ? 'more' : 'pick' } : null;
+  // The open shortcut sheet hands the focus back to the very button it was opened from, as it closes and before any
+  // event says so. A row made anew under the sheet (a solve that ends meanwhile) keeps that one button, so the focus
+  // still has somewhere to go back to: the same button of the same region of the same image.
+  const el = shortcutHelp.open && shortcutOpener ? shortcutOpener.el : null;
+  const held = el && S.doc && ul.dataset.doc === String(S.doc.id) && ul.contains(el) && el.matches('button.pick, button.more')
+    ? { el, id: +el.closest('.region').dataset.id, part: el.classList.contains('more') ? 'more' : 'pick' } : null;
   ul.replaceChildren();
   if (!S.doc) return;
+  ul.dataset.doc = S.doc.id;
   for (const r of S.doc.regions) {
     const cur = r.id === S.current;
     const li = document.createElement('li');
@@ -601,21 +617,24 @@ function renderRegions() {
     li.dataset.id = r.id;
     li.style.setProperty('--c', r.color);
     const [meta, cls] = regionMeta(r);
-    const pick = document.createElement('button');
+    const keep = held && held.id === r.id ? held.part : null;
+    const pick = keep === 'pick' ? held.el : document.createElement('button');
     pick.type = 'button';
     pick.className = 'pick';
     pick.tabIndex = cur ? 0 : -1;
-    if (cur) pick.setAttribute('aria-current', 'true');
+    if (cur) pick.setAttribute('aria-current', 'true'); else pick.removeAttribute('aria-current');
     const sw = document.createElement('span'); sw.className = 'sw';
     const name = document.createElement('span'); name.className = 'name'; name.textContent = r.name;
     const m = document.createElement('span'); m.className = 'meta' + (cls ? ` ${cls}` : ''); m.textContent = meta;
     if (r.status === 'solving' || r.status === 'pending') {
       const dot = document.createElement('span'); dot.className = 'busy-dot'; m.append(dot);
     }
-    pick.append(sw, name, m);
-    pick.addEventListener('click', () => selectRegion(r.id));
-    pick.addEventListener('dblclick', () => startRename(r.id));
-    const more = document.createElement('button');
+    pick.replaceChildren(sw, name, m);
+    if (keep !== 'pick') {              // the button kept has its listeners, for this same region
+      pick.addEventListener('click', () => selectRegion(r.id));
+      pick.addEventListener('dblclick', () => startRename(r.id));
+    }
+    const more = keep === 'more' ? held.el : document.createElement('button');
     more.type = 'button';
     more.className = 'more';
     more.tabIndex = cur ? 0 : -1;
@@ -624,14 +643,23 @@ function renderRegions() {
     more.setAttribute('aria-label', t('{name}：更多操作', { name: r.name }));
     more.setAttribute('aria-haspopup', 'menu');
     more.setAttribute('aria-expanded', String(open === r.id));
-    more.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (menuFor === r.id) closeMenus(); else openRegionMenu(r.id, more);
-    });
+    if (keep !== 'more') {
+      more.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (menuFor === r.id) closeMenus(); else openRegionMenu(r.id, more);
+      });
+    }
     li.append(pick, more);
     ul.append(li);
   }
   if (focused) focusRegion(+focused.id, focused.part);
+}
+
+// which button of the region list an element is: of which image, which region, and which of the row's two
+function regionButton(el) {
+  const li = S.doc && el instanceof Element && el.matches('#region-list button.pick, #region-list button.more')
+    ? el.closest('.region') : null;
+  return li ? { doc: S.doc.id, id: li.dataset.id, part: el.classList.contains('more') ? 'more' : 'pick' } : null;
 }
 
 function focusRegion(rid, part = 'pick') {
@@ -1582,6 +1610,37 @@ $('#btn-redo').addEventListener('click', () => stepHistory('redo'));
 $('#btn-fit').addEventListener('click', fit);
 $('#btn-100').addEventListener('click', () => zoomCentre(1));
 
+const shortcutHelp = $('#shortcut-help');
+// The sheet hands the focus back when it closes. Whether that control was clicked or reached with the keyboard decides
+// what Space does next on both pages, so it goes back as it was: the keys or the click that closed the sheet say nothing
+// about how the control got the focus.
+let shortcutOpener = null;
+function openShortcutHelp() {
+  hideTip();
+  shortcutOpener = { el: document.activeElement, byPointer: focusByPointer };
+  shortcutHelp.showModal();
+}
+// (in the focusin that returns it, after the listener above has judged it: the dialog's close event comes a task later,
+// and Space may already be down by then. While the sheet is open the focus is in it or in a dialog that opened over
+// it, the question about opening another image for one: neither is the focus going back)
+document.addEventListener('focusin', (e) => {
+  if (!shortcutOpener || shortcutHelp.open) return;
+  if (e.target === shortcutOpener.el) focusByPointer = shortcutOpener.byPointer;
+  shortcutOpener = null;
+}, true);
+$('#btn-shortcuts').addEventListener('click', openShortcutHelp);
+window.addEventListener('keydown', (e) => {
+  // Use the character, not the physical Slash key, so other keyboard layouts can type their own question mark.
+  if (e.key !== '?' || e.defaultPrevented || e.isComposing || e.ctrlKey || e.altKey || e.metaKey) return;
+  const target = e.target;
+  if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select'))) return;
+  const overlays = document.querySelectorAll('dialog[open]:not(#shortcut-help), .menu:not([hidden]), .info-pop:not([hidden])');
+  if ([...overlays].some((el) => el.checkVisibility()) || S.drag) return;
+  e.preventDefault();
+  if (e.repeat) return;
+  if (shortcutHelp.open) shortcutHelp.close(); else openShortcutHelp();
+});
+
 for (const b of document.querySelectorAll('.tool')) b.addEventListener('click', () => setTool(b.dataset.tool));
 $('#brush-size').addEventListener('input', (e) => setBrush(+e.target.value));
 
@@ -1910,6 +1969,9 @@ const TOOL_KEYS = { w: 'segment', b: 'brush', e: 'erase', p: 'pen', k: 'cut', d:
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement && e.target.type !== 'checkbox' && e.target.type !== 'range') return;
   if (e.target instanceof Element && e.target.closest('.menu, dialog')) return;
+  // a modal dialog keeps the page behind it out of reach, its keys too: Tab past the dialog's last control leaves the
+  // focus on the body with the dialog still open
+  if (document.querySelector('dialog:modal')) return;
   const k = e.key.toLowerCase();
   if (e.key === 'Tab' && S.mode === 'edit' && S.doc && S.doc.segment_cycle && !e.ctrlKey && !e.altKey && onCanvas()) {
     e.preventDefault();

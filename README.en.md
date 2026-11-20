@@ -67,6 +67,8 @@ If the install files download too slowly, or the computer has no internet connec
 
 ## How to use it
 
+Click `?` in the top bar, or press `?` (`Shift+/`), to open the read-only reference for shortcuts and mouse gestures. You don't need an image open. Press `?` again or `Esc`, click Close, or click outside the dialog to dismiss it. On Guides, hold Space and drag to pan. On Texture, hold Space to see the original in Detail and release to see the texture again. While a control such as a button has keyboard focus, Space still belongs to that control (it presses the button, for example); move the focus to the picture (Skip to the picture does it) or to the Detail preview first, then use these two gestures.
+
 ### 1. Open a picture
 
 Drop a PNG, JPG or PSD on the window, or press Ctrl+O. A PSD is read as its flattened image. Until you open an image, the left panel is inactive and skipped by the keyboard.

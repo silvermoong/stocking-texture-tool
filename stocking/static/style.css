@@ -70,7 +70,9 @@ html[lang="en"]:not(.i18n-done) body { visibility: hidden; }
 html, body { height: 100%; margin: 0; }
 body {
   display: grid;
-  grid-template-columns: calc(272px * var(--k)) 1fr;
+  /* the panel never wider than the window: at a large 界面大小 in a narrow one it would overflow, and the focus going
+     into it would scroll the page sideways and take the bar out of the window */
+  grid-template-columns: min(calc(272px * var(--k)), 100vw) 1fr;
   grid-template-rows: auto 1fr calc(28px * var(--k));     /* the bar: one row of buttons, two in a window too narrow */
   grid-template-areas: "bar bar" "side stage" "status status";
   background: var(--chrome);
@@ -134,7 +136,8 @@ input[type="checkbox"] { width: calc(13px * var(--k)); height: calc(13px * var(-
 .bar {
   grid-area: bar; display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: flex-end;
   gap: calc(6px * var(--k)) calc(8px * var(--k)); min-height: calc(44px * var(--k)); padding: calc(7px * var(--k)) calc(12px * var(--k));
-  border-bottom: 1px solid var(--line); container: bar / inline-size;
+  /* At high scale the Guides sidebar alone can be wider than a narrow window; the bar still wraps at the viewport. */
+  max-width: 100vw; border-bottom: 1px solid var(--line); container: bar / inline-size;
 }
 /* nothing in the bar gives way but the space in the middle: squeezed, Chinese labels break between characters and
    stand on end. A narrow bar drops the zoom readout and the dividers first; what still does not fit goes to a second
@@ -164,6 +167,7 @@ input[type="checkbox"] { width: calc(13px * var(--k)); height: calc(13px * var(-
   box-shadow: inset 1px 0 color-mix(in oklab, var(--on-chalk) 22%, transparent); }
 .split .more:disabled { box-shadow: none; }
 .split .more[aria-expanded="true"] { background: var(--primary-hover); }
+#btn-shortcuts { width: calc(28px * var(--k)); padding: 0; font-weight: 700; }
 /* 中 / EN: the page's language */
 .bar .lang .seg-btn { min-width: calc(30px * var(--k)); height: calc(24px * var(--k)); }
 /* drop-down lists: 界面大小 in the bar, 预设 in the panel */
@@ -326,6 +330,42 @@ body.no-doc .step-body > :not(.step-head), body.no-doc .step h2 { opacity: .4; }
   user-select: text;
 }
 .dialog .dialog-note { display: block; min-height: 1.6em; margin-top: calc(6px * var(--k)); }
+
+/* The shortcut sheet keeps its title and Close in view while the reference scrolls. */
+.shortcuts-dialog {
+  width: calc(880px * var(--k)); max-width: calc(100% - 24px); max-height: calc(100% - 24px);
+  padding: 0; overflow: hidden;
+}
+.shortcuts-dialog[open] { display: flex; flex-direction: column; }
+.shortcuts-head {
+  display: flex; align-items: center; justify-content: space-between; gap: .75em;
+  padding: .8em 1em; border-bottom: 1px solid var(--line); container: shortcuts-head / inline-size;
+}
+.shortcuts-head h2 { margin: 0; font-size: 1.35em; line-height: 1.25; }
+/* a narrow window at a large 界面大小: the title gives way before it stacks three lines beside Close */
+@container shortcuts-head (max-width: 24em) { .shortcuts-head h2 { font-size: 1.1em; } }
+.shortcuts-content {
+  min-height: 0; padding: 1em; overflow-y: auto; overscroll-behavior: contain;
+  container: shortcuts / inline-size; user-select: text;
+}
+.shortcuts-content:focus-visible { outline-offset: -3px; }
+.shortcuts-content h3 { margin: 0 0 .45em; font-size: 1.1em; }
+.shortcuts-content dl, .shortcuts-content dd { margin: 0; }
+.shortcuts-space { margin-bottom: 1.15em; padding: .7em .9em; border-radius: calc(4px * var(--k)); background: var(--chrome); }
+.shortcuts-space dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16em), 1fr)); gap: .5em 1.25em; }
+.shortcuts-space dt { font-weight: 700; }
+.shortcuts-space p { margin: .55em 0 0; }
+.shortcuts-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 23em), 1fr)); gap: 1.15em 1.5em; }
+.shortcuts-groups section + section { margin-top: 1.15em; }
+.shortcuts-groups p { margin-top: .55em; }
+.shortcut-rows > div {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.65fr); gap: .25em .7em;
+  padding-block: .32em; border-top: 1px solid var(--line);
+}
+.shortcut-rows dt { display: flex; flex-wrap: wrap; align-items: baseline; align-content: start; gap: .2em .3em; }
+.shortcut-rows kbd { padding: .08em .38em; border-radius: 2px; background: var(--raised); font: .9em/1.35 var(--din); white-space: nowrap; min-width: 1.8em; text-align: center; }
+@container shortcuts (max-width: 20em) { .shortcut-rows > div { grid-template-columns: minmax(0, 1fr); } }
+
 .tier[aria-checked="true"] { background: var(--chalk); color: var(--on-chalk); font-weight: 700; }
 
 /* stage */
