@@ -755,20 +755,27 @@ def look_info(d, q):
 @app.get('/api/doc/{doc_id}/look')
 def get_look(doc_id: str, request: Request):
     d = doc_for(doc_id)
-    q = _params(request, d)
+    with d.lock:                                    # the settings and the preset they go with, read as one: an undo
+        q, preset, rev = _params(request, d), d.look_preset, d.look_rev      # may arrive while the answer is worked out
     _want_depth(d, q)
-    return look_info(d, q)
+    return dict(look_info(d, q), preset=preset, look_rev=rev)       # look_rev: of which step of the history they are
 
 
 @app.put('/api/doc/{doc_id}/look')
-def put_look(doc_id: str, body: dict, merge: bool = False):
+def put_look(doc_id: str, body: dict, merge: bool = False, preset: str | None = None):
     """Save the look, as a step of the 纹理 history. merge=1: the change goes on the step the last one made (a drag of
-    a slider is one step). Before any look is saved, the step takes back to what _base_look gives."""
+    a slider is one step). Before any look is saved, the step takes back to what _base_look gives. preset: the name
+    of the preset the look goes with now ('' for none; left out, it stays): undo and redo bring it back with the
+    settings. Sent with the settings the look has, only the name changes and no step is made. The answer (like
+    GET's) says which preset it is."""
     d = doc_for(doc_id)
     q = look.clean_params(body)
-    d.set_look(q, before=look.clean_params(_base_look(d)) if d.look is None else None, merge=merge)
+    named = {} if preset is None else {'preset': preset or None}
+    with d.lock:
+        d.set_look(q, before=look.clean_params(_base_look(d)) if d.look is None else None, merge=merge, **named)
+        now = d.look_preset
     _want_depth(d, q)
-    return look_info(d, q)
+    return dict(look_info(d, q), preset=now)
 
 
 class BlendAutoIn(BaseModel):
@@ -800,7 +807,11 @@ def put_preset(body: PresetIn):
 
 @app.delete('/api/look/presets')
 def delete_preset(body: NameIn):
-    return {'presets': presets.delete(body.name)}
+    listing = presets.delete(body.name)
+    d = _doc
+    if d is not None:                   # the open image no longer goes with it, nor do the steps of its 纹理 history
+        d.forget_look_preset(body.name)
+    return {'presets': listing}
 
 
 def preset_folder():

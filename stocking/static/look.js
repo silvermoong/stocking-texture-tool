@@ -146,9 +146,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     fitBusy: false,
     drag: null,
     presets: [],           // the saved presets, as the server lists them: [{ name, params }], params null if unreadable
+    presetsLoaded: false,  // the list has come from the server: only then is a name it lacks a preset that is gone
     presetName: null,      // the preset these settings were loaded from or saved as; null for none
     presetFileBusy: false, // a preset file's dialog is open (导出 / 导入)
-    beforeLoad: null,      // { params, name } before the preset(s) just loaded: what 撤销载入 goes back to
   };
   const fitCv = $('#fit');
   const cropCv = $('#crop');
@@ -425,9 +425,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     return { raw, period: Math.max(raw, 3.2), clamped: raw < 3.2 };
   }
 
-  function set(changes, { immediate = true, keepLoad = false, gesture = null } = {}) {
-    if (L.beforeReset && changes !== L.beforeReset) { L.beforeReset = null; renderReset(); }   // a new change ends the undo window
-    if (L.beforeLoad && !keepLoad) L.beforeLoad = null;                                       // and 撤销载入's too
+  function set(changes, { immediate = true, gesture = null } = {}) {
     // A step of the 纹理 history: a click is one; so is a drag of a slider (its `gesture`), till it rests a moment.
     const now = performance.now();
     if (!gesture || gesture !== L.gesture || now - L.gestureAt > GESTURE_MS) L.newStep = true;
@@ -459,6 +457,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
 
   // Saves go out one after another, in order. flush() sends what is waiting now (an undo has to come after it) and
   // resolves when every save is done; it rejects if this save failed, which is then shown and kept to send again.
+  // Each save names the preset the settings go with ('' for none): the server keeps it with the step, so that 撤销
+  // and 重做 bring it back with the settings.
   let saving = Promise.resolve();
   let unsaved = false;
   let saveTimer = 0;
@@ -472,7 +472,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       const merge = !L.newStep;
       L.newStep = false;
       try {
-        const info = await request('PUT', `/api/doc/${doc.id}/look?merge=${+merge}`, L.params);
+        const preset = encodeURIComponent(L.presetName || '');
+        const info = await request('PUT', `/api/doc/${doc.id}/look?merge=${+merge}&preset=${preset}`, L.params);
         if (getDoc() && getDoc().id === doc.id) adoptInfo(info);
       } catch (e) {
         if (getDoc() && getDoc().id === doc.id && L.params) {
@@ -725,7 +726,6 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     for (const el of document.querySelectorAll('.look-only input[type="range"]')) fillRange(el);
     renderFade();
     renderExclude();
-    renderReset();
     renderPresetState();
   }
 
@@ -792,6 +792,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   // L.presetName is the preset the settings were loaded from or saved as: 保存 updates it, 删除 deletes it, and tweaks
   // are marked 已改动 against it. It goes with the image; 全部恢复默认 keeps it. The list's last entry, 保存为新预设…,
   // asks for a name; with no preset selected 保存 does the same.
+  // The server keeps the name with the look and with each step of the 纹理 history, so 撤销 and 重做 (the only way
+  // to take back a load or 全部恢复默认) bring it back with the settings: load() reads it, every save sends it.
   const presetSel = $('#preset-select');
   const presetDlg = $('#preset-dialog');
   const presetNameInput = $('#preset-name');
@@ -826,7 +828,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   function renderPresetState() {
     if (!presetSel.options.length) { renderPresetList(); return; }
     const p = presetOf(L.presetName);
-    if (!p) L.presetName = null;                 // none, or deleted since
+    if (!p && L.presetsLoaded) L.presetName = null;         // none, or deleted since
     presetSel.value = p ? p.name : '';
     presetSel.disabled = !L.params;
     const modified = presetModified(p);
@@ -845,46 +847,57 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       notes.push(t('这张图没有“亮点”层，预设里按“亮点”层放亮点的那一项暂时不起作用。'));
     }
     $('#preset-note').textContent = notes.join(' ');
-    const undo = $('#btn-preset-undo');
-    undo.hidden = !L.beforeLoad && !modified;
-    undo.textContent = L.beforeLoad ? t('撤销载入') : t('还原');
+    const restore = $('#btn-preset-undo');          // 还原: the settings differ from the preset, put the preset's back
+    restore.hidden = !modified;
+    restore.textContent = t('还原');
   }
 
   async function loadPresets() {
     L.presets = (await request('GET', '/api/look/presets')).presets;
+    L.presetsLoaded = true;
     renderPresetList();
   }
 
-  // Loading replaces the settings: 撤销载入 goes back to what they were before the first of a run of loads, until some
-  // other change is made (撤销 on the page does the same, one step at a time).
+  // The settings as they are go with another preset (saved as a new preset, a preset holding these very settings
+  // or one that cannot be read picked). The name goes to the server with a save of the settings as they are, which
+  // makes no step of it. A reading of the settings still on its way comes first (撤销 was just pressed): the
+  // settings it brings are the ones to send the name with, and it leaves this newer name alone (see read()).
+  function namePreset(name) {
+    L.presetName = name;
+    L.gesture = null;                            // a slider moved after this begins a step of its own
+    const doc = getDoc();
+    if (!doc || !L.params) return;
+    reading.then(() => {
+      if (getDoc() && getDoc().id === doc.id && L.params && L.presetName === name) saveSoon();
+    });
+  }
+
+  // Loading replaces the settings, as one step of the 纹理 history: 撤销 takes it back, the selected preset too.
+  // 还原 is the same load, of the preset already selected. A preset holding the very settings there are changes
+  // the name alone: nothing to take back, so no undo is promised.
   function applyPreset(name) {
     const p = presetOf(name);
     if (!p || !L.params) return;
-    const was = L.presetName;
-    L.presetName = name;
     if (!p.params) {
+      namePreset(name);
       renderPresetState();
       flash(t('这个预设读不了（可能是新版本存的），可以删掉它。'), true);
       return;
     }
-    if (!L.beforeLoad) L.beforeLoad = { params: { ...L.params }, name: was };
     const next = { ...p.params };
     if (L.info) {                                                                          // worked out for this image
       if (next.strength_auto) next.strength = L.info.strength_suggested;
       next.layers = (next.layers || []).map((l) => (l.strength_auto ? { ...l, strength: L.info.strength_suggested } : l));
     }
-    set(next, { keepLoad: true });
-    flash(t('已载入预设“{name}”，Ctrl+Z 或“撤销载入”可以撤销', { name }));
-  }
-
-  // 撤销载入 while that window is open; after tweaks, 还原 loads the preset again.
-  function undoPreset() {
-    const b = L.beforeLoad;
-    if (!b) { applyPreset(L.presetName); return; }
-    L.beforeLoad = null;
-    L.presetName = b.name;
-    set(b.params);
-    flash(t('已撤销载入'));
+    if (sameLook(next, L.params)) {
+      namePreset(name);
+      renderPresetState();
+      flash(t('已载入预设“{name}”', { name }));
+      return;
+    }
+    L.presetName = name;
+    set(next);
+    flash(t('已载入预设“{name}”，Ctrl+Z 可以撤销', { name }));
   }
 
   function renderPresetDialog() {
@@ -919,7 +932,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       return;
     }
     presetDlg.close();
-    if (L.docId === docId) L.presetName = name;
+    if (L.docId === docId) namePreset(name);
     renderPresetList();
     flash(t('已保存预设“{name}”', { name }));
   }
@@ -953,6 +966,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       flash(e.message, true);
       return;
     }
+    // the settings stay, with no preset selected now: the server has taken the name off this image and the steps of
+    // its history itself, so that 撤销 never selects a preset saved under the name later
+    if (L.presetName === name) L.presetName = null;
     renderPresetList();
     flash(t('已删除预设“{name}”', { name }));
   }
@@ -990,13 +1006,13 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       renderPresetState();                       // the list shows the selected preset again while the name is asked
       openSavePreset();
     } else if (presetSel.value) applyPreset(presetSel.value);
-    else { L.presetName = null; renderPresetState(); }
+    else { namePreset(null); renderPresetState(); }
   });
   $('#btn-preset-save').addEventListener('click', () => (presetOf(L.presetName) ? updatePreset() : openSavePreset()));
   $('#btn-preset-delete').addEventListener('click', deletePreset);
   $('#btn-preset-export').addEventListener('click', exportPreset);
   $('#btn-preset-import').addEventListener('click', importPreset);
-  $('#btn-preset-undo').addEventListener('click', undoPreset);
+  $('#btn-preset-undo').addEventListener('click', () => applyPreset(L.presetName));
   presetNameInput.addEventListener('input', renderPresetDialog);
   $('#btn-preset-cancel').addEventListener('click', () => presetDlg.close());
   $('#preset-form').addEventListener('submit', (e) => { e.preventDefault(); savePreset(); });
@@ -1007,17 +1023,30 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   // answer is on its way is newer than it, so the answer's settings are not taken (the edit's own save brings the
   // server's word back). Nor are they if the waiting edit could not be saved (shown already): it stays on screen,
   // to send again.
-  async function load() {
+  let reading = Promise.resolve();    // the latest reading of the settings, done or still on its way
+  function load() {
+    const run = read();
+    reading = run.catch(() => {});
+    return run;
+  }
+  async function read() {
     const doc = getDoc();
     if (!doc) return;
     const seen = edits;
+    const named = L.presetName;
     let kept = false;
     try { await flush(); } catch { kept = true; }
     const info = await request('GET', `/api/doc/${doc.id}/look`);
     if (!getDoc() || getDoc().id !== doc.id) return;
+    // Read before an undo or redo the page has since been told of (撤销 pressed twice): the reading asked for then
+    // brings the newer word. An answer of the step the page knows is taken, whichever reading it answers.
+    if (info.look_rev < L.lookRev) return;
     L.info = info;
     if (!L.params || (!kept && !unsaved && edits === seen)) {
       L.params = { ...info.params };
+      // the server's word, so 撤销 and 重做 bring the preset back too; unless a preset was picked or named since
+      // this reading was asked for: that is the newer word, and namePreset sends it now that the reading is in
+      if (L.presetName === named) L.presetName = info.preset ?? null;
       L.gesture = null;
       L.newStep = true;
     }
@@ -1101,33 +1130,24 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     });
     $('.side').addEventListener('scroll', () => show(false));
   }
-  // 全部恢复默认 puts everything back at once, so until the next change it offers to take that back
-  const resetBtn = $('#btn-look-reset');
-  function renderReset() {
-    resetBtn.textContent = L.beforeReset ? t('撤销恢复默认') : t('全部恢复默认');
-    resetBtn.title = L.beforeReset ? t('回到恢复默认之前的设置') : t('纹理层、样式、密度、斜度、强度、亮点和摩尔纹效果都回到默认值');
-  }
-  resetBtn.addEventListener('click', () => {
-    if (L.beforeReset) {
-      const before = L.beforeReset;
-      L.beforeReset = null;
-      set(before);
-      renderReset();
-      flash(t('已回到恢复默认之前的设置'));
-      return;
-    }
-    const before = { ...L.params };
+  // 全部恢复默认 puts everything back at once, as one step of the 纹理 history: 撤销 (Ctrl+Z) takes it back, like any
+  // other change, and the button keeps its name
+  $('#btn-look-reset').addEventListener('click', () => {
+    if (!L.params) return;
     const layer = !!(L.info && L.info.has_sparkle_layer);       // a painted 亮点 layer is the default when there is one
-    set({ style: 'knit', density: 100, tilt: 32,
+    const defaults = { style: 'knit', density: 100, tilt: 32,
       strength: L.info ? L.info.strength_suggested : 100, strength_auto: true, weight: 100, amount: null, layers: [],
       lock_total: L.info ? L.info.blend_auto : true,         // what a new look starts with: the user's last choice
       sparkle_on: false, sparkle_depth: layer ? 0 : 100,
       sparkle_bright: layer ? 0 : 100, sparkle_painted: layer ? 100 : 0, sparkle_even: 0, sparkle_link: true,
       particle_on: false, particle: 100,
-      moire_on: false, moire: 100, moire_area: 100, fade: true });
-    L.beforeReset = before;
-    renderReset();
-    flash(t('已全部恢复默认，Ctrl+Z 或“撤销恢复默认”可以撤销'));
+      moire_on: false, moire: 100, moire_area: 100, fade: true };
+    if (sameLook(defaults, L.params)) {           // nothing to put back: no step, so no undo is promised
+      flash(t('已经是默认设置'));
+      return;
+    }
+    set(defaults);
+    flash(t('已全部恢复默认，Ctrl+Z 可以撤销'));
   });
   for (const b of document.querySelectorAll('.seg-btn[data-zoom]')) {
     b.addEventListener('click', () => {
@@ -1234,7 +1254,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
         clearTimeout(saveTimer);                  // the last document's settings are not this one's to save
         unsaved = false;
         Object.assign(L, { params: null, info: null, centre: null, fitImg: null, checkImg: null, cropImg: null,
-          beforeReset: null, beforeLoad: null, presetName: null, layer: 0, addOnLoad: false,
+          presetName: null, layer: 0, addOnLoad: false,
           gesture: null, newStep: true,
           cropCheckImg: null,
           cropRect: null });
@@ -1247,12 +1267,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       }
       renderAdd();
       renderExclude();
-      if (st.look_rev !== L.lookRev) {            // undo or redo changed the settings: read them again
-        L.lookRev = st.look_rev;
-        L.beforeReset = null;
-        L.beforeLoad = null;
-        renderReset();
-        renderPresetState();
+      if (st.look_rev !== L.lookRev) {            // undo or redo changed the settings: read them again, and with
+        L.lookRev = st.look_rev;                  // them the preset they went with at that step
         if (L.active) load().catch((e) => flash(e.message, true)); else L.params = null;
       }
       if (st.coverage_v !== L.coverageV) {        // 颜色排除 toggled (or undone), a mask changed: new coverage

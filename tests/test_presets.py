@@ -321,21 +321,32 @@ def test_the_api_imports_the_file_the_dialog_picks_and_never_replaces_a_preset(a
     assert len(c.get('/api/look/presets').json()['presets']) == 2
 
 
-@pytest.mark.parametrize('lang, empty_label, pick_label, new_label, bad_suffix, undo_label, restore_label', [
-    ('zh', '还没有预设', '选一个预设', '保存为新预设…', '（读不了）', '撤销载入', '还原'),
-    ('en', 'No presets yet', 'Pick a preset', 'Save as new preset…', ' (unreadable)', 'Undo load', 'Restore'),
-])
+@pytest.mark.parametrize(
+    'lang, empty_label, pick_label, new_label, bad_suffix, restore_label, load_flash, reset_flash, already_flash, '
+    'same_flash', [
+        ('zh', '还没有预设', '选一个预设', '保存为新预设…', '（读不了）', '还原',
+         '已载入预设“黑丝”，Ctrl+Z 可以撤销', '已全部恢复默认，Ctrl+Z 可以撤销', '已经是默认设置',
+         '已载入预设“黑丝副本”'),
+        ('en', 'No presets yet', 'Pick a preset', 'Save as new preset…', ' (unreadable)', 'Restore',
+         'Loaded preset “黑丝”. Ctrl+Z undoes', 'Everything is back to the defaults. Ctrl+Z undoes',
+         'Already at the defaults', 'Loaded preset “黑丝副本”'),
+    ])
 def test_preset_select_shows_hidden_placeholder_when_collapsed_and_omits_it_from_menu(
-    lang, empty_label, pick_label, new_label, bad_suffix, undo_label, restore_label,
+    lang, empty_label, pick_label, new_label, bad_suffix, restore_label, load_flash, reset_flash, already_flash,
+    same_flash,
 ):
     """When no preset is chosen, the collapsed <select> shows '选一个预设' (or '还没有预设' when none exist), while the
-    placeholder <option value=""> has hidden=True so it never appears in the opened dropdown menu or arrow-key list."""
+    placeholder <option value=""> has hidden=True so it never appears in the opened dropdown menu or arrow-key list.
+
+    Loading a preset and 全部恢复默认 are taken back by 撤销 (Ctrl+Z) alone, and 撤销 and 重做 bring the selected preset
+    back with the settings; the button beside the note is 还原 only, shown while the settings differ from the preset."""
     import pathlib
     import subprocess
 
     look_url = (pathlib.Path(__file__).resolve().parent.parent / 'stocking' / 'static' / 'look.js').as_uri()
     defaults_json = json.dumps(look.clean_params({}))
     grain_json = json.dumps(look.clean_params({'style': 'grain', 'density': 120}))
+    coil_json = json.dumps(look.clean_params({'style': 'coil', 'density': 80}))
     script = f"""
 import assert from 'node:assert/strict';
 
@@ -357,6 +368,7 @@ class El {{
     this._value = undefined;
   }}
   get childElementCount() {{ return this.children.length; }}
+  get parentElement() {{ return this._parent ??= new El(); }}      // every element of the page has one
   get value() {{
     if (this.tagName === 'SELECT') return this._value ?? '';
     if (this.tagName === 'OPTION') return this._value !== undefined ? this._value : this.textContent;
@@ -424,6 +436,11 @@ let serverPresets = [];
 const doc = {{ id: 'd1', width: 1280, height: 1920, color_exclude: true, look_rev: 0, coverage_v: 1 }};
 const baseParams = {defaults_json};
 const grainParams = {grain_json};
+const coilParams = {coil_json};
+// the server's side of the look: the settings and the preset they go with, and the steps 撤销 and 重做 move between
+// (slow: how long the next readings of the look take, in ms; fail: whether they fail)
+const srv = {{ params: {{ ...baseParams }}, preset: null, undo: [], redo: [], puts: [], slow: [], fail: [] }};
+const flashes = [];
 
 const lookUI = createLook({{
   getDoc: () => doc,
@@ -438,22 +455,61 @@ const lookUI = createLook({{
     }}
     if (url === '/api/look/presets' && method === 'DELETE') {{
       serverPresets = serverPresets.filter((p) => p.name !== body.name);
+      if (srv.preset === body.name) srv.preset = null;          // the open image no longer goes with it
       return {{ presets: [...serverPresets] }};
     }}
-    return {{ params: {{ ...baseParams }}, strength_suggested: 100, blend_auto: true, textured: false,
+    if (url.startsWith('/api/doc/d1/look') && method === 'PUT') {{     // a step when the settings differ, else the name alone
+      const q = new URL(url, 'http://x').searchParams;
+      const was = {{ params: srv.params, preset: srv.preset }};
+      const preset = q.has('preset') ? q.get('preset') || null : srv.preset;
+      const moved = JSON.stringify(body) !== JSON.stringify(srv.params);
+      srv.params = JSON.parse(JSON.stringify(body));
+      srv.preset = preset;
+      if (moved) {{ srv.undo.push(was); srv.redo = []; }}
+      srv.puts.push(q);
+    }}
+    // a reading of the look answers with what the look was when it was asked, however long the answer takes
+    const reading = url === '/api/doc/d1/look' && method === 'GET';
+    const slow = reading ? srv.slow.shift() : 0;
+    const fail = reading ? srv.fail.shift() : false;
+    const asked = {{ params: {{ ...srv.params }}, preset: srv.preset, look_rev: doc.look_rev, densest: [640, 960] }};
+    if (slow) await new Promise((r) => setTimeout(r, slow));
+    if (fail) throw new Error('offline');
+    return {{ ...asked,
+             can_undo_look: srv.undo.length > 0, can_redo_look: srv.redo.length > 0, strength_suggested: 100, blend_auto: true, textured: false,
              has_sparkle_layer: false, solving: [], untextured: [], check: {{ faded: 0, excluded: 0, nostroke: 0 }} }};
   }},
   edit: async () => null,
-  flash: () => {{}},
+  flash: (text) => {{ flashes.push(text); }},
 }});
+
+const settle = () => new Promise((r) => setTimeout(r, 250));      // a change is saved 150 ms after it is made
+// 撤销 / 重做 as the page does them: what waits is saved first, the server steps, and its state says the look moved
+async function step(kind, wait = true) {{
+  await lookUI.flush();
+  const [from, to] = kind === 'undo' ? [srv.undo, srv.redo] : [srv.redo, srv.undo];
+  const s = from.pop();
+  to.push({{ params: srv.params, preset: srv.preset }});
+  srv.params = s.params;
+  srv.preset = s.preset;
+  doc.look_rev += 1;
+  lookUI.onState(doc);
+  if (wait) await settle();
+}}
 
 const sel = getEl('#preset-select');
 const visibleMenuTexts = () => sel.options.filter((o) => !o.hidden).map((o) => o.textContent);
 
 // 1. Before any presets exist: collapsed select shows '还没有预设', but dropdown menu only lists '保存为新预设…'
 lookUI.onState(doc);
+// (the page is entered twice in a row and the second reading of the settings fails: the answer to the first, late as
+// it is, is of the same step of the history, and is taken)
+srv.slow = [300, 0];
+srv.fail = [false, true];
 lookUI.enter();
-await new Promise((r) => setTimeout(r, 20));
+lookUI.enter();
+await new Promise((r) => setTimeout(r, 600));
+assert.notEqual(lookUI.params(), null);
 assert.equal(sel.value, '');
 assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(empty_label)});
 assert.equal(sel.selectedOptions[0]?.hidden, true);
@@ -463,6 +519,8 @@ assert.equal(sel.children.some((c) => c.tagName === 'HR'), false);
 // 2. With saved presets (including an unreadable one): collapsed select shows '选一个预设', hidden from menu list
 serverPresets = [
   {{ name: '黑丝', params: {{ ...grainParams }} }},
+  {{ name: '线圈', params: {{ ...coilParams }} }},
+  {{ name: '黑丝副本', params: {{ ...grainParams }} }},
   {{ name: '旧版', params: null }},
 ];
 lookUI.enter();
@@ -470,7 +528,7 @@ await new Promise((r) => setTimeout(r, 20));
 assert.equal(sel.value, '');
 assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(pick_label)});
 assert.equal(sel.selectedOptions[0]?.hidden, true);
-assert.deepEqual(visibleMenuTexts(), ['黑丝', '旧版' + {json.dumps(bad_suffix)}, {json.dumps(new_label)}]);
+assert.deepEqual(visibleMenuTexts(), ['黑丝', '线圈', '黑丝副本', '旧版' + {json.dumps(bad_suffix)}, {json.dumps(new_label)}]);
 assert.equal(sel.children.some((c) => c.tagName === 'HR'), true);
 
 // 3. Picking '保存为新预设…' with no preset selected keeps collapsed select on '选一个预设' while opening the dialog
@@ -481,29 +539,117 @@ assert.equal(sel.value, '');
 assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(pick_label)});
 getEl('#preset-dialog').close();
 
-// 4. Selecting a preset applies it; 撤销载入 returns to the previous settings and resets collapsed select to '选一个预设'
-sel.value = '黑丝';
-sel.dispatch('change');
-assert.equal(sel.value, '黑丝');
-assert.equal(lookUI.params().style, 'grain');
-assert.equal(getEl('#btn-preset-undo').hidden, false);
-assert.equal(getEl('#btn-preset-undo').textContent, {json.dumps(undo_label)});
+const restore = getEl('#btn-preset-undo');
+const density = getEl('#density');
+// the preset selected, the style and density, whether 还原 is offered, whether the note says 已改动
+const shown = () => [sel.value, lookUI.params().style, lookUI.params().density, !restore.hidden,
+  getEl('#preset-note').textContent !== ''];
+const pick = async (name) => {{ sel.value = name; sel.dispatch('change'); await settle(); }};
+const drag = async (value) => {{ density.value = String(value); density.dispatch('input'); await settle(); }};
 
-getEl('#btn-preset-undo').dispatch('click');
-assert.equal(lookUI.params().style, 'knit');
-assert.equal(sel.value, '');
+// 4. Selecting a preset applies it. Only 撤销 takes that back: the message names Ctrl+Z alone, and no button beside
+//    the note offers to (it is 还原, for settings that differ from the preset). The server is told the name
+await pick('黑丝');
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
+assert.equal(flashes.at(-1), {json.dumps(load_flash)});
+assert.equal(srv.puts.at(-1).get('preset'), '黑丝');
+
+// 5. 撤销 takes the settings back and the list with them, to '选一个预设': not 已改动 against the preset just left
+await step('undo');
+assert.deepEqual(shown(), ['', 'knit', 100, false, false]);
 assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(pick_label)});
 assert.equal(sel.selectedOptions[0]?.hidden, true);
+await step('redo');
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
 
-// 5. Selecting a preset, tweaking a setting marks 已改动 + 还原, and deleting resets to '选一个预设' / '还没有预设'
-sel.value = '黑丝';
+// 6. A tweak marks 已改动 and offers 还原, which puts the preset's settings back; 撤销 follows both
+await drag(135);
+assert.deepEqual(shown(), ['黑丝', 'grain', 135, true, true]);
+assert.equal(restore.textContent, {json.dumps(restore_label)});
+restore.dispatch('click');
+await settle();
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
+await step('undo');
+assert.deepEqual(shown(), ['黑丝', 'grain', 135, true, true]);
+await step('undo');
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
+
+// 7. A second preset loaded over the first is taken back one at a time, each step with its own name
+await pick('线圈');
+assert.deepEqual(shown(), ['线圈', 'coil', 80, false, false]);
+await step('undo');
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
+await step('undo');
+assert.deepEqual(shown(), ['', 'knit', 100, false, false]);
+await step('redo');
+await step('redo');
+assert.deepEqual(shown(), ['线圈', 'coil', 80, false, false]);
+
+// 8. 全部恢复默认 keeps the preset selected (now 已改动) and its own name; its message names Ctrl+Z alone
+const reset = getEl('#btn-look-reset');
+const resetText = reset.textContent;
+reset.dispatch('click');
+await settle();
+assert.deepEqual(shown(), ['线圈', 'knit', 100, true, true]);
+assert.equal(reset.textContent, resetText);
+assert.equal(flashes.at(-1), {json.dumps(reset_flash)});
+const stepsBefore = srv.undo.length;
+reset.dispatch('click');                 // again, with nothing to put back: no step, and no undo is promised
+await settle();
+assert.equal(srv.undo.length, stepsBefore);
+assert.equal(flashes.at(-1), {json.dumps(already_flash)});
+assert.deepEqual(shown(), ['线圈', 'knit', 100, true, true]);
+await step('undo');
+assert.deepEqual(shown(), ['线圈', 'coil', 80, false, false]);
+await step('undo');
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
+
+// 9. 撤销 and 重做 pressed one right after the other: the answer to the first reading comes late, and is not taken
+srv.slow = [300, 0];
+await step('undo', false);
+await step('redo', false);
+await new Promise((r) => setTimeout(r, 600));
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
+
+// 10. A preset holding the very settings there are is picked while a reading of the settings is still on its way:
+//     only the name changes, so no step is made and no undo is promised; the server is told the name, and the late
+//     answer does not put the old one back
+const stepsNow = srv.undo.length;
+srv.slow = [300];
+lookUI.enter();
+await new Promise((r) => setTimeout(r, 20));
+sel.value = '黑丝副本';
 sel.dispatch('change');
-const density = getEl('#density');
-density.value = '135';
-density.dispatch('input');
-assert.equal(sel.value, '黑丝');
-assert.equal(getEl('#btn-preset-undo').hidden, false);
-assert.equal(getEl('#btn-preset-undo').textContent, {json.dumps(restore_label)});
+await new Promise((r) => setTimeout(r, 600));
+assert.deepEqual(shown(), ['黑丝副本', 'grain', 120, false, false]);
+assert.equal(flashes.at(-1), {json.dumps(same_flash)});
+assert.equal(srv.preset, '黑丝副本');
+assert.equal(srv.undo.length, stepsNow);
+await pick('黑丝');
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
+assert.equal(srv.undo.length, stepsNow);
+
+// 11. A preset that cannot be read is picked while the reading after 撤销 is still on its way: the settings 撤销
+//     went back to are taken, the name is the one picked, and what there is to redo stays
+await drag(135);
+srv.slow = [300];
+await step('undo', false);
+sel.value = '旧版';
+sel.dispatch('change');
+await new Promise((r) => setTimeout(r, 700));
+assert.deepEqual([sel.value, lookUI.params().density], ['旧版', 120]);
+assert.equal(srv.redo.length, 1);
+assert.equal(srv.preset, '旧版');
+await pick('黑丝');
+assert.deepEqual(shown(), ['黑丝', 'grain', 120, false, false]);
+assert.equal(srv.redo.length, 1);
+await step('redo');
+assert.deepEqual(shown(), ['黑丝', 'grain', 135, true, true]);
+
+// 12. Deleting the selected preset resets to '选一个预设' / '还没有预设'; the server takes the name off the image
+//     itself, so the page sends nothing more and no step is made of it
+const stepsAtDelete = srv.undo.length;
+const putsAtDelete = srv.puts.length;
 
 const delPromise = getEl('#btn-preset-delete').listeners.click[0]();
 const delDlg = getEl('#preset-delete');
@@ -515,7 +661,12 @@ await new Promise((r) => setTimeout(r, 20));
 assert.equal(sel.value, '');
 assert.equal(sel.selectedOptions[0]?.textContent, {json.dumps(pick_label)});
 assert.equal(sel.selectedOptions[0]?.hidden, true);
-assert.deepEqual(visibleMenuTexts(), ['旧版' + {json.dumps(bad_suffix)}, {json.dumps(new_label)}]);
+assert.deepEqual(visibleMenuTexts(), ['线圈', '黑丝副本', '旧版' + {json.dumps(bad_suffix)}, {json.dumps(new_label)}]);
+await settle();
+assert.equal(srv.puts.length, putsAtDelete);
+assert.equal(srv.undo.length, stepsAtDelete);
+assert.equal(srv.preset, null);
+assert.deepEqual(shown(), ['', 'grain', 135, false, false]);
 """;
     res = subprocess.run(['node', '--input-type=module', '-e', script], capture_output=True, text=True, encoding='utf-8')
     assert res.returncode == 0, res.stderr or res.stdout

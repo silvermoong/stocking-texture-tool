@@ -26,6 +26,7 @@ from .i18n import tr
 
 NEVER_SAVED = object()          # Document._saved_at: no file has the guides, or undo can no longer reach the state one had
 _NOW = object()                 # mark_guides_saved(): the guides as they are now
+_KEEP = object()                # set_look(): the look stays with the preset it has
 DEFAULT_REGIONS = ('左腿', '右腿')          # a pair to start with (named in the page's language); + adds more
 PALETTE = ('#65a7fa', '#f2823b', '#b77ff2', '#47c496', '#f3c443',
            '#f075aa', '#54c9e3', '#97ca5d', '#ec5b57', '#c19d74')
@@ -214,6 +215,18 @@ def clean_segment(m, min_frac=2e-4):
     return (x0, y0, x1, y1), m[y0:y1, x0:x1].copy()
 
 
+def _same_look_step(a, b):
+    """Whether two looks hold the same settings, so that going from one to the other is no step of the 纹理 history.
+    The number of an automatic strength does not count: it is worked out per image, and the page sends it as the
+    image resolves it (as sameLook in look.js)."""
+    def bare(p):
+        q = {k: v for k, v in p.items() if k != 'layers' and not (k == 'strength' and p.get('strength_auto'))}
+        q['layers'] = [{k: v for k, v in layer.items() if not (k == 'strength' and layer.get('strength_auto'))}
+                       for layer in p.get('layers') or []]
+        return q
+    return bare(a) == bare(b)
+
+
 class Document:
     def __init__(self, art_rgb, name, path=None):
         self.art = np.ascontiguousarray(art_rgb)
@@ -224,6 +237,8 @@ class Document:
         self.course_step = 16.0 * self.scale
         self.sparkle = None
         self.look = None                # the user's look settings (look.clean_params), None = defaults
+        self.look_preset = None         # the name of the preset the look was loaded from or saved as, None = none;
+                                        # it goes back and forth with the steps of the 纹理 history, and is not saved
         self.regions, self.strokes = [], []
         self.dividers = []              # the user's 隔开 lines (Divider)
         self.erased = []                # (x, y) where the user deleted a found wall: walls there are dropped
@@ -375,28 +390,60 @@ class Document:
                     'color_exclude': self.color_exclude,
                     'sparkle': self.sparkle, 'look': self.look, 'guides_saved': not self.unsaved_guides()}
 
-    def set_look(self, params, before=None, merge=False):
+    def set_look(self, params, before=None, merge=False, preset=_KEEP):
         """Make params (look.clean_params) the look, as a step of the 纹理 history. `before` is the look it replaces
         when none is saved yet (the caller knows what the look is then: defaults, or the user's last choice for Auto
         100%). merge=True folds the change into the step on top of that history when that is a look step too, so one
-        drag of a slider is one step; a change that brings the look back to where that step began takes the step away."""
+        drag of a slider is one step; a change that brings the look back to where that step began takes the step away.
+        `preset` names the preset the look now goes with (None: none; left out: the one it has). A step holds the
+        name before and after it, so undo and redo bring the name back with the settings. Settings that are the ones
+        the look has (_same_look_step) make no step and leave what there is to redo: only the name changes (the look
+        was saved as a new preset, its preset was deleted, a preset holding these very settings was picked)."""
         with self.lock:
-            if params == self.look:
+            was = self.look_preset
+            name = was if preset is _KEEP else preset
+            if self.look is not None and _same_look_step(params, self.look):
+                self._name_look(name)
                 return
             prev = self.look if self.look is not None else before
-            self.look = params
+            self.look, self.look_preset = params, name
             self.edits += 1
-            if prev is None or prev == params:
+            if prev is None or _same_look_step(prev, params):
                 return
             top = self._undo_look[-1] if self._undo_look else None
             if merge and top is not None and top[0] == 'look' and top[2] == prev:
-                if top[1] == params:
+                if top[1] == params and top[3] == name:
                     self._undo_look.pop()
                 else:
-                    self._undo_look[-1] = ('look', top[1], params)
+                    self._undo_look[-1] = ('look', top[1], params, top[3], name)
                 self._redo_look.clear()
             else:
-                self._push(('look', prev, params), page='look')
+                self._push(('look', prev, params, was, name), page='look')
+
+    def _name_look(self, name):
+        """The look as it is now goes with another preset (None: none). No step of the 纹理 history: the look steps
+        next to it, the one undo takes back and the one redo puts back, end or start at this look, so they take the
+        name too."""
+        if name == self.look_preset:
+            return
+        self.look_preset = name
+        for stack, at in ((self._undo_look, 4), (self._redo_look, 3)):
+            for i in range(len(stack) - 1, -1, -1):
+                if stack[i][0] == 'look':
+                    stack[i] = stack[i][:at] + (name,) + stack[i][at + 1:]
+                    break
+
+    def forget_look_preset(self, name):
+        """The preset of this name was deleted: the look goes with none if it went with that one, and so do the
+        steps of the 纹理 history that began or ended with it, so undo and redo never select a preset saved under the
+        name later, which is another one. No step, and the settings stay as they are."""
+        with self.lock:
+            if self.look_preset == name:
+                self.look_preset = None
+            for stack in (self._undo_look, self._redo_look):
+                for i, op in enumerate(stack):
+                    if op[0] == 'look' and name in op[3:5]:
+                        stack[i] = op[:3] + tuple(None if n == name else n for n in op[3:5])
 
     def set_color_exclude(self, on):
         """颜色排除 on or off (undoable, on the 纹理 page's history): off textures every pixel of every region, whatever
@@ -965,6 +1012,7 @@ class Document:
             self.color_exclude = op[2] if forward else op[1]
         elif kind == 'look':
             self.look = dict(op[2] if forward else op[1])
+            self.look_preset = op[4] if forward else op[3]
             self.look_rev += 1
             return                                      # nothing a solve or a coverage depends on changed
         elif kind == 'rename':
