@@ -189,7 +189,7 @@ node shot.mjs <配方>.json
 
 - 窗口 1600×1000，中文界面；README 的界面截图用 **DPR 1.5**（得到 2400×1500，合成时缩到 1600 宽）；放大折痕的 B2 三步图用 **DPR 2.4**（3840×2400）。
 - 配方里的步骤：`click`（CSS 选择器）、`range`（设滑杆值）、`fitclick`（按「整体」图的比例点一下，用来定细节框位置）、`wheel`（滚轮缩放）、`key`、`mouse`、`eval`（读界面上的值，用来核对）、`shot`（可带 `clip` 或 `selector`；细节用 `.detail-pane`）。
-- 用到的界面元素：`#tab-edit` / `#tab-look`（引导 / 纹理）、`[data-style=…]`（样式）、`#density`、`#strength`、`#tilt`、`#sparkle-depth` / `#sparkle-bright` / `#sparkle-even`、`[data-zoom='1'|'2']`（细节 100% / 200%）、`#btn-check`（标出问题）、`#btn-strength-auto`。
+- 用到的界面元素：`#tab-edit` / `#tab-look`（引导 / 纹理）、`[data-style=…]`（样式）、`#density`、`#strength`、`#tilt`、`#sparkle-depth` / `#sparkle-bright` / `#sparkle-even`、`[data-zoom='1'|'2']`（细节 100% / 200%）、`#show-problems`（标出问题，现在是勾选框；旧配方里写的 `#btn-check` 已不存在，重跑前要改成它）、`#btn-strength-auto`。
 - 配方文件：
 
   | 文件 | 拍什么 |

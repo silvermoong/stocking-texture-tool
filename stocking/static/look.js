@@ -25,31 +25,168 @@ const DMIN = 320;               // css px: 细节 never smaller (less on a very 
 const WHOLE_WEIGHT = 0.6;       // 整体 counts a little more than 细节 when they share the stage
 const PAD = 16, GAP = 18, MIN_PICTURE = 48;
 
-// Where 整体 and the square 细节 go: side by side, or 细节 below. Try for the largest pictures together, but
-// leave room for the controls even when a portrait or a small square does not fill the width of its pane.
-export function arrange(W, H, iw, ih, dpr, { head, foot, minWhole, minDetail }) {
+// The ways 整体 (W), 细节 (D) and the check group (G) can share the stage, as rows and columns of each other. The name
+// says how the two pictures sit (side by side, or 细节 below) and where the group docks. Nothing else knows these
+// shapes: arrange() scores every one for the room there is, and pack() turns the chosen one into places.
+const DOCKS = {
+  'side/under': ['row', 'W', ['col', 'D', 'G']],
+  'side/right': ['row', 'W', 'D', 'G'],
+  'side/below': ['col', ['row', 'W', 'D'], 'G'],
+  'side/under-whole': ['row', ['col', 'W', 'G'], 'D'],
+  'stack/under': ['col', 'W', 'D', 'G'],
+  'stack/right': ['col', 'W', ['row', 'D', 'G']],
+};
+const NEAR = 0.25;              // how much the group's distance from 细节 (as a share of the stage's diagonal) costs
+const READ = 0.08;              // how much a group narrower than its comfortable width costs
+const COMFY = 1.35;             // that width, as a multiple of the narrowest the group can be
+const SQUEEZE = 0.75;           // wrapped labels may shrink a planned picture this far; past that the stage scrolls
+const STICK = 0.03;             // what the dock in use is ahead by, so a size on the border between two keeps it
+// A plan may be made for a stage taller than the one there is, which then scrolls: when nothing fits, and also when
+// the group takes so much of the height that the pictures are left small. Scrolling costs SCROLL for each stage
+// height added, so it is chosen only where the pictures grow by clearly more than the stage does: a window with room
+// for everything never scrolls. (A taller plan is not even tried where the height it frees could not pay for it.)
+const STRETCH = [1, 1.25, 1.6, 2, 3, 5];
+const REFINE = 0.25;            // how far behind the best a dock's coarse search may be and still be searched finely
+const SCROLL = 3;
+
+// Sizes and places of the three in a dock: s has the pictures (ww, wh, d), the group (gw, gh) and the heights of the
+// rows around the pictures. Children of a row are top-aligned, of a column left-aligned (but for the group, below),
+// GAP apart; a pane that is a child of a column is as wide as the column, so its controls have the width to themselves.
+function pack(node, s) {
+  if (typeof node === 'string') {
+    const [w, h] = extent(node, s);
+    return { w, h, at: { [node]: { x: 0, y: 0, w, h } } };
+  }
+  const [dir, ...kids] = node, row = dir === 'row', at = {};
+  let w = 0, h = 0;
+  for (const kid of kids) {
+    const b = pack(kid, s);
+    const x = row && w ? w + GAP : 0, y = !row && h ? h + GAP : 0;
+    for (const [k, r] of Object.entries(b.at)) at[k] = { ...r, x: r.x + x, y: r.y + y };
+    w = row ? x + b.w : Math.max(w, b.w);
+    h = row ? Math.max(h, b.h) : y + b.h;
+  }
+  if (!row) {
+    // a group narrower than its column sits as nearly under the middle of 细节's picture as the column lets it
+    if (kids.includes('G') && at.D) at.G.x = Math.max(0, Math.min(at.D.x + s.d / 2 - at.G.w / 2, w - at.G.w));
+    for (const kid of kids) if (kid === 'W' || kid === 'D') at[kid].w = w;
+  }
+  return { w, h, at };
+}
+
+// The width and height alone of a dock or of one of the three in it, as pack() lays them out: what the search asks
+// most often, and all it needs to know whether a size fits.
+function extent(node, s) {
+  if (typeof node === 'string') {
+    return node === 'W' ? [Math.max(s.ww, s.minWhole), s.wholeHead + s.wh]
+      : node === 'D' ? [Math.max(s.d, s.minDetail), s.detailHead + s.d + s.detailFoot] : [s.gw, s.gh];
+  }
+  const row = node[0] === 'row';
+  let w = 0, h = 0;
+  for (let i = 1; i < node.length; i++) {
+    const [kw, kh] = extent(node[i], s), gap = i > 1 ? GAP : 0;
+    if (row) { w += gap + kw; h = Math.max(h, kh); } else { w = Math.max(w, kw); h += gap + kh; }
+  }
+  return [w, h];
+}
+
+// Where the three are in a dock, for sizes arrange() chose: { w, h, at: { W, D, G } } with each box as { x, y, w, h }
+// from the corner of the room. layout() places the panes by this very function.
+export function place(dock, sizes) {
+  return pack(DOCKS[dock], sizes);
+}
+
+// Where 整体, the square 细节 and the check group go. `group` is { min, max, height(w) }: the narrowest and the widest
+// the group is worth making, and its real height at a width (measured by the caller, so nothing here assumes how many
+// lines it takes). Every dock is tried with sides of 细节 and a few widths of the group, each with the largest
+// 整体 that still fits; the best has the largest pictures together, the group near 细节 and wide enough to read.
+// `prev` is the dock in use, which is kept unless another is clearly better.
+export function arrange(W, H, iw, ih, dpr, { wholeHead, detailHead, detailFoot, minWhole, minDetail, group, prev = null }) {
   const a = iw / ih;
   const dmax = (Math.sqrt(BUDGET) * 2) / dpr;
-  const dmin = Math.min(DMIN, 0.3 * Math.min(W, H));
-  let best = null;
-  for (const mode of ['side', 'stack']) {
-    const body = mode === 'side' ? H - head - foot : H - 2 * head - foot - GAP;
-    const lim = Math.min(dmax, mode === 'side' ? body : W);
-    for (let d = Math.floor(dmin); d <= lim; d += 2) {
-      const room = mode === 'side' ? W - GAP - Math.max(d, minDetail) : W;
-      if (mode === 'side' && room < minWhole) continue;
-      const ww = Math.min(room, (mode === 'side' ? body : body - d) * a);
-      const wh = ww / a;
-      if (ww < 40 || wh < 40) continue;
-      const score = WHOLE_WEIGHT * Math.log(ww * wh) + (1 - WHOLE_WEIGHT) * Math.log(d * d);
-      if (!best || score > best.score) best = { score, mode, ww: Math.floor(ww), wh: Math.floor(wh), d };
+  const dmin = Math.floor(Math.min(DMIN, 0.3 * Math.min(W, H), dmax));     // on a dense screen the budget is the lesser
+  const gmin = Math.max(1, Math.min(group.min, W)), gmax = Math.max(gmin, Math.min(group.max, W));
+  const comfy = Math.min(gmax, COMFY * gmin);              // from here on a wider group reads no better
+  const chrome = { minWhole, minDetail, wholeHead, detailHead, detailFoot };
+  // 整体's short side is at least 40 px, unless the picture is so long that its long side would not fit then: a strip
+  // ten times as wide as it is high takes the width there is, and one as upright a third of the height
+  const low = a >= 1 ? Math.min(40 * a, Math.max(40, W)) : Math.min(40, Math.max(40 * a, a * H / 3));
+  // the most that is not picture in any dock: the group at its tallest, both rows of controls, the foot and two gaps
+  const fixed = group.height(gmin) + wholeHead + detailHead + detailFoot + 2 * GAP;
+  let best = null, from = 1;                                 // `from`: the first stretch at which anything fitted
+  for (const stretch of STRETCH) {
+    if (best) {
+      // Taller still? Any plan for the taller stage, with its pictures made smaller by the ratio of the heights left
+      // to pictures, is a plan for the stage that already fits: so the taller one is ahead by twice the logarithm of
+      // that ratio at most, and by NEAR for where the group then is. Skip a stretch whose scrolling costs more.
+      const left = from * H - fixed;
+      if (left > 0 && 2 * Math.log((stretch * H - fixed) / left) + NEAR <= SCROLL * (stretch - from)) continue;
     }
+    const room = H * stretch, far = Math.hypot(W, room), top = Math.min(dmax, W, room);
+    // Once something fits, a taller plan may only send the group below what shows: both pictures stay in view.
+    const shown = best ? from * H : Infinity;
+    // One side of 细节 in one dock, with each width of the group worth trying there: whether any of them fits.
+    const offer = (dock, tree, d) => {
+      const widths = new Set([gmin, (gmin + gmax) / 2, gmax, Math.max(d, minDetail)]
+        .map((w) => Math.round(Math.min(gmax, Math.max(gmin, w)))));
+      let peak = null;                                       // the best score at this side, null while nothing fits
+      for (const gw of widths) {
+        const s = { ...chrome, d, gw, gh: group.height(gw), ww: 0, wh: 0 };
+        const at = (ww) => { s.ww = ww; s.wh = ww / a; return pack(tree, s); };
+        const fits = (ww) => {
+          if (shown === Infinity) {                           // only the size matters: no places to work out
+            s.ww = ww;
+            s.wh = ww / a;
+            const [w, h] = extent(tree, s);
+            return w <= W && h <= room;
+          }
+          const b = at(ww);
+          return b.w <= W && b.h <= room && Math.max(b.at.W.y + b.at.W.h, b.at.D.y + b.at.D.h) <= shown;
+        };
+        let lo = low, hi = Math.min(W, room * a);
+        if (lo > hi || !fits(lo)) continue;
+        for (let i = 0; i < 24 && hi - lo > 0.01; i++) {        // the largest 整体 that fits beside the rest
+          const mid = (lo + hi) / 2;
+          if (fits(mid)) lo = mid; else hi = mid;
+        }
+        const b = at(lo), D = b.at.D, G = b.at.G;
+        const apart = Math.hypot(G.x + G.w / 2 - (D.x + d / 2), G.y + G.h / 2 - (D.y + detailHead + d / 2)) / far;
+        const score = WHOLE_WEIGHT * Math.log(s.ww * s.wh) + (1 - WHOLE_WEIGHT) * Math.log(d * d)
+          + READ * Math.log(Math.min(gw, comfy) / comfy) - NEAR * apart + (dock === prev ? STICK : 0)
+          - SCROLL * (stretch - 1);
+        if (peak === null || score > peak) peak = score;
+        if (!best || score > best.score) {
+          // (the search stops a hair under a whole pixel that fits: that pixel is 整体's; and the short side of a
+          // picture hundreds of times as long as it is wide is under one px at any width: it is drawn 1 px)
+          best = { score, dock, mode: dock.split('/')[0], ww: Math.max(1, Math.floor(s.ww + 0.02)),
+            wh: Math.max(1, Math.floor(s.wh + 0.02)), d, gw, gh: s.gh };
+        }
+      }
+      return peak;
+    };
+    // The score changes smoothly with the side of 细节: every dock in coarse steps first (a window being resized asks
+    // for this on every frame), then pixel by pixel around the best side of each dock: a dock a little behind at
+    // the coarse sides may be the one ahead between them.
+    const step = Math.max(1, Math.ceil((top - dmin) / 48)), before = best;
+    for (const [dock, tree] of Object.entries(DOCKS)) {
+      let mid = null, most = null;
+      for (let d = dmin; d <= top; d += step) {
+        const score = offer(dock, tree, d);
+        if (score === null) break;                           // a larger 细节 fits no better
+        if (most === null || score > most) { most = score; mid = d; }
+      }
+      // (within one coarse step a dock's score moves by less than REFINE: one further behind cannot come out ahead)
+      if (mid === null || step === 1 || most < best.score - REFINE) continue;
+      for (let d = Math.max(dmin, mid - step + 1); d < mid + step && d <= top; d++) if (d !== mid) offer(dock, tree, d);
+    }
+    if (best && !before) from = stretch;
   }
-  if (!best) {                  // very little room: stack, giving the controls the full width
-    const ww = Math.max(1, Math.floor(Math.min(W, 40, a * H / 3)));
-    best = { mode: 'stack', ww, wh: Math.max(1, Math.floor(ww / a)), d: Math.min(W, 60) };
-  }
-  return best;
+  if (best) return best;
+  // nothing fits even five stages high: one under another, each with what the width and a third of the height give
+  const ww = Math.max(1, Math.floor(Math.min(W, a * Math.max(40, H / 3))));
+  const gw = Math.round(comfy);
+  return { dock: 'stack/under', mode: 'stack', ww, wh: Math.max(1, Math.floor(ww / a)),
+    d: Math.max(1, Math.floor(Math.min(W, dmax, Math.max(60, H / 3)))), gw, gh: group.height(gw) };
 }
 
 // A range input lit up to its thumb.
@@ -507,6 +644,37 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
 
   // ---------------------------------------------------------------- layout
 
+  // The check group's real height at a width, for arrange(): the group itself is given the width and read, so the
+  // answer is what the style sheet makes of it in this language and 界面大小. A width is measured once (in steps of
+  // 4 px, rounded down: never an underestimate) until the language, 界面大小 or the fonts change. Its notes keep the
+  // height of their longest reading, so what they say now is no part of the key. layout() sets the final width
+  // afterwards, and the group is not observed for resizes, so measuring cannot start another layout.
+  const groupEl = $('#check-group');
+  const groupRows = groupEl.querySelector('.check-rows');
+  let groupKey = '', groupHeights = new Map(), groupLimits = null;
+  function groupMeasure(k) {
+    const key = `${k}|${document.documentElement.lang}|${document.fonts ? document.fonts.status : ''}`;
+    if (key !== groupKey) { groupKey = key; groupHeights = new Map(); groupLimits = null; }
+    if (!groupLimits) {
+      // the narrowest is one row at its least width, the widest all the rows side by side at their most
+      const cs = getComputedStyle(groupEl), rows = getComputedStyle(groupRows), em = parseFloat(cs.fontSize);
+      const around = groupEl.offsetWidth - groupRows.clientWidth + parseFloat(rows.paddingLeft) + parseFloat(rows.paddingRight);
+      const n = groupRows.childElementCount;
+      groupLimits = {
+        min: Math.ceil(parseFloat(cs.getPropertyValue('--row-min')) * em + around),
+        max: Math.ceil(n * parseFloat(cs.getPropertyValue('--row-max')) * em + (n - 1) * parseFloat(rows.columnGap) + around),
+      };
+    }
+    return { ...groupLimits, height(w) {
+      const step = Math.max(1, Math.floor(w / 4) * 4);
+      if (!groupHeights.has(step)) {
+        groupEl.style.width = `${step}px`;
+        groupHeights.set(step, Math.ceil(groupEl.getBoundingClientRect().height));
+      }
+      return groupHeights.get(step);
+    } };
+  }
+
   function layout() {
     const doc = getDoc();
     if (!doc) return false;
@@ -519,29 +687,58 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     const W = Math.floor(box.width - 2 * PAD), H = box.height - 2 * PAD;
     const minWhole = Math.ceil(84 * k), minDetail = Math.ceil(156 * k);
     const head = 34 * k, foot = 30 * k;
-    const A = arrange(W, H, doc.width, doc.height, dpr, { head, foot, minWhole, minDetail });
-    const whole = $('.whole-pane'), detail = $('.detail-pane'), side = A.mode === 'side';
-    const stackedWidth = Math.min(W, Math.max(A.ww, A.d, Math.ceil(320 * k)));
-    const ww = side ? Math.max(A.ww, minWhole) : stackedWidth;
-    const dw = side ? Math.max(A.d, minDetail) : stackedWidth;
-    const span = side ? ww + GAP + dw : stackedWidth;
-    const x = PAD + Math.floor((W - span) / 2);
-    Object.assign(whole.style, { left: `${x}px`, top: `${PAD}px`, width: `${ww}px` });
-    Object.assign(detail.style, { left: `${side ? x + ww + GAP : x}px`, width: `${dw}px` });
+    const whole = $('.whole-pane'), detail = $('.detail-pane');
+    // The rows over and under the pictures are planned as one line each; where a narrow pane wraps them, the plan
+    // is made once more with the heights they really have, so it is chosen for them rather than squeezed after.
+    const rows = { wholeHead: head, detailHead: head, detailFoot: foot };
+    let A, tree, s, planned;
+    for (let pass = 0; pass < 2; pass++) {
+      A = arrange(W, H, doc.width, doc.height, dpr,
+        { ...rows, minWhole, minDetail, group: groupMeasure(k), prev: L.dock });
+      tree = DOCKS[A.dock];
+      s = { minWhole, minDetail, ww: A.ww, wh: A.wh, d: A.d, gw: A.gw, gh: A.gh, ...rows };
+      planned = pack(tree, s);
+      whole.style.width = `${planned.at.W.w}px`;
+      detail.style.width = `${planned.at.D.w}px`;
+      groupEl.style.width = `${A.gw}px`;
+      const real = {
+        wholeHead: $('.whole-pane .pane-head').getBoundingClientRect().height,
+        detailHead: $('.detail-pane .pane-head').getBoundingClientRect().height,
+        detailFoot: $('.detail-pane .pane-foot').getBoundingClientRect().height,
+      };
+      const off = Object.keys(real).some((key) => Math.abs(real[key] - rows[key]) > 1);
+      Object.assign(rows, real);
+      if (!off) break;
+    }
+    L.dock = A.dock;
 
-    // At these widths labels may wrap. Keep the chosen slots and fit the images in the actual space left by the rows.
-    const wholeHead = $('.whole-pane .pane-head').getBoundingClientRect().height;
-    const detailChrome = $('.detail-pane .pane-head').getBoundingClientRect().height + $('.detail-pane .pane-foot').getBoundingClientRect().height;
-    // Once the chrome leaves too little room for a useful thumbnail, let the stage scroll the last rows into view.
-    const scaleToFit = (room, size) => Math.min(1, Math.max(MIN_PICTURE, room) / size);
-    const stackRoom = H - wholeHead - detailChrome - GAP;
-    const stackScale = Math.min(1, Math.max(stackRoom / (A.wh + A.d), MIN_PICTURE / Math.min(A.wh, A.d)));
-    const fitScale = side ? scaleToFit(H - wholeHead, A.wh) : stackScale;
-    const cropScale = side ? scaleToFit(H - detailChrome, A.d) : stackScale;
-    A.ww = Math.max(1, Math.floor(A.ww * fitScale));
-    A.wh = Math.max(1, Math.floor(A.wh * fitScale));
-    A.d = Math.max(1, Math.floor(A.d * cropScale));
-    detail.style.top = `${side ? PAD : PAD + wholeHead + A.wh + GAP}px`;
+    // At these widths labels may wrap. Keep the chosen dock and fit the images in the actual space left by the rows:
+    // shrink 细节 alone if that is enough, else 整体 alone, else both. Once the rows leave too little room for a
+    // useful thumbnail, let the stage scroll the last rows into view.
+    Object.assign(s, rows, { gh: groupEl.getBoundingClientRect().height });
+    const room = Math.max(H, planned.h);            // a plan taller than the stage is one that scrolls already
+    const sized = (tw, td) => { s.ww = A.ww * tw; s.wh = A.wh * tw; s.d = A.d * td; return pack(tree, s); };
+    const fits = (tw, td) => sized(tw, td).h <= room + 0.5;
+    const least = Math.min(1, Math.max(SQUEEZE, MIN_PICTURE / Math.min(A.wh, A.d)));
+    const shrink = (ok) => {                         // the largest scale that fits, or null if none does
+      if (ok(1)) return 1;
+      if (!ok(least)) return null;
+      let lo = least, hi = 1;
+      for (let i = 0; i < 10; i++) { const mid = (lo + hi) / 2; if (ok(mid)) lo = mid; else hi = mid; }
+      return lo;
+    };
+    const td = shrink((t) => fits(1, t)), tw = td === null ? shrink((t) => fits(t, 1)) : 1;
+    const both = td === null && tw === null ? shrink((t) => fits(t, t)) ?? least : null;
+    const scaleW = both ?? tw ?? 1, scaleD = both ?? td ?? 1;
+    A.ww = Math.max(1, Math.floor(A.ww * scaleW));
+    A.wh = Math.max(1, Math.floor(A.wh * scaleW));
+    A.d = Math.max(1, Math.floor(A.d * scaleD));
+    Object.assign(s, { ww: A.ww, wh: A.wh, d: A.d });
+    const placed = pack(tree, s);
+    const x = PAD + Math.max(0, Math.floor((W - placed.w) / 2));
+    for (const [el, r] of [[whole, placed.at.W], [detail, placed.at.D], [groupEl, placed.at.G]]) {
+      Object.assign(el.style, { left: `${x + Math.round(r.x)}px`, top: `${PAD + Math.round(r.y)}px` });
+    }
     fitCv.style.width = `${A.ww}px`;
     fitCv.style.height = `${A.wh}px`;
     fitCv.width = Math.round(A.ww * dpr);
@@ -552,12 +749,27 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     cropCv.style.width = `${A.d}px`;
     cropCv.style.height = `${A.d}px`;
     const changed = !L.size || L.size.fitW !== fitCv.width || L.size.fitH !== fitCv.height || L.size.cropW !== cw;
-    L.size = { dpr, fitW: fitCv.width, fitH: fitCv.height, cropW: cw, cropH: cw, scale: fitCv.width / doc.width, mode: A.mode };
+    // 整体's sides are whole px each: a very long picture is not scaled by one number both ways (sx, sy)
+    L.size = { dpr, fitW: fitCv.width, fitH: fitCv.height, cropW: cw, cropH: cw,
+      sx: fitCv.width / doc.width, sy: fitCv.height / doc.height, mode: A.mode };
     cmp.style.height = `${A.wh}px`;
+    // The slider is grabbed anywhere along its line. On a 整体 so narrow that this strip would take a third of it or
+    // more (a very upright picture), only the round grip is: a click anywhere else is the picture's, to move 细节.
+    cmp.classList.toggle('slim', 24 * k > A.ww / 3);
     $('#compare-tags').style.width = `${A.ww}px`;
     // A small 整体 (a narrow window at a large 界面大小) cannot hold both labels: leave them out rather than let
     // them hang off the picture. The slider's own tip still says which side is which.
-    L.tagsFit = !($('#compare-before').offsetWidth + $('#compare-after').offsetWidth + 24 * k > A.ww);
+    const tags = $('#compare-tags'), tagWidths = () => [$('#compare-before').offsetWidth, $('#compare-after').offsetWidth];
+    tags.classList.remove('compact');
+    L.tagsFit = !(tagWidths()[0] + tagWidths()[1] + 24 * k > A.ww);
+    if (!L.tagsFit) {
+      // Not at their usual insets: closer to the picture's corners and tighter around their words, if each then
+      // stays in its own half, clear of the slider's line where it rests. Else none, as before.
+      tags.classList.add('compact');
+      const inset = parseFloat(getComputedStyle(tags).paddingLeft) || 0;
+      L.tagsFit = Math.max(...tagWidths()) + inset + 4 * k <= A.ww / 2;
+      if (!L.tagsFit) tags.classList.remove('compact');
+    }
     placeCompare();
     drawFit();
     drawCrop();
@@ -675,14 +887,17 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
 
   const requestFit = latest(async (isLatest) => {
     const doc = getDoc();
-    if (!L.active || !doc || !L.size || !L.params || !L.info || !L.info.textured) return;
+    if (!L.active || !doc || !L.size || !L.params || !L.info) return;
+    // No region is solved (none has a line that could be solved): there is no texture to render, the effect is the
+    // original itself. The marks are still asked for: the yellow of what gets no texture is all there is to show.
+    const plain = !L.info.textured;
     L.fitBusy = true;
     renderFitStatus();
     try {
       await updatePreview('fit', doc, isLatest, async (current) => {
         const q = query({ w: L.size.fitW, h: L.size.fitH });
         const [fit, check] = await Promise.all([
-          renderBitmap(`/api/doc/${doc.id}/render/fit?${q}`),
+          plain ? null : renderBitmap(`/api/doc/${doc.id}/render/fit?${q}`),
           L.showCheck ? renderBitmap(`/api/doc/${doc.id}/render/check?${q}`) : null,
         ]);
         if (!current()) return;
@@ -703,9 +918,10 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = stageColour;
     c.fillRect(0, 0, W, H);
-    if (L.fitImg) c.drawImage(L.fitImg, 0, 0, W, H);
     const sx = Math.round(L.split * W);
     const art = getArt();
+    if (L.fitImg) c.drawImage(L.fitImg, 0, 0, W, H);
+    else if (art && L.info && !L.info.textured) c.drawImage(art, 0, 0, W, H);       // nothing textured: see requestFit
     if (art && sx > 0) {
       c.save();
       c.beginPath();
@@ -724,14 +940,14 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
       c.restore();
     }
     if (L.cropRect && L.size) {
-      const s = L.size.scale;
+      const { sx, sy } = L.size;
       const r = L.cropRect;
       c.lineWidth = 3;
       c.strokeStyle = 'rgba(0,0,0,0.6)';
-      c.strokeRect(r.x0 * s, r.y0 * s, r.w * s, r.h * s);
+      c.strokeRect(r.x0 * sx, r.y0 * sy, r.w * sx, r.h * sy);
       c.lineWidth = 1.5;
       c.strokeStyle = '#ffffff';
-      c.strokeRect(r.x0 * s, r.y0 * s, r.w * s, r.h * s);
+      c.strokeRect(r.x0 * sx, r.y0 * sy, r.w * sx, r.h * sy);
     }
   }
 
@@ -810,9 +1026,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     setVal($('#moire-val'), all.moire, '%');
     $('#moire-area').value = all.moire_area;
     setVal($('#moire-area-val'), all.moire_area, '%');
-    $('#btn-check').setAttribute('aria-pressed', String(L.showCheck));
-    $('#check-legend').hidden = !L.showCheck;
-    $('#peek-hint').hidden = L.showCheck;
+    $('#show-problems').checked = L.showCheck;
     for (const el of document.querySelectorAll('.look-only input[type="range"]')) fillRange(el);
     renderFade();
     renderExclude();
@@ -828,6 +1042,17 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     $('#fade-note').textContent = !on ? t('已关闭：横纹密集处也不减弱纹理。')
       : !i ? '' : i.solving.length ? t('正在更新…')
         : i.check.faded > 0 ? t('现在减弱了纹理的 {p}。', { p: pct(i.check.faded) }) : t('这张图没有被减弱的地方。');
+    renderKeys();
+  }
+
+  // A row's colour block is filled while its colour is on the previews: 标出问题 ticked and, for red and blue, the
+  // switch that causes it on (with the switch off there is nothing of that colour to mark). Hollow otherwise.
+  function renderKeys() {
+    const doc = getDoc();
+    // (while another picture's settings are on their way nothing says the switch is off: the block does not blink)
+    const on = [L.showCheck && !(L.params && L.params.fade === false),
+      L.showCheck && !!doc && doc.color_exclude !== false, L.showCheck];
+    groupEl.querySelectorAll('.key').forEach((key, i) => key.classList.toggle('on', on[i]));
   }
 
   // 颜色排除 is a document setting (undoable, saved with the work), not a look parameter
@@ -837,29 +1062,52 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     const on = doc.color_exclude !== false;
     $('#exclude').checked = on;
     const i = L.info;
-    $('#exclude-note').textContent = !on ? t('已关闭：部位里每一处都加纹理。')
+    $('#exclude-note').textContent = !on ? t('已关闭：不再按颜色排除。')
       : !i ? '' : i.solving.length ? t('正在更新…')
         : i.check.excluded > 0 ? t('现在排除了已涂部位的 {p}。', { p: pct(i.check.excluded) }) : t('这张图没有被排除的地方。');
+    renderKeys();
   }
 
-  // Use the longest localized reading, including the optional solving suffix, to size each legend value.
-  for (const id of ['#check-faded', '#check-excluded', '#check-nostroke']) {
-    $(id).parentElement.dataset.measure = pct(0.0005) + (id === '#check-nostroke' ? t('（求解中…）') : '');
+  // Every reading a note can have lies unseen in the note's own cell, so the note is as tall as its tallest reading
+  // at whatever width the group has, and a value, a switch or a finished solve never changes the group's height.
+  // The yellow row's note is one line (its list is cut short; the ? beside it has it whole): any reading sizes it.
+  function reserve(id, readings) {
+    const shown = $(id).parentElement;                    // the status and whatever stands under it in the row
+    shown.parentElement.append(...readings.map((text) => {
+      const m = shown.cloneNode(true);
+      m.className = 'measure';
+      m.setAttribute('aria-hidden', 'true');
+      m.querySelector(id).textContent = text;
+      for (const el of m.querySelectorAll('[id]')) el.removeAttribute('id');
+      return m;
+    }));
   }
+  const longestShare = pct(0.0005);
+  reserve('#fade-note', [t('已关闭：横纹密集处也不减弱纹理。'), t('正在更新…'),
+    t('现在减弱了纹理的 {p}。', { p: longestShare }), t('这张图没有被减弱的地方。')]);
+  reserve('#exclude-note', [t('已关闭：不再按颜色排除。'), t('正在更新…'),
+    t('现在排除了已涂部位的 {p}。', { p: longestShare }), t('这张图没有被排除的地方。')]);
+  reserve('#check-nostroke', [t('没有。')]);
+  // The box's description is on its label, where the pointer finds it: the box itself has it too, to be read out.
+  $('#show-problems').setAttribute('aria-description', $('#show-problems').closest('label').dataset.tip);
 
   function renderInfo() {
     const i = L.info;
     if (!i) return;
-    $('#check-faded').textContent = pct(i.check.faded);
-    $('#check-excluded').textContent = pct(i.check.excluded);
     renderFade();
     renderExclude();
+    // The yellow row: what is painted but gets no texture, as the server names it (a whole region with no 走向线 or
+    // a failed solve, or a detached piece of one). Regions still solving are not in that list; they are named apart.
     const ns = $('#check-nostroke');
-    ns.textContent = (i.untextured.length ? pct(i.check.nostroke) : t('没有')) + (i.solving.length ? t('（求解中…）') : '');
-    const tip = t('部位已经涂好，但还没画走向线，所以不生成纹理。')
-      + (i.untextured.length ? t('没有走向线的部位：{names}。', { names: i.untextured.join(t('、')) }) : '')
-      + (i.solving.length ? t('{names}正在求解，求解完再看。', { names: i.solving.join(t('、')) }) : '');
-    setTip(ns.parentElement.parentElement, tip);
+    const missing = i.untextured.length
+      ? t('{p}：{names}。回“引导”页检查它们的走向线。', { p: pct(i.check.nostroke), names: i.untextured.join(t('、')) }) : '';
+    const solving = i.solving.length ? t('{names}正在求解，求解完再看。', { names: i.solving.join(t('、')) }) : '';
+    ns.textContent = (missing || t('没有。')) + (solving ? t('（求解中…）') : '');
+    setTip(ns, missing || solving ? missing + solving : null);     // the line is cut short: here whole
+    for (const [id, text] of [['#nostroke-names', missing], ['#nostroke-solving', solving]]) {
+      $(id).textContent = text;
+      $(id).hidden = !text;
+    }
     $('#sparkle-painted-field').hidden = !i.has_sparkle_layer;
     const sn = $('#sparkle-note');
     sn.className = 'note';
@@ -1203,8 +1451,10 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     e.target.checked = doc.color_exclude !== false;           // shown once the server has it
     edit('PUT', '/coverage/exclude', { on });
   });
-  $('#btn-check').addEventListener('click', () => {
-    L.showCheck = !L.showCheck;
+  // 标出问题 is a native checkbox: Space ticks it when the keyboard brought the focus (the Space handler below lets
+  // it through), Enter does not; it only says what the previews draw, and the group's size does not depend on it.
+  $('#show-problems').addEventListener('change', (e) => {
+    L.showCheck = e.target.checked;
     renderControls();
     drawFit();
     drawCrop();
@@ -1212,23 +1462,51 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     requestCrop();
   });
 
-  // ? buttons: the note floats beside the panel; click again, Esc or a click elsewhere hides it
+  // ? buttons: the note floats beside the panel for a button in the panel, beside the button itself for one on the
+  // stage (right of it, else left of it, else under or over it, never on it), always inside the window; click again, Esc, a click
+  // elsewhere, scrolling what the button is in or resizing the window hides it
   for (const btn of document.querySelectorAll('.look-only .info-btn')) {
     const pop = document.getElementById(btn.getAttribute('aria-controls'));
+    const panel = btn.closest('.side');
     const show = (on) => {
       pop.hidden = !on;
       btn.setAttribute('aria-expanded', String(on));
       if (!on) return;
-      const side = $('.side').getBoundingClientRect(), b = btn.getBoundingClientRect();
-      pop.style.left = `${Math.round(Math.max(8, Math.min(side.right + 8, window.innerWidth - pop.offsetWidth - 8)))}px`;
-      pop.style.top = `${Math.round(Math.max(8, Math.min(b.top - 10, window.innerHeight - pop.offsetHeight - 8)))}px`;
+      pop.style.maxHeight = '';                  // the style sheet's own limit, unless the room by the button is less
+      const b = btn.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight, m = 8;
+      const inX = (x) => Math.max(m, Math.min(x, window.innerWidth - w - m));
+      const inY = (y) => Math.max(m, Math.min(y, window.innerHeight - h - m));
+      let left, top = inY(b.top - 10);
+      if (panel) left = inX(panel.getBoundingClientRect().right + m);
+      else if (b.right + m + w + m <= window.innerWidth) left = b.right + m;
+      else if (b.left - m - w >= m) left = b.left - m - w;
+      else {
+        // no room on either side: under the button if the note fits there, else where there is more room, under or
+        // over it. A note taller than that room is cut to it and scrolls inside: it never lies on its own button,
+        // which a second click must still reach.
+        left = inX(b.left);
+        const under = window.innerHeight - b.bottom - 2 * m, over = b.top - 2 * m;
+        const below = h <= under || under >= over, room = Math.max(0, below ? under : over);
+        if (h > room) {
+          pop.style.maxHeight = `${Math.floor(room)}px`;
+          const extra = pop.offsetHeight - room;           // padding and border, where the limit does not count them
+          if (extra > 0) pop.style.maxHeight = `${Math.max(0, Math.floor(room - extra))}px`;
+        }
+        top = below ? b.bottom + m : b.top - m - pop.offsetHeight;
+      }
+      pop.style.left = `${Math.round(left)}px`;
+      pop.style.top = `${Math.round(top)}px`;
     };
     btn.addEventListener('click', () => show(pop.hidden));
-    btn.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); show(false); } });
+    // Esc closes the open note wherever the focus is by then: Tab goes on from the ? to the switch beside it
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); show(false); }
+    }, true);
     document.addEventListener('click', (e) => {
       if (!pop.hidden && !btn.contains(e.target) && !pop.contains(e.target)) show(false);
     });
-    $('.side').addEventListener('scroll', () => show(false));
+    (panel || $('#stage')).addEventListener('scroll', () => show(false));
+    window.addEventListener('resize', () => show(false));
   }
   // 全部恢复默认 puts everything back at once, as one step of the 纹理 history: 撤销 (Ctrl+Z) takes it back, like any
   // other change, and the button keeps its name
@@ -1274,10 +1552,11 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
   window.addEventListener('blur', () => setPeek(false));
 
   fitCv.addEventListener('click', (e) => {
-    if (!L.size) return;
+    const doc = getDoc();
+    if (!L.size || !doc) return;
     const r = fitCv.getBoundingClientRect();
-    const s = L.size.scale / L.size.dpr;
-    L.centre = { x: (e.clientX - r.left) / s, y: (e.clientY - r.top) / s };
+    // each way by its own share of the picture shown (see sx and sy)
+    L.centre = { x: ((e.clientX - r.left) / r.width) * doc.width, y: ((e.clientY - r.top) / r.height) * doc.height };
     requestCrop();
   });
   cmp.addEventListener('pointerdown', (e) => {
@@ -1326,7 +1605,11 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
   cropCv.addEventListener('pointerup', endDrag);
   cropCv.addEventListener('pointercancel', endDrag);
 
-  // Refit when a translated label or a legend value takes another line. Measure outside the observer delivery.
+  // Refit when the stage changes size or a translated label takes another line. Measure outside the observer
+  // delivery. The check group is not observed: layout() itself gives it its width, and its height follows from that.
+  if (document.fonts) {
+    document.fonts.addEventListener('loadingdone', () => { if (L.active && layout()) { requestCrop(); fitSoon(); } });
+  }
   const previewResize = new ResizeObserver(() => requestAnimationFrame(() => {
     if (L.active && layout()) { requestCrop(); fitSoon(); }
   }));

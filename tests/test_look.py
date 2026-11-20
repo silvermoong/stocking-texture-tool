@@ -450,6 +450,69 @@ def test_check_maps(fx):
     assert faded.sum() > s.check({'density': 100})[0].sum()
 
 
+@pytest.mark.parametrize('case, label, status, fraction', (
+    ('no-line', '测试部位', 'nostroke', 1),
+    ('failed', '测试部位', 'error', 1),
+    ('detached', '测试部位分开的一块', 'ok', 0.5),
+))
+def test_check_api_names_the_three_kinds_of_unguided_paint(api, monkeypatch, tmp_path, case, label, status, fraction):
+    from threading import Event
+
+    from stocking import server, settings
+    from stocking.document import Document
+
+    monkeypatch.setattr(settings, '_FILE', str(tmp_path / 'settings.json'))
+    art = np.full((100, 240, 3), 120, np.uint8)
+    d = Document(art, 'synthetic.png')
+    monkeypatch.setattr(server, '_doc', d)
+    monkeypatch.setattr(server, '_scene', (None, None))
+    rid = d.add_region('测试部位')
+    d.paint(rid, [(52, 50)], 16)
+    d.paint(rid, [(164, 50)], 16)
+    base = f'/api/doc/{d.id}'
+    started, release = Event(), Event()
+    solve = gf.solve_region
+
+    def solver_with_controlled_outcome(mask, alpha, walls, info):
+        started.set()
+        if not release.wait(10):
+            raise TimeoutError('the test did not release the solver')
+        if case == 'failed':
+            raise RuntimeError('synthetic solver failure')
+        result = solve(mask, alpha, walls, info)
+        # Simulate the solver not reaching the second piece. The normal solver bridges many such gaps itself.
+        result[0][:, mask.shape[1] // 2:] = np.nan
+        return result
+
+    try:
+        if case != 'no-line':
+            monkeypatch.setattr(gf, 'solve_region', solver_with_controlled_outcome)
+            d.add_stroke([(40, 50), (63, 50)], hint=rid)
+            assert started.wait(5)
+            running = api.get(f'{base}/look').raise_for_status().json()
+            assert running['untextured'] == [] and running['solving'] == ['测试部位']
+            assert running['check']['nostroke'] == 0
+            release.set()
+            assert d.wait_idle(10)
+        region = next(r for r in api.get('/api/doc').raise_for_status().json()['regions'] if r['id'] == rid)
+        assert region['status'] == status
+        done = api.get(f'{base}/look').raise_for_status().json()
+        assert done['untextured'] == [label] and done['solving'] == []
+        assert done['check']['nostroke'] == pytest.approx(fraction)
+        png = api.get(f'{base}/render/check', params={'x0': 0, 'y0': 0, 'w': d.w, 'h': d.h, 'fade': 'false'})
+        pixels = cv2.imdecode(np.frombuffer(png.raise_for_status().content, np.uint8), cv2.IMREAD_UNCHANGED)
+
+        def amber(x):
+            b, g, r, a = map(int, pixels[50, x])
+            return a > 0 and b < 100 and g > 150 and r > 200
+
+        assert amber(164) and amber(52) == (case != 'detached')
+        assert pixels[0, 0, 3] == 0
+    finally:
+        release.set()
+        d.close()
+
+
 def test_highlight_source_follows_painted_light(fx):
     """按画面亮部: sparkles follow where the art is painted brighter than its surroundings."""
     art, names, REG, V, A, stock, alpha = fx

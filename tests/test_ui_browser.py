@@ -205,7 +205,7 @@ def test_a_pressed_toggle_button_stays_readable_under_the_pointer(ui, lang):
     # L-4 of the same audit: the hover fill of every button replaced the pressed fill and left dark text on mid grey
     page = show(ui, lang, 100, (1280, 720), look=True)
     low = {}                                                # every button is measured and pictured before any fails
-    for button in ('#blend-auto', '#strength-auto', '#btn-check'):
+    for button in ('#blend-auto', '#strength-auto'):
         if page.evaluate(f'document.querySelector("{button}").getAttribute("aria-pressed")') != 'true':
             page.click(button)
         page.wait_for(f'document.querySelector("{button}").getAttribute("aria-pressed") === "true"',
@@ -232,42 +232,187 @@ def test_a_pressed_toggle_button_stays_readable_under_the_pointer(ui, lang):
     assert low == {}
 
 
-@pytest.mark.parametrize('scale, size', (
-    (150, (1024, 768)), (175, (1024, 768)), (100, (360, 840)), (175, (360, 1240)),
-), ids=('150-1024x768', '175-1024x768', '100-360x840', '175-360x1240'))
 @pytest.mark.parametrize('lang', ('zh', 'en'))
-def test_show_problems_is_next_to_detail_and_toggles_the_legend(ui, lang, scale, size):
+def test_the_check_group_reads_clearly_with_marks_off_and_on(ui, lang):
+    # Show problems was a pressed button whose text had to stay readable; it is a checkbox over rows of names and
+    # notes now, on the stage: every one of them must read as well as the panel's, ticked or not
+    page = show(ui, lang, 100, (1280, 720), look=1)
+    page.wait_for('!!document.querySelector("#fade-note").textContent', what='the rows to say what they do now')
+    low = {}
+    for ticked in (False, True):
+        if page.evaluate('document.querySelector("#show-problems").checked') != ticked:
+            page.click('#show-problems')
+        page.hover('#status-msg')
+        for text in ('#show-problems-name', 'label[for="fade"]', 'label[for="exclude"]', '.check-name',
+                     '#fade-note', '#exclude-note', '#exclude-scope', '#check-nostroke'):
+            seen = uibrowser.text_contrast(page, text)
+            if seen['ratio'] < 4.5:
+                low[f'{text}, ticked: {ticked}'] = seen
+    page.click('#show-problems')
+    assert low == {}
+    page.check_errors()
+
+
+CHECK_WINDOWS = ((100, (1440, 900)), (100, (1024, 768)), (125, (1024, 768)), (100, (360, 840)))
+CHECK_WINDOW_IDS = tuple(f'{k}-{s[0]}x{s[1]}' for k, s in CHECK_WINDOWS)
+CHECK_CONTROLS = ('#show-problems', '#fade', '#exclude')
+
+
+@pytest.mark.parametrize('scale, size', CHECK_WINDOWS, ids=CHECK_WINDOW_IDS)
+@pytest.mark.parametrize('lang', ('zh', 'en'))
+def test_the_check_group_stays_available_with_or_without_marks(ui, lang, scale, size):
     page = show(ui, lang, scale, size, look=1)
-    assert page.evaluate('!!document.querySelector("#look-stage .detail-pane .pane-head #btn-check")'), \
-        'Show problems belongs beside the Detail title, not in the settings panel'
-    assert page.evaluate('document.querySelector("#btn-check").tagName') == 'BUTTON'
-    seen = '''(() => {
-        const check = document.querySelector('#btn-check');
-        const visible = (s) => document.querySelector(s).checkVisibility({ visibilityProperty: true });
-        return [check.getAttribute('aria-pressed'), visible('#check-legend'), visible('#peek-hint')];
-    })()'''
-    assert page.evaluate(seen) == ['false', False, True]
-    must = ('#btn-check', '#btn-densest', '[data-zoom="1"]', '[data-zoom="2"]')
-    assert uibrowser.out_of_reach(page, '#look-stage', must=must) == []
-    page.click('#btn-check')
-    assert page.evaluate(seen) == ['true', True, False]
-    assert uibrowser.out_of_reach(page, '#look-stage', must=(*must, '#check-legend .key-item')) == []
-    # Let the real marked previews finish before measuring and taking the full viewport shot.
-    page.wait_for('''document.querySelector('#check-faded').textContent &&
-        /^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent)''',
-                  timeout=60, what='the marked previews to finish')
-    page.hover('.status')
-    page.screenshot(f'show-problems-{lang}-{scale}-{size[0]}x{size[1]}')
+    assert page.evaluate('!!document.querySelector("#check-group #show-problems[type=checkbox]")'), \
+        'Show problems leads the same group as the two switches'
     assert page.evaluate('''(() => {
-        const stage = document.querySelector('#stage').getBoundingClientRect();
-        return [...document.querySelectorAll('#look-stage .pane > *')].flatMap((el) => {
-            const r = el.getBoundingClientRect(), dx = el.scrollWidth - el.clientWidth, dy = r.bottom - stage.bottom;
-            return r.left < stage.left - 1 || r.right > stage.right + 1 || r.top < stage.top - 1 || dy > 1 || dx > 1
-                ? [{ pane: el.parentElement.className, row: el.className, dx, dy, left: r.left, right: r.right }] : [];
-        });
-    })()''') == []
-    page.click('#btn-check')
-    assert page.evaluate(seen) == ['false', False, True]
+        const group = document.querySelector('#check-group');
+        const reset = document.querySelector('#btn-look-reset');
+        return [...group.querySelectorAll('input')].map(e => e.id).join() === 'show-problems,fade,exclude'
+            && !document.querySelector('.pane-head #show-problems, #btn-check')
+            && !document.querySelector('.side :is(#fade, #exclude, #show-problems)')
+            && reset.closest('section') === reset.closest('.side-pane').lastElementChild
+            && reset.closest('section').querySelectorAll('button, input').length === 1
+            && !document.querySelector('#check-faded, #check-excluded');
+    })()''')
+    seen = '''(() => {
+        const keys = [...document.querySelectorAll('#check-group .key')];
+        const visible = (s) => document.querySelector(s).checkVisibility({visibilityProperty: true});
+        return [document.querySelector('#show-problems').checked,
+            keys.map(e => getComputedStyle(e).backgroundColor),
+            ['#fade', '#exclude', '#peek-hint'].every(visible)];
+    })()'''
+    hollow = ['rgba(0, 0, 0, 0)'] * 3
+    assert page.evaluate(seen) == [False, hollow, True]
+    page.click('#show-problems')
+    assert page.evaluate(seen) == [True, ['rgb(255, 50, 60)', 'rgb(70, 160, 255)', 'rgb(255, 190, 40)'], True]
+    page.click('#show-problems')
+    assert page.evaluate(seen) == [False, hollow, True]
+    page.check_errors()
+
+
+def check_document(server, portrait=False, *, image_size=None):
+    """A synthetic region with closely curved courses and a different-colored patch, plus a region with no line.
+
+    Other aspect ratios keep the same objects: fit them inside the picture, with neutral pixels around them.
+    """
+    import cv2
+    import numpy as np
+
+    art = np.full((352, 448, 3), 157, np.uint8)
+    cv2.line(art, (282, 85), (282, 248), (38, 38, 38), 116)
+    cv2.ellipse(art, (255, 165), (25, 53), 7, 0, 360, (50, 50, 50), -1)
+    cv2.circle(art, (307, 158), 19, (78, 162, 225), -1)
+    cv2.circle(art, (390, 185), 24, (67, 67, 67), -1)
+    w, h = image_size or ((448, 600) if portrait else (448, 352))
+    k = min(1, w / 448, h / 352)
+    aw, ah = round(448 * k), round(352 * k)
+    left, top = (w - aw) // 2, (h - ah) // 2
+    if k < 1:
+        art = cv2.resize(art, (aw, ah), interpolation=cv2.INTER_AREA)
+    if (w, h) != (aw, ah):
+        art = cv2.copyMakeBorder(art, top, h - ah - top, left, w - aw - left,
+                                 cv2.BORDER_CONSTANT, value=(157, 157, 157))
+
+    def pts(*xy):
+        return [v for x, y in xy for v in (x * k + left, y * k + top)]
+
+    st = server.upload('check-sample.png', cv2.imencode('.png', art)[1].tobytes())
+    doc = f'/api/doc/{st["id"]}'
+    guided, missing = (r['id'] for r in st['regions'])
+    server.api(f'{doc}/regions/{guided}/paint', 'POST',
+               {'pts': pts((282, 85), (282, 248)), 'radius': 58 * k, 'erase': False})
+    server.api(f'{doc}/regions/{missing}/paint', 'POST',
+               {'pts': pts((390, 185)), 'radius': 24 * k, 'erase': False})
+    for line in (((237, 96), (258, 105), (282, 109), (304, 102), (326, 90)),
+                 ((237, 171), (259, 185), (282, 183), (304, 167), (326, 145)),
+                 ((237, 224), (259, 218), (282, 216), (304, 222), (326, 229))):
+        server.api(f'{doc}/strokes', 'POST', {'pts': pts(*line), 'hint': guided})
+    uibrowser._wait('the guided region to solve',
+                    lambda: server.api('/api/doc')['regions'][0]['status'] == 'ok', 30)
+    return server.api('/api/doc')
+
+
+@pytest.fixture(scope='module')
+def check_ui_session(tmp_path_factory):
+    uibrowser.require()
+    with uibrowser.running(tmp_path_factory.mktemp('check-ui')) as (server, browser):
+        with contextlib.closing(browser.page()) as page:
+            yield server, page
+
+
+@pytest.fixture
+def check_ui(check_ui_session):
+    """A separate page and server for tests that replace the picture or modify the check settings.
+
+    The tab is left on an empty page between cases: an open tool page keeps sending events, and while other cases
+    run nobody reads them, until the connection gives up."""
+    server, page = check_ui_session
+    yield server, page
+    page.check_errors()
+    page.send('Page.navigate', url='about:blank')
+
+
+CHECK_LAYOUT_RECTS = '''(() => {
+    const stage = document.querySelector('#stage'), s = stage.getBoundingClientRect();
+    const rects = Object.fromEntries(['#fit', '#crop', '#peek-hint', '#check-group'].map(name => {
+        const r = document.querySelector(name)?.getBoundingClientRect();
+        return [name, r ? [r.left - s.left, r.top - s.top + stage.scrollTop, r.width, r.height] : null];
+    }));
+    const blocks = ['.whole-pane', '.detail-pane', '#check-group'].map(n => [n, document.querySelector(n).getBoundingClientRect()]);
+    const on = [];
+    for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) {
+        const [a, p] = blocks[i], [b, q] = blocks[j];
+        if (Math.min(p.right, q.right) - Math.max(p.left, q.left) > 1
+            && Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top) > 1) on.push(a + ' on ' + b);
+    }
+    return {rects, on, width: stage.clientWidth, height: stage.scrollHeight,
+        sideways: [stage.scrollWidth - stage.clientWidth, document.scrollingElement.scrollWidth - innerWidth]};
+})()'''
+
+
+def assert_check_layout(page, image_size):
+    """Check geometry against the stage rather than requiring a particular dock or preview arrangement."""
+    page.wait_for('!!document.querySelector("#strength-val").textContent', what='the Texture page')
+    assert page.evaluate('!!document.querySelector("#check-group")'), 'the previews share a stage with the check group'
+    page.evaluate('new Promise(go => requestAnimationFrame(() => requestAnimationFrame(go)))')
+    view = page.evaluate(CHECK_LAYOUT_RECTS)
+    rects = view['rects']
+    assert max(view['sideways']) <= 1, view
+    assert view['on'] == [], view            # the two panes, rows of controls and all, and the group: none on another
+    for name, (x, y, w, h) in rects.items():
+        assert min(w, h) > 0 and x >= -1 and x + w <= view['width'] + 1, (name, view)
+        assert y >= -1 and y + h <= view['height'] + 1, (name, view)
+    for i, (name, (x, y, w, h)) in enumerate(rects.items()):
+        for other, (ox, oy, ow, oh) in list(rects.items())[i + 1:]:
+            assert min(x + w, ox + ow) - max(x, ox) <= 1 or min(y + h, oy + oh) - max(y, oy) <= 1, (name, other, view)
+    _, _, fw, fh = rects['#fit']
+    _, cy, cw, ch = rects['#crop']
+    iw, ih = image_size
+    assert max(fw, fh) >= 48 and abs(fw * ih - fh * iw) <= max(iw, ih) + 1, (image_size, view)
+    assert cw >= 48 and abs(cw - ch) <= 1, view
+    assert rects['#peek-hint'][1] >= cy + ch - 1, view
+    return view
+
+
+@pytest.mark.parametrize('image_size, size, scale', (
+    ((1792, 352), (1600, 800), 100), ((448, 1792), (820, 1200), 125), ((448, 448), (1024, 768), 125),
+    ((96, 80), (360, 840), 100),
+), ids=('wide-on-wide', 'tall-on-portrait', 'square-at-125', 'small-on-narrow'))
+def test_preview_and_check_group_layout_across_image_shapes(check_ui, image_size, size, scale):
+    server, page = check_ui
+    server.set_lang('en')
+    check_document(server, image_size=image_size)
+    show(check_ui, 'en', scale, size, look=1)
+    initial = assert_check_layout(page, image_size)
+    page.resize(1024, 560)
+    assert_check_layout(page, image_size)
+    page.resize(*size)
+    # The best dock may legitimately be the same after a round trip, or an adjacent one within a hysteresis band.
+    # At a settled size, the measurements must stay steady and neither scroll nor overlap.
+    settled = assert_check_layout(page, image_size)
+    assert settled == assert_check_layout(page, image_size)
+    if size != (1024, 560):
+        assert initial['width'] == settled['width']
     page.check_errors()
 
 
@@ -283,7 +428,8 @@ def resting_places(page, timeout=60):
         const c = document.querySelector('#crop');
         if (c.width < 2 || !/^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent)) return null;
         const o = document.querySelector('#look-stage').getBoundingClientRect();
-        return Object.fromEntries(['#btn-check', '[data-zoom="1"]', '#btn-densest', '#fit', '#crop'].map((s) => {
+        return Object.fromEntries(['#show-problems', '#fade', '#exclude', '#check-group', '#peek-hint',
+                '[data-zoom="1"]', '#btn-densest', '#fit', '#crop'].map((s) => {
             const r = document.querySelector(s).getBoundingClientRect();
             return [s, [r.left - o.left, r.top - o.top, r.width, r.height].map(Math.round)];
         }));
@@ -298,9 +444,9 @@ def resting_places(page, timeout=60):
 
 
 def press_show_problems(page, pressed):
-    page.click('#btn-check')
-    page.wait_for(f'document.querySelector("#btn-check").getAttribute("aria-pressed") === "{str(pressed).lower()}"',
-                  what=f'Show problems to be {"pressed" if pressed else "released"}')
+    page.click('#show-problems')
+    page.wait_for(f'document.querySelector("#show-problems").checked === {str(pressed).lower()}',
+                  what=f'Show problems to be {"ticked" if pressed else "cleared"}')
     page.hover('.status')
 
 
@@ -332,16 +478,20 @@ def test_show_problems_layout_stays_put_when_detail_moves_to_a_new_position(ui):
     page.check_errors()
 
 
-def test_show_problems_layout_stays_put_when_the_legend_value_changes(ui):
+def test_show_problems_layout_stays_put_when_a_switch_changes_what_its_row_says(ui):
+    # the share is said once, on the row of its switch: from a share to "Off: …" and back, a shorter and a longer
+    # reading, neither the row nor anything else of the previews may move
     page = show(ui, 'en', 175, (910, 768), look=1)
-    faded = 'document.querySelector("#check-faded").textContent'
-    page.wait_for(f'{faded} === "under 0.1%"', what='the initial faded value')
+    said = 'document.querySelector("#fade-note").textContent'
+    page.wait_for(f'{said} === "under 0.1% of the texture is faded now."', what='the initial faded share')
     before = resting_places(page)
     page.click('#fade')
-    page.wait_for(f'{faded} === "none"', what='the faded value to update')
+    page.wait_for(f'{said}.startsWith("Off:")', what='the row to say the switch is off')
+    page.hover('.status')
     after = resting_places(page)
     page.click('#fade')
-    page.wait_for(f'{faded} === "under 0.1%"', what='the original value to return')
+    page.wait_for(f'{said} === "under 0.1% of the texture is faded now."', what='the original share to return')
+    page.hover('.status')
     assert (after, resting_places(page)) == (before, before)
     page.check_errors()
 
@@ -362,10 +512,15 @@ def test_show_problems_layout_keeps_the_compare_labels_on_the_whole_preview(ui, 
             outside: tags.filter((r) => r.left < fit.left - 1 || r.right > fit.right + 1)
                 .map((r) => [Math.round(r.left), Math.round(r.right)]),
             overlapping: tags.length === 2 && tags[0].right > tags[1].left,
+            onSlider: (() => {
+                const c = document.querySelector('#compare').getBoundingClientRect(), x = c.left + c.width / 2;
+                return tags.some((r) => r.left < x + 1 && r.right > x - 1);
+            })(),
             shown: tags.length,
         };
     })()''')
-    assert (seen['outside'], seen['overlapping']) == ([], False), seen
+    # neither hangs out of the picture, lies on the other, or lies on the slider's line where it rests
+    assert (seen['outside'], seen['overlapping'], seen['onSlider']) == ([], False, False), seen
     # they are left out only where the picture is too small for them: a wide window still names both sides
     if size[0] >= 1024:
         assert seen['shown'] == 2, seen
@@ -387,7 +542,7 @@ def test_show_problems_controls_can_be_scrolled_to_in_a_short_window(ui, lang, s
     resting_places(page)
     seen = page.evaluate('''(() => {
         const stage = document.querySelector('#stage'), out = [];
-        for (const el of document.querySelectorAll('#look-stage button, #look-stage canvas, #compare')) {
+        for (const el of document.querySelectorAll('#look-stage button, #look-stage input, #look-stage canvas, #compare')) {
             if (!el.checkVisibility({ visibilityProperty: true })) continue;
             el.scrollIntoView({ block: 'center', inline: 'nearest' });
             const s = stage.getBoundingClientRect(), r = el.getBoundingClientRect();
@@ -473,9 +628,12 @@ def test_texture_layers_live_in_the_panel_and_the_bar_only_switches_pages(ui, la
         const card = document.querySelector('#layer-card'), note = document.querySelector('#global-note');
         const own = ['.styles', '#density', '#tilt', '#strength'].every((s) => card.contains(document.querySelector(s)));
         const settings = document.querySelector('#pane-look');
-        const whole = ['#sparkle-on', '#particle-on', '#moire-on', '#fade', '#exclude'].every((s) => {
+        const whole = ['#sparkle-on', '#particle-on', '#moire-on'].every((s) => {
             const el = document.querySelector(s);
             return settings.contains(el) && !card.contains(el) && (note.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+        }) && ['#fade', '#exclude'].every((s) => {      // the whole picture's too, with the marks they cause
+            const el = document.querySelector(s);
+            return !card.contains(el) && !!el.closest('#look-stage #check-group');
         });
         const edge = getComputedStyle(card), panel = getComputedStyle(document.querySelector('.side'));
         const framed = parseFloat(edge.borderTopWidth) > 0 || edge.backgroundColor !== 'rgba(0, 0, 0, 0)'
@@ -1907,3 +2065,988 @@ def test_the_focus_stays_with_the_layers_when_their_rows_are_made_anew(ui):
     assert page.evaluate(focus) == 'blend-name'
     assert page.evaluate('document.activeElement.getAttribute("aria-current")') == 'true'
     assert page.errors[thrown:] == []
+
+
+# ------------------------------------------------------------------ the check group: marks, switches, keys
+
+# How many pixels of each mark a preview holds. On 整体 the marks lie nearly opaque over the picture, right of the
+# compare slider (`original` counts any left of it): measured there, red is about (224, 48, 64), blue (96, 160, 224)
+# and yellow (224, 176, 48), and the picture's own orange patch (225, 162, 78) is none of them. On 细节 they are 60%
+# over the picture: red on the dark stocking is about (150, 48, 48), blue on the orange patch a grey teal
+# (144, 160, 160), where the picture itself has only greys with equal channels, dark texture and the orange.
+CHECK_MARKS = '''(() => {
+    const near = (d, i, c) => Math.abs(d[i] - c[0]) < 30 && Math.abs(d[i + 1] - c[1]) < 30 && Math.abs(d[i + 2] - c[2]) < 30;
+    const fit = document.querySelector('#fit'), crop = document.querySelector('#crop');
+    const split = Math.round(fit.width * +document.querySelector('#compare').getAttribute('aria-valuenow') / 100);
+    const out = {red: 0, blue: 0, yellow: 0, original: 0, detailRed: 0, detailBlue: 0};
+    const f = fit.getContext('2d').getImageData(0, 0, fit.width, fit.height).data;
+    for (let y = 0; y < fit.height; y++) for (let x = 0; x < fit.width; x++) {
+        const i = 4 * (y * fit.width + x);
+        const mark = near(f, i, [224, 48, 64]) ? 'red' : near(f, i, [96, 160, 224]) ? 'blue'
+            : near(f, i, [224, 176, 48]) && f[i + 2] < 64 ? 'yellow' : null;
+        if (mark && x < split - 2) out.original++; else if (mark && x > split + 2) out[mark]++;
+    }
+    const c = crop.getContext('2d').getImageData(0, 0, crop.width, crop.height).data;
+    for (let i = 0; i < c.length; i += 4) {
+        if (c[i] > 120 && c[i + 1] < 80 && c[i + 2] < 80) out.detailRed++;
+        if (c[i] > 110 && c[i + 1] - c[i] > 8 && c[i + 2] - c[i] > 8) out.detailBlue++;
+    }
+    return out;
+})()'''
+ALL_MARKS = 'm.red > 50 && m.blue > 20 && m.yellow > 20 && m.detailRed > 50 && m.detailBlue > 20'
+CHECK_KEYS = '[...document.querySelectorAll("#check-group .key")].map(e => e.classList.contains("on"))'
+
+
+def marks(page, want, timeout=60):
+    """The mark counts once they are as `want` says (JavaScript over the counts `m`): the previews are drawn again a
+    moment after a change, and the picture before it must not pass for the one after."""
+    page.wait_for(f'(() => {{ const m = {CHECK_MARKS}; return {want}; }})()', timeout=timeout,
+                  what=f'the previews to show {want}')
+    return page.evaluate(CHECK_MARKS)
+
+
+def check_page(check_ui, lang='en', scale=100, size=(1440, 900), **document):
+    """The Texture page of a fresh synthetic picture with red, blue and yellow marks to show, both previews drawn."""
+    server, page = check_ui
+    server.set_lang(lang)
+    check_document(server, **document)
+    show(check_ui, lang, scale, size, look=1)
+    page.wait_for('''document.querySelector('#fade-note').textContent && document.querySelector('#crop').width > 2
+        && /^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent)''', timeout=60,
+                  what='the previews and the rows')
+    return server, page
+
+
+def hold_space(page, down):
+    page.send('Input.dispatchKeyEvent', type='keyDown' if down else 'keyUp', key=' ', code='Space',
+              windowsVirtualKeyCode=32, **({'text': ' '} if down else {}))
+
+
+def test_marks_follow_the_box_and_each_switch_on_the_real_previews(check_ui):
+    server, page = check_page(check_ui)
+    said = lambda row: page.evaluate(f'document.querySelector("#{row}-note").textContent')    # noqa: E731
+    assert page.evaluate(CHECK_KEYS) == [False] * 3
+    assert set(marks(page, 'true').values()) == {0}, 'nothing is marked until the box is ticked'
+
+    page.click('#show-problems')
+    assert marks(page, ALL_MARKS)['original'] == 0, 'the original, left of the compare slider, is never marked'
+    assert page.evaluate(CHECK_KEYS) == [True] * 3
+    # the box was clicked, so Space is still the hold that shows the original in Detail: no marks on it, the box stays
+    hold_space(page, True)
+    held = marks(page, 'm.detailRed === 0 && m.detailBlue === 0')
+    assert held['red'] > 50 and held['blue'] > 20, held
+    hold_space(page, False)
+    assert page.evaluate('document.querySelector("#show-problems").checked')
+    marks(page, ALL_MARKS)
+
+    # each switch takes its own colour off the pictures, not only off its row, and leaves the other two
+    page.click('#fade')
+    seen = marks(page, 'm.red === 0 && m.detailRed === 0')
+    assert min(seen['blue'], seen['yellow'], seen['detailBlue']) > 20, seen
+    assert page.evaluate(CHECK_KEYS) == [False, True, True]
+    assert said('fade') == 'Off: texture is not faded where courses crowd.'
+    page.click('#fade')
+    marks(page, ALL_MARKS)
+    page.click('#exclude')
+    seen = marks(page, 'm.blue === 0 && m.detailBlue === 0')
+    assert min(seen['red'], seen['detailRed']) > 50 and seen['yellow'] > 20, seen
+    assert page.evaluate(CHECK_KEYS) == [True, False, True]
+    assert said('exclude') == 'Off: nothing is excluded by color.'
+    page.click('#exclude')
+    marks(page, ALL_MARKS)
+
+    page.click('#show-problems')
+    assert set(marks(page, 'm.red + m.blue + m.yellow + m.detailRed + m.detailBlue === 0').values()) == {0}
+    assert page.evaluate(CHECK_KEYS) == [False] * 3
+
+
+def test_an_export_made_with_the_marks_showing_holds_none_of_them(check_ui, tmp_path):
+    import cv2
+    import numpy as np
+
+    server, page = check_page(check_ui)
+    page.click('#show-problems')
+    marks(page, ALL_MARKS)
+    target = tmp_path / 'marked.png'
+    # Only the system's save dialog is answered here; the file is written by the real server.
+    page.evaluate(f'''(() => {{
+        const real = window.fetch;
+        window.fetch = (url, opt) => String(url).endsWith('/export/ask')
+            ? Promise.resolve(Response.json({json.dumps({'path': str(target)})})) : real(url, opt);
+    }})()''')
+    page.click('#btn-export')
+    page.wait_for('!document.querySelector("#exported").hidden', timeout=60, what='the export receipt')
+    out = cv2.imdecode(np.fromfile(str(target), np.uint8), cv2.IMREAD_COLOR).astype(int)
+    assert out.shape[:2] == (352, 448)
+    for name, bgr in (('red', (60, 50, 255)), ('blue', (255, 160, 70)), ('yellow', (40, 190, 255))):
+        assert not (np.abs(out - bgr).max(axis=2) < 25).any(), f'the exported image holds {name} marks'
+    assert (out != 157).any(axis=2).sum() > 5000, 'the export is the picture, not a blank'
+    # and it was made while the previews showed them
+    assert page.evaluate('document.querySelector("#show-problems").checked')
+    assert marks(page, ALL_MARKS)['original'] == 0
+    page.click('#btn-exported-close')
+
+
+def test_tab_reaches_the_group_in_order_and_space_goes_by_how_the_focus_came(check_ui):
+    server, page = check_page(check_ui)
+    focus = 'document.activeElement.id || document.activeElement.getAttribute("aria-controls")'
+    ticked = 'document.querySelector("#show-problems").checked'
+    fading = 'document.querySelector("#fade").checked'
+    peek = 'document.querySelector("#peek-hint").classList.contains("on")'
+
+    # real Tab presses from Detail: the box, then each row's ? and switch, in the order they read
+    page.click('#crop')
+    assert page.evaluate(focus) == 'crop'
+    order = []
+    for _ in range(6):
+        press(page, 'Tab', 'Tab', 9)
+        order.append(page.evaluate(focus))
+    assert order == ['show-problems', 'fade-info', 'fade', 'exclude-info', 'exclude', 'nostroke-info']
+
+    # reached with the keyboard, the box keeps Space for itself (and Enter does nothing, as on any checkbox)
+    for _ in range(5):
+        press(page, 'Tab', 'Tab', 9, shift=True)
+    assert page.evaluate(focus) == 'show-problems' and not page.evaluate(ticked)
+    hold_space(page, True)
+    assert not page.evaluate(peek), 'Space on a box the keyboard reached must not show the original'
+    hold_space(page, False)
+    assert page.evaluate(ticked)
+    press(page, 'Enter', 'Enter', 13)
+    assert page.evaluate(ticked)
+    press(page, ' ', 'Space', 32)
+    assert not page.evaluate(ticked)
+    # and so does a switch
+    press(page, 'Tab', 'Tab', 9)
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate(focus) == 'fade' and page.evaluate(fading)
+    hold_space(page, True)
+    assert not page.evaluate(peek)
+    hold_space(page, False)
+    page.wait_for(f'!{fading}', what='Space to turn the switch off')
+    press(page, ' ', 'Space', 32)
+    page.wait_for(fading, what='Space to turn the switch back on')
+
+    # clicked with the mouse, either keeps the focus and Space is the hold that shows the original: nothing toggles
+    for control, state in (('#show-problems', ticked), ('#fade', fading)):
+        page.click(control)
+        after_click = page.evaluate(state)
+        assert page.evaluate(focus) == control.lstrip('#')
+        hold_space(page, True)
+        assert page.evaluate(peek), f'Space after clicking {control} did not show the original'
+        hold_space(page, False)
+        assert not page.evaluate(peek) and page.evaluate(state) == after_click, control
+        page.click(control)
+    # with the focus on Detail itself, however it came
+    page.click('#crop')
+    hold_space(page, True)
+    assert page.evaluate(peek)
+    hold_space(page, False)
+    assert not page.evaluate(peek)
+
+
+@pytest.mark.parametrize('lang, scale, size', (('zh', 100, (1440, 900)), ('en', 125, (1024, 768)), ('en', 100, (360, 840))),
+                         ids=('zh-100-1440x900', 'en-125-1024x768', 'en-100-360x840'))
+def test_a_question_mark_in_the_group_opens_beside_itself_and_closes_four_ways(check_ui, lang, scale, size):
+    server, page = check_page(check_ui, lang, scale, size)
+    scrolls = page.evaluate('(() => { const s = document.querySelector("#stage"); return s.scrollHeight > s.clientHeight + 20; })()')
+    if size[0] == 360:
+        assert scrolls, 'the narrow case is the one that proves a scroll of the previews closes the note'
+    for name in ('fade', 'exclude', 'nostroke'):
+        button = f'#check-group [aria-controls="{name}-info"]'
+        seen = f'''(() => {{
+            const p = document.querySelector('#{name}-info'), b = document.querySelector('{button}');
+            if (p.hidden) return null;
+            const r = p.getBoundingClientRect(), q = b.getBoundingClientRect();
+            return {{
+                inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+                apart: Math.max(r.left - q.right, q.left - r.right, r.top - q.bottom, q.top - r.bottom),
+                expanded: b.getAttribute('aria-expanded'), text: p.innerText,
+                chinese: /[\u4e00-\u9fff]/.test(p.innerText),
+            }};
+        }})()'''
+        shut = f'document.querySelector("#{name}-info").hidden && document.querySelector(\'{button}\').getAttribute("aria-expanded") === "false"'
+        page.click(button)
+        note = page.evaluate(seen)
+        # beside its own button (not at the panel's edge), clear of the button, and whole inside the window
+        assert note and note['inside'] and 0 <= note['apart'] <= 9 and note['expanded'] == 'true', note
+        assert len(note['text']) > 20 and note['chinese'] == (lang == 'zh'), note
+        assert '标题旁' not in note['text'] and 'beside the Detail' not in note['text'], note
+        press(page, 'Escape', 'Escape', 27)
+        assert page.evaluate(shut), f'Esc left the {name} note open'
+        page.click(button)
+        assert page.evaluate(seen)
+        page.click(button)
+        assert page.evaluate(shut), f'a second click left the {name} note open'
+        page.click(button)
+        page.click('#tab-look')            # elsewhere: the page's own tab, at the top, which no note reaches
+        assert page.evaluate(shut), f'a click elsewhere left the {name} note open'
+        if scrolls:
+            page.click(button)
+            assert page.evaluate(seen)
+            page.evaluate('''new Promise(go => {
+                const s = document.querySelector('#stage');
+                s.scrollTop += s.scrollTop + 12 < s.scrollHeight - s.clientHeight ? 12 : -12;
+                requestAnimationFrame(() => requestAnimationFrame(go));
+            })''')
+            assert page.evaluate(shut), f'scrolling the previews left the {name} note where it was'
+
+
+@pytest.mark.parametrize('name, lands', (('fade', 'fade'), ('exclude', 'exclude')))
+def test_esc_closes_a_note_of_the_group_after_tab_has_moved_on(check_ui, name, lands):
+    # the note is opened with its ?, and Tab then goes on to the switch beside it: Esc still closes the note
+    server, page = check_page(check_ui)
+    button = f'#check-group [aria-controls="{name}-info"]'
+    shut = f'document.querySelector("#{name}-info").hidden && document.querySelector(\'{button}\').getAttribute("aria-expanded") === "false"'
+    page.click(button)
+    assert not page.evaluate(shut)
+    press(page, 'Tab', 'Tab', 9)
+    assert page.evaluate('document.activeElement.id') == lands
+    assert not page.evaluate(shut), 'the note went before Esc was pressed'
+    state = page.evaluate(f'document.querySelector("#{lands}").checked')
+    press(page, 'Escape', 'Escape', 27)
+    assert page.evaluate(shut), f'Esc left the {name} note open with the focus on the switch'
+    assert page.evaluate(f'document.querySelector("#{lands}").checked') == state
+
+
+def test_a_note_taller_than_the_room_beside_its_question_mark_leaves_the_button_free(check_ui):
+    # A short, narrow window at a large interface size, and a yellow row with many long names: the note has no room
+    # left or right of its ?, and is taller than the room under or over it. It must still not lie on the ? itself:
+    # a second click on the button is one of the ways to close it. Only the list of the public /look answer is set.
+    server, page = check_ui
+    names = [f'Region with a rather long name {i}' for i in range(1, 9)]
+    script = page.send('Page.addScriptToEvaluateOnNewDocument', source=f'''(() => {{
+        const real = window.fetch;
+        window.fetch = async (url, opt) => {{
+            const res = await real(url, opt);
+            if (!/\\/api\\/doc\\/[^/]+\\/look(\\?|$)/.test(String(url)) || !res.ok) return res;
+            const info = await res.json();
+            if (info && 'untextured' in info) Object.assign(info, {json.dumps({'untextured': names})});
+            return Response.json(info, {{status: res.status}});
+        }};
+    }})()''')['identifier']
+    try:
+        check_page(check_ui, 'en', 175, (360, 480))
+        button = '#check-group [aria-controls="nostroke-info"]'
+        page.evaluate(f'''new Promise(go => {{
+            document.querySelector('{button}').scrollIntoView({{block: 'center'}});
+            requestAnimationFrame(() => requestAnimationFrame(go));
+        }})''')
+        page.click(button)
+        seen = page.evaluate(f'''(() => {{
+            const p = document.querySelector('#nostroke-info'), b = document.querySelector('{button}');
+            const r = p.getBoundingClientRect(), q = b.getBoundingClientRect();
+            const top = document.elementFromPoint(q.left + q.width / 2, q.top + q.height / 2);
+            return {{
+                open: !p.hidden, free: top === b, names: p.innerText.includes('rather long name 8'),
+                inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight,
+                note: [r.left, r.top, r.width, r.height].map(Math.round),
+                button: [q.left, q.top, q.width, q.height].map(Math.round), window: [innerWidth, innerHeight],
+            }};
+        }})()''')
+        assert seen['open'] and seen['names'] and seen['inside'], seen
+        assert seen['free'], f'the note lies on its own ? button: {seen}'
+        page.click(button)
+        assert page.evaluate('document.querySelector("#nostroke-info").hidden'), 'a second click left the note open'
+    finally:
+        page.send('Page.removeScriptToEvaluateOnNewDocument', identifier=script)
+
+
+ARRANGE_GROUP = '{ min: 220, max: 760, height: (w) => (w >= 700 ? 105 : w >= 440 ? 172 : 240) }'
+ARRANGE_ROWS = '{ wholeHead: 34, detailHead: 34, detailFoot: 30, minWhole: 84, minDetail: 156 }'
+
+
+def test_arrange_gives_a_long_banner_and_a_dense_screen_the_room_there_is(ui):
+    page = show(ui, 'en', 100, (1280, 720), look=1)
+    seen = page.evaluate(f'''(async () => {{
+        const {{ arrange }} = await import('/static/look.js');
+        const rest = {{ ...{ARRANGE_ROWS}, group: {ARRANGE_GROUP}, prev: null }};
+        return {{
+            // a 10:1 strip in the stage of a 360 px window: its short side cannot be 40 px there, its long side can be the width
+            banner: arrange(328, 435, 3000, 300, 1, rest),
+            // and the same turned upright, in a wide and low stage
+            pole: arrange(1136, 300, 300, 3000, 1, rest),
+            // four device pixels to one: Detail's budget (250 px) is under the usual least side, and is then the side
+            dense: arrange(1200, 900, 448, 352, 4, rest),
+        }};
+    }})()''')
+    banner, pole, dense = seen['banner'], seen['pole'], seen['dense']
+    assert banner['ww'] >= 300 and banner['d'] >= 120 and banner['gw'] >= 220, seen
+    assert pole['wh'] >= 150 and pole['d'] >= 120, seen
+    assert 200 <= dense['d'] <= 250 and dense['ww'] >= 400, seen
+    page.check_errors()
+
+
+def test_arrange_never_gives_a_picture_no_size_however_long_it_is(ui):
+    # A picture hundreds of times as long as it is wide leaves Whole's short side under one px at any width a
+    # window has. What arrange() answers is still a size to draw at: every side at least 1, in narrow stages and
+    # usual ones, for both ways the picture can be long.
+    page = show(ui, 'en', 100, (1280, 720), look=1)
+    seen = page.evaluate(f'''(async () => {{
+        const {{ arrange }} = await import('/static/look.js');
+        const rest = {{ ...{ARRANGE_ROWS}, group: {ARRANGE_GROUP}, prev: null }};
+        const out = [];
+        for (const [iw, ih] of [[4000, 10], [10, 5000], [3000, 4], [4, 3000]])
+            for (const [W, H] of [[328, 435], [328, 796], [720, 664], [1136, 664], [1568, 796]])
+                for (const dpr of [1, 2]) {{
+                    const a = arrange(W, H, iw, ih, dpr, rest);
+                    out.push({{ iw, ih, W, H, dpr, ww: a.ww, wh: a.wh, d: a.d, gw: a.gw, gh: a.gh }});
+                }}
+        return out;
+    }})()''', timeout=120)
+    assert len(seen) == 40
+    none = [a for a in seen if not (a['ww'] >= 1 and a['wh'] >= 1 and a['d'] >= 1 and a['gw'] >= 1 and a['gh'] >= 1)]
+    assert not none, none[:6]
+    page.check_errors()
+
+
+def test_arrange_does_not_pass_over_a_taller_plan_that_scores_more(ui):
+    # Each case has a plan found by an exhaustive search (every dock, side of Detail and stage height, none skipped),
+    # with the score that search gave it: arrange() may find another, but none that scores less.
+    page = show(ui, 'en', 100, (1280, 720), look=1)
+    seen = page.evaluate(f'''(async () => {{
+        const {{ arrange }} = await import('/static/look.js');
+        const rows = {ARRANGE_ROWS};
+        const tall = {{ min: 250, max: 900, height: (w) => (w >= 800 ? 203 : w >= 500 ? 221 : 259) }};
+        const of = (W, H, iw, ih, group) => {{
+            const a = arrange(W, H, iw, ih, 1, {{ ...rows, group, prev: null }});
+            return [a.score, a.ww, a.d];
+        }};
+        return [of(313, 796, 448, 600, {ARRANGE_GROUP}), of(345, 796, 448, 600, tall), of(345, 435, 1792, 352, tall),
+            of(448, 198, 448, 600, {ARRANGE_GROUP})];
+    }})()''')
+    known = (10.5211, 10.4575, 8.5067, 6.9091)      # whole 280 with detail 245; 272 with 237; 344 with 235; 209 with 73
+    short = [(got, score) for got, score in zip(seen, known) if got[0] < score - 0.005]
+    assert not short, short
+    page.check_errors()
+
+
+def test_a_long_banner_gets_the_width_of_a_narrow_window(check_ui):
+    server, page = check_ui
+    server.set_lang('en')
+    check_document(server, image_size=(3000, 300))
+    show(check_ui, 'en', 100, (360, 840), look=1)
+    view = assert_check_layout(page, (3000, 300))
+    rects, width = view['rects'], view['width']
+    assert rects['#fit'][2] >= 0.8 * width and rects['#crop'][2] >= 100, view
+    assert rects['#check-group'][2] >= 0.75 * width, view
+
+
+def test_arrange_keeps_its_promises_over_many_stages_and_picture_shapes(ui):
+    # look.js's arrange() and place(), called as the page calls them, with a stand-in for the group's measured height
+    # (three steps, as a real group has when its rows go from side by side to one under another). No dock is asked
+    # for: only what must hold wherever the group goes.
+    page = show(ui, 'en', 100, (1280, 720), look=1)
+    seen = page.evaluate('''(async () => {
+        const { arrange, place } = await import('/static/look.js');
+        const group = { min: 220, max: 760, height: (w) => (w >= 700 ? 105 : w >= 440 ? 172 : 240) };
+        const rows = { wholeHead: 34, detailHead: 34, detailFoot: 30, minWhole: 84, minDetail: 156 };
+        const bad = [], docks = new Set();
+        let n = 0, slowest = 0;
+        for (const W of [200, 328, 500, 720, 1136, 1568, 2400]) for (const H of [180, 300, 435, 664, 796, 1300])
+            for (const [iw, ih] of [[448, 352], [448, 600], [1792, 352], [448, 1792], [96, 80], [1000, 1000]])
+                for (const dpr of [1, 2]) {
+                    n++;
+                    const t0 = performance.now();
+                    arrange(W, H, iw, ih, dpr, { ...rows, group, prev: null });
+                    slowest = Math.max(slowest, performance.now() - t0);
+                    const a = arrange(W, H, iw, ih, dpr, { ...rows, group, prev: null });
+                    const p = place(a.dock, { ...rows, ww: a.ww, wh: a.wh, d: a.d, gw: a.gw, gh: a.gh });
+                    const why = [];
+                    const lo = Math.min(group.min, W), hi = Math.max(lo, Math.min(group.max, W));
+                    if (!(a.ww >= 1 && a.wh >= 1 && a.d >= 1)) why.push('a picture has no size');
+                    if (Math.abs(a.ww * ih - a.wh * iw) > iw + ih) why.push('the whole picture lost its shape');
+                    if (a.d > Math.max(1000 / dpr, 60) + 1e-6) why.push('Detail is over its render budget');
+                    if (a.gw < lo || a.gw > hi || a.gh !== group.height(a.gw)) why.push('the group is not at a width it was measured at');
+                    if (a.mode !== a.dock.split('/')[0]) why.push('mode and dock disagree');
+                    // inside the width there is; no two of the three on each other (the canvases, not the stretched panes)
+                    const box = { W: [p.at.W.x, p.at.W.y, a.ww, rows.wholeHead + a.wh],
+                        D: [p.at.D.x, p.at.D.y, a.d, rows.detailHead + a.d + rows.detailFoot],
+                        G: [p.at.G.x, p.at.G.y, a.gw, a.gh] };
+                    if (W >= 328 && p.w > W + 1e-6) why.push(`it is ${p.w} wide in ${W}`);
+                    for (const [i, j] of [['W', 'D'], ['W', 'G'], ['D', 'G']]) {
+                        const [x, y, w, h] = box[i], [u, v, s, t] = box[j];
+                        if (Math.min(x + w, u + s) - Math.max(x, u) > 1e-6 && Math.min(y + h, v + t) - Math.max(y, v) > 1e-6) why.push(`${i} is on ${j}`);
+                    }
+                    // a stage with room for all of it does not scroll
+                    if (W >= 720 && H >= 664 && p.h > H + 1e-6) why.push(`it is ${p.h} tall in a roomy ${H}`);
+                    // and where a plan does scroll though a smaller one would fit, it is the group that goes below
+                    // what shows, never a picture: H 435 and up fits something at every width tried here
+                    const low = Math.max(box.W[1] + box.W[3], box.D[1] + box.D[3]);
+                    if (W >= 328 && H >= 435 && p.h > H + 1e-6 && low > H + 1e-6) why.push(`a picture ends at ${low} of ${H}`);
+                    // the dock in use is kept, and against another dock the answer is one of the two, never a third
+                    if (arrange(W, H, iw, ih, dpr, { ...rows, group, prev: a.dock }).dock !== a.dock) why.push('the dock in use was not kept');
+                    for (const other of ['side/under', 'side/below', 'stack/right']) {
+                        const b = arrange(W, H, iw, ih, dpr, { ...rows, group, prev: other }).dock;
+                        if (b !== a.dock && b !== other) why.push(`from ${other} it went to ${b}, not ${a.dock}`);
+                    }
+                    docks.add(a.dock);
+                    if (why.length) bad.push({ W, H, iw, ih, dpr, a, why });
+                }
+        return { n, bad: bad.slice(0, 5), failed: bad.length, docks: [...docks].sort(), slowest };
+    })()''', timeout=240)
+    assert seen['failed'] == 0, seen
+    assert seen['n'] == 504 and len(seen['docks']) >= 4, seen       # the shapes really lead to different docks
+    # a guard against a search that goes back to trying every size (seconds for one answer), not a promise of speed
+    assert seen['slowest'] < 150, seen
+    page.check_errors()
+
+
+SWITCHES = '[document.querySelector("#fade").checked, document.querySelector("#exclude").checked]'
+
+
+def set_switches(page, fade, exclude):
+    """Click the two switches to these positions; each is there once the page shows it (颜色排除 waits for the server)."""
+    for name, on, at in (('fade', fade, 0), ('exclude', exclude, 1)):
+        if page.evaluate(SWITCHES)[at] != on:
+            page.click(f'#{name}')
+            page.wait_for(f'{SWITCHES}[{at}] === {str(on).lower()}', what=f'{name} to be {"on" if on else "off"}')
+
+
+def pick_preset(page, name):
+    """Choose an entry of the presets list, as picking it does (None: its last entry, 保存为新预设…)."""
+    page.evaluate(f'''(() => {{
+        const s = document.querySelector('#preset-select'), name = {json.dumps(name)};
+        if (name === null) s.selectedIndex = s.options.length - 1; else s.value = name;
+        s.dispatchEvent(new Event('change', {{bubbles: true}}));
+    }})()''')
+
+
+def save_new_preset(page, name):
+    pick_preset(page, None)
+    page.wait_for('document.querySelector("#preset-dialog").open && document.activeElement.id === "preset-name"',
+                  what='the dialog that asks for a preset name')
+    page.send('Input.insertText', text=name)
+    page.click('#btn-preset-ok')
+    page.wait_for(f'document.querySelector("#preset-select").value === {json.dumps(name)}'
+                  ' && !document.querySelector("#preset-dialog").open', what=f'the preset {name} to be saved')
+
+
+def saved_preset(server, name):
+    """What the server keeps for a preset: it must hold 纹理减弱 and nothing of 颜色排除."""
+    params = next(p['params'] for p in server.api('/api/look/presets')['presets'] if p['name'] == name)
+    assert not [key for key in params if 'exclu' in key.lower()], params
+    return params
+
+
+def test_presets_carry_texture_fade_and_leave_color_exclusion_both_ways(check_ui):
+    server, page = check_page(check_ui)
+    said = 'document.querySelector("#fade-note").textContent'
+    stamp = uibrowser.uuid.uuid4().hex[:6]             # the presets outlive the picture on this server
+    off, on = f'both off {stamp}', f'both on {stamp}'
+
+    # saved as a new preset with both switches off, loaded with both on: the same load turns Texture fade off (so
+    # the load did happen) and leaves Color exclusion on
+    set_switches(page, False, False)
+    save_new_preset(page, off)
+    assert saved_preset(server, off)['fade'] is False
+    set_switches(page, True, True)
+    pick_preset(page, off)
+    page.wait_for(f'{SWITCHES}[0] === false', what='the preset to turn Texture fade off')
+    assert page.evaluate(SWITCHES) == [False, True]
+    assert page.evaluate(said) == 'Off: texture is not faded where courses crowd.'
+
+    # the other way round: saved with both on, loaded with both off
+    set_switches(page, True, True)
+    save_new_preset(page, on)
+    assert saved_preset(server, on)['fade'] is True
+    set_switches(page, False, False)
+    pick_preset(page, on)
+    page.wait_for(f'{SWITCHES}[0] === true', what='the preset to turn Texture fade on')
+    assert page.evaluate(SWITCHES) == [True, False]
+    assert page.evaluate(said) != 'Off: texture is not faded where courses crowd.'
+
+    # Save with a preset selected writes over it without the dialog: the same holds on that path
+    set_switches(page, False, False)
+    page.wait_for('document.querySelector("#btn-preset-save").getAttribute("aria-disabled") === "false"',
+                  what='Save to offer writing the changed settings')
+    page.click('#btn-preset-save')
+    assert not page.evaluate('document.querySelector("#preset-dialog").open')
+    uibrowser._wait('the preset to be written over', lambda: saved_preset(server, on)['fade'] is False, 10)
+    set_switches(page, True, True)
+    pick_preset(page, on)
+    page.wait_for(f'{SWITCHES}[0] === false', what='the overwritten preset to turn Texture fade off')
+    assert page.evaluate(SWITCHES) == [False, True]
+    set_switches(page, True, False)
+    pick_preset(page, off)
+    page.wait_for(f'{SWITCHES}[0] === false', what='the first preset to turn Texture fade off again')
+    assert page.evaluate(SWITCHES) == [False, False]
+
+
+def test_the_two_switches_work_unticked_each_a_step_and_reset_all_takes_only_texture_fade(check_ui):
+    server, page = check_page(check_ui)
+    doc = server.api('/api/doc')['id']
+    note = lambda row: page.evaluate(f'document.querySelector("#{row}-note").textContent')    # noqa: E731
+    assert not page.evaluate('document.querySelector("#show-problems").checked')
+    assert (note('fade'), note('exclude')) == ('14% of the texture is faded now.',
+                                               '3.6% of the painted regions is excluded now.')
+
+    page.click('#fade')
+    page.wait_for(f'{SWITCHES}[0] === false', what='Texture fade to turn off')
+    assert note('fade') == 'Off: texture is not faded where courses crowd.'
+    uibrowser._wait('the look without fade to be saved',
+                    lambda: server.api(f'/api/doc/{doc}/look')['params']['fade'] is False, 10)
+
+    # Color exclusion stays as it was until the server has answered, then changes
+    page.evaluate('''(() => {
+        const real = window.fetch;
+        window.__letExclude = null;
+        window.fetch = (url, opt) => String(url).endsWith('/coverage/exclude')
+            ? new Promise(go => { window.__letExclude = go; }).then(() => real(url, opt)) : real(url, opt);
+    })()''')
+    page.click('#exclude')
+    page.wait_for('!!window.__letExclude', what='the change of Color exclusion to be sent')
+    assert page.evaluate(SWITCHES) == [False, True], 'the switch moved before the server answered'
+    page.evaluate('void window.__letExclude()')
+    page.wait_for(f'{SWITCHES}[1] === false', what='Color exclusion to turn off')
+    assert note('exclude') == 'Off: nothing is excluded by color.'
+    assert server.api('/api/doc')['color_exclude'] is False
+
+    page.click('#btn-look-reset')
+    page.wait_for(f'{SWITCHES}[0] === true', what='Reset all to turn Texture fade back on')
+    assert page.evaluate(SWITCHES) == [True, False], 'Reset all must leave Color exclusion as it is'
+    # and back, a step at a time: the reset, Color exclusion, Texture fade
+    for expected in ('[false,false]', '[false,true]', '[true,true]'):
+        page.click('#btn-undo')
+        page.wait_for(f'JSON.stringify({SWITCHES}) === "{expected}"', timeout=10,
+                      what=f'Undo to bring the switches to {expected}')
+    assert page.evaluate('document.querySelector("#btn-undo").disabled'), 'three changes were three steps, no more'
+
+
+def test_the_yellow_row_names_what_gets_no_texture_and_a_finished_solve_moves_nothing(check_ui):
+    server, page = check_page(check_ui, size=(1024, 768))
+    row = 'document.querySelector("#check-nostroke")'
+    assert page.evaluate(f'{row}.textContent') == '5.9%: Right leg. Check their direction lines in Guides.'
+    # one line, cut short where the group is narrow; the whole of it is in the row's tip and behind its ?
+    assert page.evaluate(f'''(() => {{
+        const p = {row}, line = parseFloat(getComputedStyle(p).lineHeight);
+        return p.getBoundingClientRect().height < 1.6 * line && p.dataset.tip.includes('Right leg')
+            && document.querySelector('#nostroke-names').textContent.includes('Right leg')
+            && document.querySelector('#nostroke-solving').hidden;
+    }})()''')
+    page.click('#show-problems')
+    marks(page, ALL_MARKS)
+    page.hover('.status')
+    before = resting_places(page)
+
+    # the missing region gets its line: while it solves it is no longer listed as missing, and once it has, the row
+    # says so, the shares are other numbers and the yellow is gone. Nothing of the previews or the group has moved
+    state = server.api('/api/doc')
+    missing = state['regions'][1]['id']
+    server.api(f'/api/doc/{state["id"]}/strokes', 'POST',
+               {'pts': [368, 185, 380, 189, 390, 190, 400, 189, 412, 185], 'hint': missing})
+    uibrowser._wait('the second region to solve',
+                    lambda: [r['status'] for r in server.api('/api/doc')['regions']] == ['ok', 'ok'], 30)
+    page.wait_for(f'{row}.textContent === "None."', timeout=30, what='the yellow row to say nothing is missing')
+    assert marks(page, 'm.yellow === 0')['red'] > 50
+    assert page.evaluate(f'!{row}.dataset.tip && document.querySelector("#nostroke-names").hidden')
+    assert resting_places(page) == before
+
+
+def test_reloading_clears_the_box_and_another_picture_keeps_it(check_ui):
+    server, page = check_page(check_ui)
+    ticked = 'document.querySelector("#show-problems").checked'
+    page.click('#show-problems')
+    marks(page, ALL_MARKS)
+    page.goto(server.url + '/?page=look')
+    page.wait_for('document.body.dataset.mode === "look" && !!document.querySelector("#fade-note").textContent',
+                  what='the Texture page after a reload')
+    assert not page.evaluate(ticked) and page.evaluate(CHECK_KEYS) == [False] * 3
+
+    page.click('#show-problems')
+    marks(page, ALL_MARKS)
+    check_document(server, portrait=True)                   # another picture: the page goes back to Guides for it
+    page.wait_for('document.body.dataset.mode === "edit"', what='the new picture to open on Guides')
+    page.click('#tab-look')
+    page.wait_for('document.body.dataset.mode === "look" && !!document.querySelector("#fade-note").textContent',
+                  what='the Texture page of the new picture')
+    assert page.evaluate(ticked) and page.evaluate(CHECK_KEYS) == [True] * 3, 'the blocks blinked while the settings loaded'
+    # the marks counted next are the new, upright picture's: not those the last one left on the canvases
+    page.wait_for('''(() => { const f = document.querySelector('#fit'); return f.height > f.width
+        && /^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent); })()''', timeout=60,
+                  what='the new picture to be drawn')
+    assert marks(page, ALL_MARKS)['original'] == 0
+    assert page.evaluate(CHECK_KEYS) == [True] * 3, page.evaluate(
+        f'[{SWITCHES}, document.querySelector("#fade-note").textContent, document.querySelector("#exclude-note").textContent]')
+
+
+def test_a_click_on_whole_of_a_very_upright_picture_shows_that_place_in_detail(check_ui):
+    # Whole of a picture ten times as high as it is wide is a few dozen px wide: its two sides are rounded to whole
+    # px apart, so it is not scaled by one number both ways. A click near its lower end must still bring that very
+    # place into Detail, and the frame on Whole must lie where Detail's picture is.
+    server, page = check_ui
+    server.set_lang('en')
+    iw, ih = 500, 5000
+    check_document(server, image_size=(iw, ih))
+    show(check_ui, 'en', 100, (360, 850), look=1)
+    page.wait_for('''document.querySelector('#fade-note').textContent && document.querySelector('#crop').width > 2
+        && /^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent)''', timeout=60,
+                  what='the previews and the rows')
+    spot = page.evaluate('''(async () => {
+        const real = window.fetch;
+        window.__crops = [];
+        window.fetch = (url, opt) => {
+            const to = String(url);
+            if (to.includes('/render/crop?')) {
+                const q = new URL(to, location.href).searchParams;
+                window.__crops.push(['x0', 'y0', 'w', 'h'].map((k) => +q.get(k)));
+            }
+            return real(url, opt);
+        };
+        const f = document.querySelector('#fit');
+        f.scrollIntoView({block: 'center'});
+        await new Promise((go) => requestAnimationFrame(() => requestAnimationFrame(go)));
+        // beside the compare slider, whose handle is wider than its line: a place where the canvas itself is on top
+        const r = f.getBoundingClientRect(), y = r.top + 0.94 * r.height;
+        const over = (share) => document.elementFromPoint(r.left + share * r.width, y);
+        const share = [0.2, 0.1, 0.8, 0.9, 0.05, 0.95].find((s) => over(s) === f);
+        const x = r.left + (share ?? 0.2) * r.width, top = over(share ?? 0.2);
+        return {x, y, on: top === f, over: top && `${top.tagName}#${top.id}.${top.className}`, size: [r.width, r.height],
+            at: [(x - r.left) / r.width, (y - r.top) / r.height], canvas: [f.width, f.height],
+            side: document.querySelector('#crop').width / 2};       // of what Detail shows at 200%, in picture px
+    })()''')
+    assert spot['on'], spot
+    w, h = spot['size']
+    # the case: in this window one ratio for both sides is off by more than half of what Detail shows
+    assert abs(iw / w - ih / h) * spot['at'][1] * h > spot['side'] / 2, spot
+    px, py = spot['at'][0] * iw, spot['at'][1] * ih
+    for kind in ('mousePressed', 'mouseReleased'):
+        page.send('Input.dispatchMouseEvent', type=kind, x=spot['x'], y=spot['y'], button='left', clickCount=1)
+    page.wait_for('window.__crops.length > 0', timeout=20, what='Detail to be asked for at the place clicked')
+    page.evaluate('new Promise((resolve) => setTimeout(resolve, 600))')
+    x0, y0, cw, ch = page.evaluate('window.__crops.at(-1)')
+    assert x0 <= px <= x0 + cw and y0 <= py <= y0 + ch, f'clicked ({px:.0f}, {py:.0f}), Detail shows {(x0, y0, cw, ch)}'
+    # the frame on Whole: the rows of its canvas that hold the frame's white line
+    top, bottom = page.evaluate('''(() => {
+        const f = document.querySelector('#fit'), d = f.getContext('2d').getImageData(0, 0, f.width, f.height).data;
+        const rows = [];
+        for (let y = 0; y < f.height; y++) for (let x = 0; x < f.width; x++) {
+            const i = 4 * (y * f.width + x);
+            if (Math.min(d[i], d[i + 1], d[i + 2]) >= 236) { rows.push(y); break; }
+        }
+        return [rows[0], rows.at(-1)];
+    })()''')
+    k = spot['canvas'][1] / ih
+    assert abs(top - y0 * k) <= 2 and abs(bottom - (y0 + ch) * k) <= 2, \
+        f'the frame is on rows {top}..{bottom}, Detail shows rows {y0 * k:.1f}..{(y0 + ch) * k:.1f}'
+
+
+def test_a_whole_narrower_than_the_compare_slider_can_still_be_clicked_and_the_slider_dragged(check_ui):
+    # At a large interface size, Whole of a picture ten times as high as it is wide is narrower than the strip the
+    # compare slider is grabbed by. A click on Whole must still reach the picture (it moves Detail there), anywhere
+    # but on the slider's round grip; and the grip must still drag the slider.
+    server, page = check_ui
+    server.set_lang('en')
+    iw, ih = 300, 3000
+    check_document(server, image_size=(iw, ih))
+    show(check_ui, 'en', 175, (500, 1150), look=1)
+    page.wait_for('''document.querySelector('#fade-note').textContent && document.querySelector('#crop').width > 2
+        && /^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent)''', timeout=60,
+                  what='the previews and the rows')
+    spot = page.evaluate('''(async () => {
+        const real = window.fetch;
+        window.__crops = [];
+        window.fetch = (url, opt) => {
+            const to = String(url);
+            if (to.includes('/render/crop?')) {
+                const q = new URL(to, location.href).searchParams;
+                window.__crops.push(['x0', 'y0', 'w', 'h'].map((k) => +q.get(k)));
+            }
+            return real(url, opt);
+        };
+        const f = document.querySelector('#fit');
+        f.scrollIntoView({block: 'center'});
+        await new Promise((go) => requestAnimationFrame(() => requestAnimationFrame(go)));
+        const r = f.getBoundingClientRect(), g = document.querySelector('.compare-grip').getBoundingClientRect();
+        // on the slider's own line, a fifth of the way down: well clear of the grip, which is at mid-height
+        const x = r.left + r.width / 2, y = r.top + 0.2 * r.height, top = document.elementFromPoint(x, y);
+        return {x, y, on: top === f, over: top && `${top.tagName}#${top.id}.${top.className}`,
+            size: [r.width, r.height], strip: document.querySelector('#compare').getBoundingClientRect().width,
+            grip: [g.left + g.width / 2, g.top + g.height / 2], left: r.left, width: r.width};
+    })()''')
+    assert spot['size'][0] < spot['strip'], f'not the case: Whole is wider than the strip of the slider: {spot}'
+    assert spot['on'], f'a click on Whole lands on the compare slider: {spot}'
+    for kind in ('mousePressed', 'mouseReleased'):
+        page.send('Input.dispatchMouseEvent', type=kind, x=spot['x'], y=spot['y'], button='left', clickCount=1)
+    page.wait_for('window.__crops.length > 0', timeout=20, what='Detail to be asked for at the place clicked')
+    page.evaluate('new Promise((resolve) => setTimeout(resolve, 600))')
+    x0, y0, cw, ch = page.evaluate('window.__crops.at(-1)')
+    assert y0 <= 0.2 * ih <= y0 + ch, f'clicked a fifth of the way down ({0.2 * ih:.0f}), Detail shows {(x0, y0, cw, ch)}'
+    # the grip is still the slider's: dragged to the right edge of Whole, most of it shows the original
+    at = '+document.querySelector("#compare").getAttribute("aria-valuenow")'
+    assert page.evaluate(at) == 50
+    gx, gy = spot['grip']
+    page.send('Input.dispatchMouseEvent', type='mousePressed', x=gx, y=gy, button='left', clickCount=1)
+    page.send('Input.dispatchMouseEvent', type='mouseMoved', x=spot['left'] + spot['width'] - 1, y=gy, button='left',
+              buttons=1)
+    page.send('Input.dispatchMouseEvent', type='mouseReleased', x=spot['left'] + spot['width'] - 1, y=gy, button='left',
+              clickCount=1)
+    page.wait_for(f'{at} >= 90', timeout=10, what='the grip to drag the slider to the right')
+
+
+def test_whole_shows_the_original_and_the_yellow_marks_when_nothing_gets_texture(check_ui):
+    # The only painted region can have direction lines and still fail to solve: the Texture page opens, nothing is
+    # textured, and the yellow row names the region. Whole must then show the picture, with the yellow on it when
+    # the box is ticked, not an empty grey effect side. Only the public /look answer is changed here (it says nothing
+    # is textured); the marks are the real server's, for the region of the picture that has no line.
+    server, page = check_ui
+    script = page.send('Page.addScriptToEvaluateOnNewDocument', source='''(() => {
+        const real = window.fetch;
+        window.fetch = async (url, opt) => {
+            const res = await real(url, opt);
+            if (!/\\/api\\/doc\\/[^/]+\\/look(\\?|$)/.test(String(url)) || !res.ok) return res;
+            const info = await res.json();
+            if (info && 'textured' in info) info.textured = 0;
+            return Response.json(info, {status: res.status});
+        };
+    })()''')['identifier']
+    try:
+        check_page(check_ui)
+        corner = '''(() => {
+            const f = document.querySelector('#fit');
+            return [...f.getContext('2d').getImageData(f.width - 4, 4, 1, 1).data].slice(0, 3);
+        })()'''
+        # the effect side, right of the compare slider, is the picture's own grey (157), not the stage's (84)
+        page.wait_for(f'{corner}.every(v => Math.abs(v - 157) < 8)', timeout=20, what='Whole to show the picture')
+        page.click('#show-problems')
+        seen = marks(page, 'm.yellow > 20', timeout=20)
+        assert seen['original'] == 0, seen
+        page.click('#show-problems')
+        marks(page, 'm.yellow === 0', timeout=20)
+        assert page.evaluate(f'{corner}.every(v => Math.abs(v - 157) < 8)')
+    finally:
+        page.send('Page.removeScriptToEvaluateOnNewDocument', identifier=script)
+
+
+# Detail's side, the width the previews have and whether they scroll, on each of 24 frames in a row.
+LAYOUT_FRAMES = '''new Promise(go => {
+    const seen = [], stage = document.querySelector('#stage'), crop = document.querySelector('#crop');
+    const tick = () => {
+        seen.push([crop.getBoundingClientRect().width, stage.clientWidth, stage.scrollHeight - stage.clientHeight > 1].join('/'));
+        if (seen.length < 24) requestAnimationFrame(tick); else go(seen);
+    };
+    requestAnimationFrame(tick);
+})'''
+
+
+@pytest.mark.parametrize('size', ((352, 840), (700, 780), (696, 780)), ids=lambda s: f'{s[0]}x{s[1]}')
+def test_the_layout_comes_to_rest_where_a_scroll_bar_changes_the_room(check_ui, size):
+    # At these sizes the plan for the full width scrolls, and the plan for the width a scroll bar leaves does not:
+    # the bar must not come and go with the plan, frame after frame.
+    server, page = check_page(check_ui)
+    page.resize(*size)
+    uibrowser.time.sleep(0.6)
+    seen = page.evaluate(LAYOUT_FRAMES)
+    assert len(set(seen[4:])) == 1, sorted(set(seen))
+    assert_check_layout(page, (448, 352))
+
+
+# ------------------------------------------------------------------ the check group: what the first cases let through
+
+def test_the_original_side_has_no_marks_wherever_the_compare_slider_is(check_ui):
+    # where the slider rests by default nothing of the picture's marks lies left of it, so that position proves
+    # nothing: the slider is moved with its own keys to where marks would lie on the original side if they were drawn
+    server, page = check_page(check_ui)
+    at = '+document.querySelector("#compare").getAttribute("aria-valuenow")'
+    page.click('#show-problems')
+    marks(page, ALL_MARKS)
+    page.evaluate('document.querySelector("#compare").focus()')
+    press(page, 'End', 'End', 35)                   # all original
+    page.wait_for(f'{at} >= 99', what='the slider at the end')
+    seen = marks(page, 'm.red + m.blue + m.yellow === 0')
+    assert seen['original'] == 0, seen
+    press(page, 'Home', 'Home', 36)                 # all effect
+    page.wait_for(f'{at} <= 1', what='the slider at the start')
+    whole = marks(page, 'm.red > 50 && m.blue > 20 && m.yellow > 20')
+    assert whole['original'] == 0, whole
+    for _ in range(40):                             # and across the red marks, part of them on each side
+        if page.evaluate(at) >= 62:
+            break
+        press(page, 'ArrowRight', 'ArrowRight', 39, shift=True)
+    assert 62 <= page.evaluate(at) <= 85, page.evaluate(at)
+    part = marks(page, f'm.red < {whole["red"]} && m.original === 0')
+    assert part['yellow'] > 20, part
+
+
+def test_exports_made_with_and_without_the_marks_showing_are_the_same_pixels(check_ui, tmp_path):
+    import cv2
+    import numpy as np
+
+    server, page = check_page(check_ui)
+    # Only the system's save dialog is answered here; both files are written by the real server.
+    page.evaluate('''(() => {
+        const real = window.fetch;
+        window.fetch = (url, opt) => String(url).endsWith('/export/ask')
+            ? Promise.resolve(Response.json({path: window.__exportTo})) : real(url, opt);
+    })()''')
+    written = []
+    for ticked in (True, False):
+        if page.evaluate('document.querySelector("#show-problems").checked') != ticked:
+            page.click('#show-problems')
+        marks(page, ALL_MARKS if ticked else 'm.red + m.blue + m.yellow + m.detailRed + m.detailBlue === 0')
+        target = tmp_path / f'marks-{"on" if ticked else "off"}.png'
+        page.evaluate(f'window.__exportTo = {json.dumps(str(target))}')
+        page.click('#btn-export')
+        uibrowser._wait(f'{target.name} to be written', target.is_file, 60)
+        page.wait_for('!document.querySelector("#exported").hidden', timeout=60, what='the export receipt')
+        page.click('#btn-exported-close')
+        written.append(cv2.imdecode(np.fromfile(str(target), np.uint8), cv2.IMREAD_UNCHANGED))
+    assert written[0].shape == written[1].shape and written[0].shape[:2] == (352, 448)
+    assert np.array_equal(written[0], written[1]), 'showing the marks changed what was exported'
+    assert (written[0][..., :3] != 157).any(axis=2).sum() > 5000, 'the export is the picture, not a blank'
+
+
+CANVAS_HASH = '''['#fit', '#crop'].map((s) => {
+    const c = document.querySelector(s), d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+    let h = 0;
+    for (let i = 0; i < d.length; i += 4) h = (h * 31 + d[i] + 3 * d[i + 1] + 7 * d[i + 2]) | 0;
+    return h;
+})'''
+
+
+def test_the_group_is_reached_and_really_works_in_a_short_window(check_ui):
+    server, page = check_page(check_ui, 'en', 175, (720, 480))
+    assert page.evaluate('(() => { const s = document.querySelector("#stage"); return s.scrollHeight > s.clientHeight + 20; })()')
+
+    def reach(control):
+        """Scroll the previews to the control; it must then be in what shows, with nothing over it."""
+        page.evaluate(f'''new Promise(go => {{
+            document.querySelector('{control}').scrollIntoView({{block: 'center'}});
+            requestAnimationFrame(() => requestAnimationFrame(go));
+        }})''')
+        assert page.evaluate(f'''(() => {{
+            const e = document.querySelector('{control}'), r = e.getBoundingClientRect();
+            const s = document.querySelector('#stage').getBoundingClientRect();
+            const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+            const own = top && (top === e || (top.closest('.switch, label') || top).contains(e));
+            return r.top >= s.top && r.bottom <= s.bottom && !!own;
+        }})()'''), f'{control} cannot be scrolled into view and clicked'
+
+    def redrawn(drawn):
+        page.wait_for(f'(() => {{ const h = {CANVAS_HASH}; return h[0] !== {drawn[0]} && h[1] !== {drawn[1]}; }})()',
+                      timeout=60, what='both previews to be drawn again')
+        return page.evaluate(CANVAS_HASH)
+
+    page.hover('.status')
+    before = resting_places(page)
+    drawn = page.evaluate(CANVAS_HASH)
+    # not ticked: each switch still changes both pictures, and the row's new words move nothing
+    reach('#exclude')
+    page.click('#exclude')
+    page.wait_for(f'{SWITCHES}[1] === false', what='Color exclusion to turn off')
+    drawn = redrawn(drawn)
+    page.hover('.status')
+    assert resting_places(page) == before
+    reach('#fade')
+    page.click('#fade')
+    page.wait_for(f'{SWITCHES}[0] === false', what='Texture fade to turn off')
+    redrawn(drawn)
+    reach('#show-problems')
+    page.click('#show-problems')
+    assert page.evaluate('document.querySelector("#show-problems").checked')
+    assert page.evaluate(CHECK_KEYS) == [False, False, True]
+    marks(page, 'm.yellow > 0 && m.red === 0 && m.blue === 0')
+    page.hover('.status')
+    assert resting_places(page) == before
+
+
+@pytest.mark.parametrize('lang, untextured, solving, none, suffix', (
+    ('zh', ['测试部位', '左腿分开的一块'], ['右腿'], '没有。', '（求解中…）'),
+    ('en', ['Test region', 'Separate piece of Left leg'], ['Right leg'], 'None.', '(solving…)'),
+    ('en', [], ['Right leg'], 'None.', '(solving…)'),
+    ('zh', ['测试部位'], [], '没有。', '（求解中…）'),
+), ids=('zh-failed-detached-solving', 'en-failed-detached-solving', 'en-only-solving', 'zh-failed-alone'))
+def test_the_yellow_row_reads_the_lists_the_server_gives(check_ui, lang, untextured, solving, none, suffix):
+    # The server names what gets no texture (a region with no line or a failed solve by its name, a detached piece in
+    # its own words) and, apart from them, what is still solving: the backend's tests prove where the lists come from.
+    # Here only those two lists of the public /look answer are set, and the row must say them as they are.
+    server, page = check_ui
+    script = page.send('Page.addScriptToEvaluateOnNewDocument', source=f'''(() => {{
+        const real = window.fetch;
+        window.fetch = async (url, opt) => {{
+            const res = await real(url, opt);
+            if (!/\\/api\\/doc\\/[^/]+\\/look(\\?|$)/.test(String(url)) || !res.ok) return res;
+            const info = await res.json();
+            if (info && 'untextured' in info) Object.assign(info, {json.dumps({'untextured': untextured, 'solving': solving})});
+            return Response.json(info, {{status: res.status}});
+        }};
+    }})()''')['identifier']
+    try:
+        check_page(check_ui, lang, 100, (1024, 768))
+        seen = page.evaluate('''(() => {
+            const row = document.querySelector('#check-nostroke'), text = (s) => document.querySelector(s);
+            return { row: row.textContent, tip: row.dataset.tip || '',
+                oneLine: row.getBoundingClientRect().height < 1.6 * parseFloat(getComputedStyle(row).lineHeight),
+                names: text('#nostroke-names').hidden ? null : text('#nostroke-names').textContent,
+                solving: text('#nostroke-solving').hidden ? null : text('#nostroke-solving').textContent,
+                fade: text('#fade-note').textContent, exclude: text('#exclude-note').textContent };
+        })()''')
+        assert seen['oneLine'], seen
+        if untextured:
+            assert all(name in seen['row'] and name in seen['names'] and name in seen['tip'] for name in untextured), seen
+            assert not seen['row'].startswith(none), seen
+        else:
+            assert seen['row'].startswith(none) and seen['names'] is None, seen
+        if solving:
+            # still solving: said after the list, never in it; named in the full note and the tip; no share shown yet
+            assert seen['row'].rstrip().endswith(suffix), seen
+            assert all(name not in seen['row'] and name not in (seen['names'] or '') for name in solving), seen
+            assert all(name in seen['solving'] and name in seen['tip'] for name in solving), seen
+            assert '%' not in seen['fade'] and '%' not in seen['exclude'], seen
+        else:
+            assert suffix not in seen['row'] and seen['solving'] is None, seen
+        if lang == 'en':
+            assert not page.evaluate('/[\\u4e00-\\u9fff]/.test(document.querySelector("#check-group").innerText)')
+        assert_check_layout(page, (448, 352))
+    finally:
+        page.send('Page.removeScriptToEvaluateOnNewDocument', identifier=script)
+
+
+def test_one_page_through_windows_that_dock_the_group_differently(check_ui):
+    # no reload between them: the same page is given one real window after another, and the group goes under Detail,
+    # under both previews or beside them as each window has room for; whichever it is, nothing overflows or overlaps
+    server, page = check_page(check_ui)
+    where = []
+    for size in ((1440, 900), (1024, 768), (1600, 600), (360, 840), (700, 1100), (1440, 900)):
+        page.resize(*size)
+        uibrowser.time.sleep(0.5)
+        page.hover('.status')
+        resting_places(page)
+        view = assert_check_layout(page, (448, 352))
+        (cx, cy, cw, ch), (gx, gy, gw, gh) = view['rects']['#crop'], view['rects']['#check-group']
+        where.append('beside' if gx >= cx + cw - 1 else 'under Detail' if abs(gx - cx) <= 2 and gy > cy + ch
+                     else 'below' if gy > cy + ch else 'elsewhere')
+    assert len(set(where)) >= 3 and 'elsewhere' not in where, where
+    # Back in the first window the page may keep the dock it came with, where two docks are about as good (it holds
+    # on to the one in use so that a window being dragged does not flip between them). That is the only memory there
+    # is: the same window opened afresh is arranged as it first was.
+    page.goto(server.url + '/?page=look')
+    page.wait_for('document.body.dataset.mode === "look" && !!document.querySelector("#fade-note").textContent',
+                  what='the Texture page after a reload')
+    page.hover('.status')
+    resting_places(page)
+    view = assert_check_layout(page, (448, 352))
+    (cx, cy, cw, ch), (gx, gy, gw, gh) = view['rects']['#crop'], view['rects']['#check-group']
+    assert abs(gx - cx) <= 2 and gy > cy + ch, (where, view)
+    page.check_errors()
+
+
+def test_the_interface_size_control_lays_the_page_out_anew(check_ui):
+    # the control itself (it reloads the page, as it always has), not the server's setting from outside
+    server, page = check_page(check_ui, 'en', 100, (1024, 768))
+    before = assert_check_layout(page, (448, 352))
+    try:
+        page.evaluate('''(() => {
+            const s = document.querySelector('#ui-scale');
+            s.value = '150';
+            s.dispatchEvent(new Event('change', {bubbles: true}));
+        })()''')
+        page.wait_for('''getComputedStyle(document.documentElement).getPropertyValue('--k').trim() === '1.5'
+            && document.body.dataset.mode === 'look' && !!document.querySelector('#fade-note').textContent
+            && /^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent)''', timeout=60,
+                      what='the page at 150%')
+        after = assert_check_layout(page, (448, 352))
+        assert after['rects']['#check-group'][3] > before['rects']['#check-group'][3], (before, after)
+        for control in CHECK_CONTROLS:
+            assert page.evaluate(f'document.querySelector("{control}").checkVisibility({{visibilityProperty: true}})')
+    finally:
+        server.set_scale(100)

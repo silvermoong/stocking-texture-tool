@@ -199,7 +199,7 @@ Area 35% / 50% / 70% / 100% (Contrast 100%; top left, top right, bottom left, bo
 ![The Texture page with a second layer: the Texture layers list in the left panel has two rows, Texture 1 (30%) and Texture 2 (70%), each with a blend slider and an ×, a + to the right of the heading and Auto 100% under the list; the box below starts with “Editing: Texture 2” and has Kase selected as its style](docs/images/layers-page-en.jpg)
 
 - **Adding layers:** the layers are managed in the left panel of the Texture page; the top bar holds only the two pages, Guides and Texture. With one layer, “+ Add texture layer” beside the Style heading adds another, up to 4. With two or more, a Texture layers list appears under Presets with a row for each layer (Texture 1, Texture 2, …), and the “+” moves to the right of the list's heading; at 4 layers it is greyed out and says that 4 is the most. The × at the end of a row (or Delete with the layer's name focused) deletes that layer.
-- **Each layer's own settings:** style, density, tilt and strength are kept per layer, in the box under the list. Click a layer's name and the box switches to that layer; its first line says which layer you are editing. Sparkles, highlight particles, the moiré effect, Texture fade and Color exclusion, below the box, apply to the whole picture.
+- **Each layer's own settings:** style, density, tilt and strength are kept per layer, in the box under the list. Click a layer's name and the box switches to that layer; its first line says which layer you are editing. Sparkles, highlight particles and the moiré effect, below the box, apply to the whole picture, and so do Texture fade and Color exclusion, in the Show problems group beside the previews.
 - **Blend:** each row of the list has a percentage slider, so any layer's share can be set without switching layers.
 - **Auto 100%** (the button under the list, on by default): with it on the layers add up to 100%. Dragging one makes the others give up or take the rest in their existing proportions, so the overall strength of the texture stays the same, and a new layer shares equally with the others. Turn it off and each layer is set on its own and does not affect the others, every layer starting at 50%: above 100% in all the texture gets heavier, below it the picture shows through, and the total is shown beside the button. On and off each remember their own settings, so you can switch back and forth without losing either. Which side you left it on is remembered too, and an image you open next starts from that. Hover the button for a short description.
 - **After the blend:** sparkles, highlight particles and the moiré effect go on once, after the layers are blended, not again for each layer; the sparkles take the first layer's style.
@@ -215,13 +215,23 @@ Kase's share 0% / 30% / 70% / 100% (the rest is Fine lines; left to right), the 
 
 ![Exporting and importing a preset. Top: a preset is selected, Export… is clicked, and the status bar says where the file went, D:\presets. Bottom: Import… is clicked and the file picked; a preset with that name already exists, so the imported one is called “Black · Fine lines (2)” and nothing is replaced](docs/images/presets-share-en.png)
 
-**Color exclusion** (on by default): parts of a region whose color is far from the stocking's (gold trim, gloves, bare skin) get no texture. Now and then a sheer knee showing skin gets excluded too; turn it off then. This switch is saved with the current work, not in presets. Reset all leaves it unchanged.
+**Color exclusion** (on by default, in the Show problems group beside the previews): parts of a region whose color is far from the stocking's (gold trim, gloves, bare skin) get no texture. Now and then a sheer knee showing skin gets excluded too; turn it off then. This switch is saved with the current work, not in presets. Reset all leaves it unchanged.
 
 **Undo and redo:** the Undo and Redo buttons at the top right (Ctrl+Z, Ctrl+Shift+Z or Ctrl+Y) work on the page you are on, and each page keeps its own history. Hover over either button or focus it with the keyboard to see which page it applies to. On the Texture page they cover what you do there: style, density, tilt, strength, adding and deleting layers and their mix, sparkles, highlight particles, the moiré effect, loading a preset, Reset all, and the Color exclusion switch; one drag of a slider is one step. Saving, deleting, importing and exporting presets are not part of it. Undo on the Guides page still covers regions and direction lines. The history is not saved with the image and is cleared when you close it.
 
 ### 6. Show problems
 
-Click Show problems beside the Detail preview heading. Both previews show the marks, and the legend is below Detail. Red marks where the courses are so dense that the texture was faded to avoid moiré, blue what Color exclusion removed, and yellow regions with no direction lines yet. If a main area has a large patch of red, lower the density:
+Tick Show problems beside the previews. Both previews show the marks (in the previews only, never in an export). The box and the three rows under it are one group, which the tool places in the preview area, under or beside one of the previews, to suit the window and the picture's shape; in a small window you may have to scroll the previews down a little to see all of it.
+
+The block at the start of each row is its color on the previews:
+
+- **Red** marks where the courses are so dense that the texture was faded to avoid moiré. The Texture fade switch on that row decides it.
+- **Blue** marks what Color exclusion removed. The switch on that row decides it.
+- **Yellow** marks what is painted but gets no texture: a region with no direction lines, a region whose solve failed, or a separate piece of a region with no line of its own. It has no switch; go back to Guides and check those regions' direction lines. The row names the regions, and the ? beside it shows the whole list when it is cut short.
+
+The two switches work whether or not Show problems is ticked, and they change what is exported; under each row is its present share of the painted regions. A block is hollow while Show problems is not ticked or the switch on its row is off. With the box or a switch focused by Tab, Space toggles it; after a mouse click on one, Space is still the hold that shows the original in Detail.
+
+If a main area has a large patch of red, lower the density (with several texture layers, the one whose courses are closest):
 
 ![Left: density 140%, a large red patch behind the knee; right: density 85%, almost gone](docs/images/show-problems.png)
 
@@ -246,7 +256,7 @@ The tool saves your work as you go: close it and it opens where you left off. Be
 
 **The texture is too faint or too strong.** Adjust Strength. Dark clothes and dark stockings can be faint at the default.
 
-**There's a large red "Faded" patch.** Lower the density, or enlarge the picture and process it again.
+**Show problems marks a large red patch.** Lower the density, or enlarge the picture and process it again.
 
 **Pick isn't working.** Its status and the reason show under the brush slider in step 1. If a model file is missing, run `install.bat` again.
 

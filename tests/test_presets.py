@@ -394,9 +394,11 @@ class El {{
     }}
   }}
   append(...nodes) {{ this.children.push(...nodes); }}
-  querySelector() {{ return null; }}
+  // the check group reads its own rows and notes, and copies a note to keep room for its longest reading
+  querySelector(sel) {{ return (this._found ??= new Map()).get(sel) ?? this._found.set(sel, new El()).get(sel); }}
   querySelectorAll() {{ return []; }}
-  closest() {{ return null; }}
+  closest() {{ return this.parentElement; }}
+  cloneNode() {{ return new El(this.tagName); }}
   addEventListener(type, fn) {{ (this.listeners[type] ??= []).push(fn); }}
   dispatch(type, extra = {{}}) {{
     for (const fn of [...(this.listeners[type] || [])]) fn({{ target: this, currentTarget: this, preventDefault() {{}}, ...extra }});

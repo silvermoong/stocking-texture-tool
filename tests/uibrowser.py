@@ -58,12 +58,17 @@ def require():
         pytest.skip('needs the websockets package (installed with uvicorn[standard])')
 
 
+# Ports above 1023 that a Chromium browser refuses to load a page from (net::ERR_UNSAFE_PORT), whatever serves there.
+UNSAFE_PORTS = frozenset((1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668,
+                          6669, 6679, 6697, 10080))
+
+
 def _free_port():
     while True:
         with socket.socket() as s:
             s.bind(('127.0.0.1', 0))
             port = s.getsockname()[1]
-        if port != TOOL_PORT:
+        if port != TOOL_PORT and port not in UNSAFE_PORTS:
             return port
 
 
@@ -385,9 +390,9 @@ class Page:
         """Drain and consume this step's diagnostics. Fail with one report, except for exact lines in `allow`."""
         self._assert_no_errors(self._flush_events(), allow)
 
-    def evaluate(self, js):
+    def evaluate(self, js, timeout=30):
         """The value of a JavaScript expression in the page (a promise is awaited); it must be JSON."""
-        r = self.send('Runtime.evaluate', expression=js, awaitPromise=True, returnByValue=True)
+        r = self.send('Runtime.evaluate', timeout=timeout, expression=js, awaitPromise=True, returnByValue=True)
         if 'exceptionDetails' in r:
             d = r['exceptionDetails']
             raise RuntimeError(d.get('exception', {}).get('description') or d.get('text'))

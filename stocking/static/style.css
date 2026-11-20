@@ -516,12 +516,8 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .link-btn[aria-pressed="false"] { border-style: dashed; border-color: var(--faint); }
 .link-btn[aria-pressed="false"]::after { content: "不关联"; color: var(--muted); }
 .unlinked { margin-right: calc(28px * var(--k)); }
-#sparkle-section, #particle-section, #moire-section, .exclude { padding-top: calc(14px * var(--k)); border-top: 1px solid var(--line); margin-left: calc(-16px * var(--k)); margin-right: calc(-16px * var(--k)); padding-left: calc(16px * var(--k)); padding-right: calc(16px * var(--k)); }
-.exclude { margin-bottom: 0; }
-.exclude .field-head { align-items: center; }
-.exclude .note + .field-head { margin-top: calc(14px * var(--k)); }
-.exclude .note { margin-top: calc(4px * var(--k)); }
-#btn-look-reset { margin-top: calc(18px * var(--k)); }
+#sparkle-section, #particle-section, #moire-section, .reset-group { padding-top: calc(14px * var(--k)); border-top: 1px solid var(--line); margin-left: calc(-16px * var(--k)); margin-right: calc(-16px * var(--k)); padding-left: calc(16px * var(--k)); padding-right: calc(16px * var(--k)); }
+.reset-group { margin-bottom: 0; }
 
 /* Give the preview controls the width they need before the enlarged settings sidebar crowds them out. */
 body[data-mode="look"].stack-texture-settings {
@@ -533,18 +529,17 @@ body[data-mode="look"].stack-texture-settings .side { border-right: 0; border-to
 
 /* 纹理: 整体 and 细节, placed by look.js (side by side, or 细节 below), on the stage. In a short window, let the
    stage scroll rather than spend all of its height on the wrapped controls and squeeze the pictures away. */
-body[data-mode="look"] .stage { overflow-y: auto; }
+body[data-mode="look"] .stage { overflow-y: auto; scrollbar-gutter: stable; }     /* the bar's width is kept free: a plan that scrolls and one that does not have the same room, so look.js cannot go back and forth between them */
 .look-stage { position: absolute; inset: 0; min-height: calc(240px * var(--k)); background: var(--stage); }
 .stack-texture-settings .look-stage { min-height: calc(320px * var(--k)); }
 .pane { position: absolute; margin: 0; }
-.pane-head, .detail-title { display: flex; align-items: center; gap: calc(3px * var(--k)) calc(8px * var(--k)); }
+.pane-head { display: flex; align-items: center; gap: calc(3px * var(--k)) calc(8px * var(--k)); }
 .pane-head { min-height: calc(34px * var(--k)); }
-.detail-pane .pane-head, .detail-title { flex-wrap: wrap; }
+.detail-pane .pane-head { flex-wrap: wrap; }
 .detail-pane .pane-head { align-content: center; padding-block: calc(4px * var(--k)); }
 .pane-head h3 { flex: none; margin: 0; font-size: calc(14px * var(--k)); font-weight: 700; }
 .pane-head .btn:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--float); }   /* --hover is the stage's own grey */
 .pane-head .btn:disabled { color: var(--text); }          /* 已在最密处: a state, still readable on the stage */
-#btn-check { font-weight: 700; }                          /* keep the header's wrapping steady when pressed */
 /* Overlay both labels so changing position in the preview does not move or resize its canvas. */
 #btn-densest { display: inline-grid; place-items: center; }
 #btn-densest > span { grid-area: 1 / 1; }
@@ -555,26 +550,44 @@ body[data-mode="look"] .stage { overflow-y: auto; }
 #crop { display: block; cursor: grab; image-rendering: pixelated; touch-action: none; }
 #crop.dragging { cursor: grabbing; }
 .pane-foot { display: grid; align-items: center; min-height: calc(30px * var(--k)); padding-block: calc(3px * var(--k)); font-size: calc(12px * var(--k)); }
-/* Reserve the greater of the hint and the wrapped legend so switching between them does not move the preview. */
-.pane-foot > * { grid-area: 1 / 1; min-width: 0; }
-.pane-foot > [hidden] { visibility: hidden; }
-.pane-foot .peek[hidden] { display: block !important; }
-.pane-foot .legend[hidden] { display: flex !important; }
+.pane-foot > * { min-width: 0; }
 .peek kbd { margin-right: calc(6px * var(--k)); padding: 1px calc(6px * var(--k)); border-radius: 2px; background: var(--raised); font: calc(12px * var(--k)) var(--din); }
 .peek.on kbd { background: var(--chalk); color: var(--on-chalk); }
-.legend { display: flex; flex-wrap: wrap; gap: calc(4px * var(--k)) calc(14px * var(--k)); }
-.key-item { display: inline-flex; align-items: center; gap: calc(5px * var(--k)); min-width: 0; max-width: 100%; padding: 0; background: none; font-size: calc(12px * var(--k)); text-align: left; cursor: help; }
-.key-item:hover { color: var(--chalk); }
-.legend-value { display: inline-grid; min-width: 0; overflow-wrap: anywhere; }
-.legend-value > span, .legend-value::before { grid-area: 1 / 1; }
-.legend-value::before { content: attr(data-measure); visibility: hidden; }
-.key { flex: none; width: calc(10px * var(--k)); height: calc(10px * var(--k)); border-radius: 2px; background: var(--c); }
+/* 标出问题 over the three kinds of mark, each on the row of the switch that causes it. look.js chooses where the group
+   goes and how wide it is; the rows then sit side by side or one under another by that width alone. Every note keeps
+   the height of its longest reading (.measure), so the group's height depends on its width and never on what the
+   notes say now: ticking the box, a switch, a new value or a finished solve cannot move the previews.
+   No containment here: the ? notes inside are position: fixed and must stay the window's. */
+.check-group {
+  --row-min: 15em; --row-max: 19em;     /* a row's least and most width: look.js reads them for the group's own */
+  position: absolute; box-sizing: border-box; margin: 0; padding: calc(8px * var(--k)) calc(12px * var(--k)) calc(10px * var(--k));
+  border-radius: calc(6px * var(--k)); background: var(--chrome); font-size: calc(12px * var(--k));     /* the panel's own fill: its switches, ? and notes read here as they do there */
+}
+.check-head { display: inline-flex; max-width: 100%; margin-bottom: calc(6px * var(--k)); font-size: calc(13px * var(--k)); font-weight: 700; }
+/* the rows wrap by the group's width; a row left alone on its line takes the whole of it */
+.check-rows { display: flex; flex-wrap: wrap; gap: calc(8px * var(--k)) calc(20px * var(--k)); padding-left: calc(19px * var(--k)); }
+.check-row { flex: 1 1 var(--row-min); min-width: 0; }
+/* the switch stays beside its own name, however wide the column; the notes below take the column's width */
+.check-line { display: flex; align-items: center; gap: calc(6px * var(--k)); max-width: var(--row-max); min-height: calc(20px * var(--k)); }
+.check-line .switch-label, .check-name { min-width: 0; font-size: calc(13px * var(--k)); }
+/* what a row says (.shown) and, unseen in the same cell, the same with each other reading of its status (.measure):
+   the cell is as tall as the tallest, and the room to spare is at the row's end, not between its lines */
+.check-notes { display: grid; grid-template-columns: minmax(0, 1fr); margin-left: calc(16px * var(--k)); }
+.check-notes > * { grid-area: 1 / 1; min-width: 0; }
+.check-notes > .measure { visibility: hidden; }
+.check-group .note { display: block; min-height: 1.55em; margin: calc(2px * var(--k)) 0 0; }
+.check-notes.one-line .note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* hollow while its colour is not on the previews: 标出问题 not ticked, or the switch of this row off */
+.key { flex: none; box-sizing: border-box; width: calc(10px * var(--k)); height: calc(10px * var(--k)); border: 1px solid var(--muted-raised); border-radius: 2px; background: transparent; }
+.key.on { border-color: var(--c); background: var(--c); }
 .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: calc(4px * var(--k)); background: var(--raised); }
 .seg-btn { height: calc(22px * var(--k)); padding: 0 calc(8px * var(--k)); border-radius: 2px; background: none; font-size: calc(12px * var(--k)); }
 .seg-btn:hover:not([aria-checked="true"]) { background: var(--hover); }
 .seg-btn[aria-checked="true"] { background: var(--chalk); color: var(--on-chalk); font-weight: 700; }
 /* before/after divider over 整体: original on the left, effect on the right */
 .compare { position: absolute; top: 0; left: 0; width: calc(24px * var(--k)); margin-left: calc(-12px * var(--k)); cursor: ew-resize; touch-action: none; }
+.compare.slim { pointer-events: none; }                 /* a very narrow 整体 (look.js): the picture under the line takes the clicks, */
+.compare.slim .compare-grip { pointer-events: auto; }   /* and the grip alone still drags the slider */
 .compare::before {
   content: ""; position: absolute; top: 0; bottom: 0; left: calc(11px * var(--k)); width: 2px; background: #fff;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, .45);
@@ -590,6 +603,8 @@ body[data-mode="look"] .stage { overflow-y: auto; }
 .compare:focus-visible { outline: none; }
 .compare:focus-visible .compare-grip { box-shadow: 0 0 0 calc(3px * var(--k)) rgba(255, 255, 255, .45); }
 .compare-tags { position: absolute; top: 0; left: 0; display: flex; justify-content: space-between; padding: calc(8px * var(--k)); pointer-events: none; }
+.compare-tags.compact { padding: calc(4px * var(--k)); }          /* a small 整体: look.js, where the usual insets do not fit */
+.compare-tags.compact span { padding: 0 calc(3px * var(--k)); }
 .compare-tags span { flex: none; white-space: nowrap; padding: 1px calc(7px * var(--k)); border-radius: 2px; background: color-mix(in oklab, var(--float) 80%, transparent); font-size: calc(12px * var(--k)); }
 
 /* status bar */
