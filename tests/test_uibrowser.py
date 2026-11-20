@@ -2,6 +2,7 @@
 own, and that a silent or failing page is reported instead of waited on or taken for a loaded one."""
 import http.server
 import json
+import subprocess
 import threading
 import time
 
@@ -111,3 +112,53 @@ def test_a_page_that_did_not_load_is_not_taken_for_one_that_did():
         return {'result': {'value': True}}  # the document still showing is ready, translated and from this address
     with pytest.raises(RuntimeError, match='ERR_ABORTED'):
         page_on(Wire(answers)).goto('http://127.0.0.1:1/', timeout=1)
+
+
+def test_nothing_is_sent_once_our_server_has_ended(other_tool, tmp_path):
+    # it was up, then crashed, and another tool has its port now: that one must not get our settings
+    port, posts = other_tool
+    server = uibrowser.Server(tmp_path)
+    server.port = port
+    for proc in (Gone(1), None):
+        server.proc = proc
+        with pytest.raises(RuntimeError):
+            server.set_lang('en')
+        with pytest.raises(RuntimeError):
+            server.upload('a.png', b'x')
+    assert posts == []
+
+
+class Running:
+    """A process that ends when killed (or, with dies=False, not even then)."""
+    pid = 1
+    returncode = None
+
+    def __init__(self, dies=True):
+        self.dies = dies
+
+    def poll(self):
+        return self.returncode
+
+    def kill(self):
+        if self.dies:
+            self.returncode = -9
+
+    def wait(self, timeout=None):
+        if self.returncode is None:
+            raise subprocess.TimeoutExpired('process', timeout)
+        return self.returncode
+
+
+@pytest.mark.parametrize('kind', (uibrowser.Server, uibrowser.Browser))
+def test_a_process_is_ended_even_when_taskkill_cannot_run_and_kept_when_it_will_not_go(kind, monkeypatch, tmp_path):
+    def no_taskkill(*args, **kw):
+        raise OSError('taskkill is not there')
+    monkeypatch.setattr(uibrowser.subprocess, 'run', no_taskkill)
+    ours = kind(tmp_path)
+    ours.proc = proc = Running()
+    ours.stop()
+    assert proc.returncode is not None and ours.proc is None
+    ours.proc = proc = Running(dies=False)
+    with pytest.raises(subprocess.TimeoutExpired):
+        ours.stop()
+    assert ours.proc is proc                # still ours to end: a later stop() tries again

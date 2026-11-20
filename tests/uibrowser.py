@@ -64,7 +64,7 @@ def _end(proc):
     if proc.poll() is not None:
         return
     if os.name == 'nt':      # a venv's python.exe starts the real one as a child, Edge is a tree of processes
-        with contextlib.suppress(subprocess.TimeoutExpired):
+        with contextlib.suppress(subprocess.TimeoutExpired, OSError):    # then the process itself, below
             subprocess.run(['taskkill', '/F', '/T', '/PID', str(proc.pid)], capture_output=True, timeout=20)
     else:
         proc.kill()
@@ -149,12 +149,15 @@ class Server:
             return ''
 
     def stop(self):
-        proc, self.proc = self.proc, None
-        if proc is not None:
-            _end(proc)          # an isolated server has no session to save: ending it loses nothing
+        if self.proc is not None:
+            _end(self.proc)     # an isolated server has no session to save: ending it loses nothing
+            self.proc = None    # only once it has gone: a stop() that failed can be tried again
 
     def api(self, path, method='GET', body=None, timeout=30, headers=None, data=None):
-        """A request to this server, as the launcher sends them (no Origin); the answer's JSON."""
+        """A request to this server, as the launcher sends them (no Origin); the answer's JSON. Nothing is sent once
+        our process has ended: its port may be another program's by then."""
+        if self.proc is None or self.proc.poll() is not None:
+            raise RuntimeError('the server is not running: nothing is sent to its port')
         h = dict(headers or {})
         if body is not None:
             data = json.dumps(body).encode()
@@ -274,9 +277,9 @@ class Browser:
         return Page(self._ask('/json/new?about:blank', 'PUT')['webSocketDebuggerUrl'], width, height)
 
     def stop(self):
-        proc, self.proc = self.proc, None
-        if proc is not None:
-            _end(proc)
+        if self.proc is not None:
+            _end(self.proc)
+            self.proc = None
 
 
 class Page:
