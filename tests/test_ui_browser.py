@@ -153,6 +153,185 @@ def test_a_pressed_toggle_button_stays_readable_under_the_pointer(ui, lang):
     assert low == {}
 
 
+@pytest.mark.parametrize('scale, size', (
+    (150, (1024, 768)), (175, (1024, 768)), (100, (360, 840)), (175, (360, 1240)),
+), ids=('150-1024x768', '175-1024x768', '100-360x840', '175-360x1240'))
+@pytest.mark.parametrize('lang', ('zh', 'en'))
+def test_show_problems_is_next_to_detail_and_toggles_the_legend(ui, lang, scale, size):
+    page = show(ui, lang, scale, size, look=1)
+    assert page.evaluate('!!document.querySelector("#look-stage .detail-pane .pane-head #btn-check")'), \
+        'Show problems belongs beside the Detail title, not in the settings panel'
+    assert page.evaluate('document.querySelector("#btn-check").tagName') == 'BUTTON'
+    seen = '''(() => {
+        const check = document.querySelector('#btn-check');
+        const visible = (s) => document.querySelector(s).checkVisibility({ visibilityProperty: true });
+        return [check.getAttribute('aria-pressed'), visible('#check-legend'), visible('#peek-hint')];
+    })()'''
+    assert page.evaluate(seen) == ['false', False, True]
+    must = ('#btn-check', '#btn-densest', '[data-zoom="1"]', '[data-zoom="2"]')
+    assert uibrowser.out_of_reach(page, '#look-stage', must=must) == []
+    page.click('#btn-check')
+    assert page.evaluate(seen) == ['true', True, False]
+    assert uibrowser.out_of_reach(page, '#look-stage', must=(*must, '#check-legend .key-item')) == []
+    # Let the real marked previews finish before measuring and taking the full viewport shot.
+    page.wait_for('''document.querySelector('#check-faded').textContent &&
+        /^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent)''',
+                  timeout=60, what='the marked previews to finish')
+    page.hover('.status')
+    page.screenshot(f'show-problems-{lang}-{scale}-{size[0]}x{size[1]}')
+    assert page.evaluate('''(() => {
+        const stage = document.querySelector('#stage').getBoundingClientRect();
+        return [...document.querySelectorAll('#look-stage .pane > *')].flatMap((el) => {
+            const r = el.getBoundingClientRect(), dx = el.scrollWidth - el.clientWidth, dy = r.bottom - stage.bottom;
+            return r.left < stage.left - 1 || r.right > stage.right + 1 || r.top < stage.top - 1 || dy > 1 || dx > 1
+                ? [{ pane: el.parentElement.className, row: el.className, dx, dy, left: r.left, right: r.right }] : [];
+        });
+    })()''') == []
+    page.click('#btn-check')
+    assert page.evaluate(seen) == ['false', False, True]
+    page.check_errors()
+
+
+SHOW_PROBLEMS_WINDOWS = ((100, (1280, 720)), (150, (1024, 768)), (175, (1024, 768)), (100, (360, 840)),
+                         (175, (360, 840)), (175, (360, 1240)))
+SHOW_PROBLEMS_IDS = tuple(f'{k}-{s[0]}x{s[1]}' for k, s in SHOW_PROBLEMS_WINDOWS)
+
+
+def resting_places(page, timeout=60):
+    """Where the controls and pictures of the previews are, measured from the stage's own corner (so scrolling the
+    stage does not count), once both previews are drawn and two looks a moment apart agree."""
+    look = '''(() => {
+        const c = document.querySelector('#crop');
+        if (c.width < 2 || !/^(缩到窗口|Scaled)/.test(document.querySelector('#fit-status').textContent)) return null;
+        const o = document.querySelector('#look-stage').getBoundingClientRect();
+        return Object.fromEntries(['#btn-check', '[data-zoom="1"]', '#btn-densest', '#fit', '#crop'].map((s) => {
+            const r = document.querySelector(s).getBoundingClientRect();
+            return [s, [r.left - o.left, r.top - o.top, r.width, r.height].map(Math.round)];
+        }));
+    })()'''
+    last = [None]
+
+    def steady():
+        now = page.evaluate(look)
+        same, last[0] = now is not None and now == last[0], now
+        return now if same else None
+    return uibrowser._wait('the previews to come to rest', steady, timeout, every=0.3)
+
+
+def press_show_problems(page, pressed):
+    page.click('#btn-check')
+    page.wait_for(f'document.querySelector("#btn-check").getAttribute("aria-pressed") === "{str(pressed).lower()}"',
+                  what=f'Show problems to be {"pressed" if pressed else "released"}')
+    page.hover('.status')
+
+
+@pytest.mark.parametrize('scale, size', SHOW_PROBLEMS_WINDOWS, ids=SHOW_PROBLEMS_IDS)
+@pytest.mark.parametrize('lang', ('zh', 'en'))
+def test_show_problems_leaves_the_previews_where_they_were(ui, lang, scale, size):
+    # the button now sits in the row above the picture it marks: pressing it must not move or resize that picture,
+    # the button itself or the controls beside it, whether the legend takes one line or three
+    page = show(ui, lang, scale, size, look=1)
+    before = resting_places(page)
+    press_show_problems(page, True)
+    marked = resting_places(page)
+    press_show_problems(page, False)
+    after = resting_places(page)
+    assert (marked, after) == (before, before)
+    page.check_errors()
+
+
+def test_show_problems_layout_stays_put_when_detail_moves_to_a_new_position(ui):
+    page = show(ui, 'en', 175, (360, 1240), look=1)
+    before = resting_places(page)
+    page.evaluate('document.querySelector("#crop").focus()')
+    press(page, 'ArrowRight', 'ArrowRight', 39)
+    page.wait_for('!document.querySelector("#btn-densest").disabled', what='Detail to move away from the densest spot')
+    assert resting_places(page) == before
+    page.click('#btn-densest')
+    page.wait_for('document.querySelector("#btn-densest").disabled', what='Detail to return to the densest spot')
+    assert resting_places(page) == before
+    page.check_errors()
+
+
+def test_show_problems_layout_stays_put_when_the_legend_value_changes(ui):
+    page = show(ui, 'en', 175, (910, 768), look=1)
+    faded = 'document.querySelector("#check-faded").textContent'
+    page.wait_for(f'{faded} === "under 0.1%"', what='the initial faded value')
+    before = resting_places(page)
+    page.click('#fade')
+    page.wait_for(f'{faded} === "none"', what='the faded value to update')
+    after = resting_places(page)
+    page.click('#fade')
+    page.wait_for(f'{faded} === "under 0.1%"', what='the original value to return')
+    assert (after, resting_places(page)) == (before, before)
+    page.check_errors()
+
+
+@pytest.mark.parametrize('scale, size', SHOW_PROBLEMS_WINDOWS, ids=SHOW_PROBLEMS_IDS)
+@pytest.mark.parametrize('lang', ('zh', 'en'))
+def test_show_problems_layout_keeps_the_compare_labels_on_the_whole_preview(ui, lang, scale, size):
+    # with the settings below the stage a narrow window has a small 整体: its two labels must not hang out of the
+    # picture or lie on each other
+    page = show(ui, lang, scale, size, look=1)
+    resting_places(page)
+    seen = page.evaluate('''(() => {
+        const fit = document.querySelector('#fit').getBoundingClientRect();
+        const tags = ['#compare-before', '#compare-after'].map((s) => document.querySelector(s))
+            .filter((el) => el.checkVisibility({ visibilityProperty: true })).map((el) => el.getBoundingClientRect());
+        return {
+            fit: [Math.round(fit.left), Math.round(fit.right)],
+            outside: tags.filter((r) => r.left < fit.left - 1 || r.right > fit.right + 1)
+                .map((r) => [Math.round(r.left), Math.round(r.right)]),
+            overlapping: tags.length === 2 && tags[0].right > tags[1].left,
+            shown: tags.length,
+        };
+    })()''')
+    assert (seen['outside'], seen['overlapping']) == ([], False), seen
+    # they are left out only where the picture is too small for them: a wide window still names both sides
+    if size[0] >= 1024:
+        assert seen['shown'] == 2, seen
+
+
+@pytest.mark.parametrize('lang, size, layers', (
+    ('zh', (360, 840), 1), ('en', (360, 840), 1), ('en', (720, 480), 4), ('en', (800, 600), 1), ('en', (1024, 480), 1),
+), ids=('zh-360x840', 'en-360x840', 'en-720x480-four-layers', 'en-800x600', 'en-1024x480'))
+def test_show_problems_controls_can_be_scrolled_to_in_a_short_window(ui, lang, size, layers):
+    # At 175% a short stage can run out of height even in a window wider than a phone. Keep room for the pictures
+    # and reach every control by scrolling the stage alone, even with a long list of settings below it.
+    page = show(ui, lang, 175, size, look=layers)
+    pix = page.evaluate('''['#fit', '#crop'].map(s => {
+        const r = document.querySelector(s).getBoundingClientRect(); return [r.width, r.height];
+    })''')
+    assert min(min(p) for p in pix) >= 32, pix
+    resting_places(page)
+    press_show_problems(page, True)
+    resting_places(page)
+    seen = page.evaluate('''(() => {
+        const stage = document.querySelector('#stage'), out = [];
+        for (const el of document.querySelectorAll('#look-stage button, #look-stage canvas, #compare')) {
+            if (!el.checkVisibility({ visibilityProperty: true })) continue;
+            el.scrollIntoView({ block: 'center', inline: 'nearest' });
+            const s = stage.getBoundingClientRect(), r = el.getBoundingClientRect();
+            const name = el.id ? '#' + el.id : el.textContent.trim();
+            const x = r.left + r.width / 2, y = r.top + r.height / 2;
+            const top = document.elementFromPoint(x, y);
+            const at = `${Math.round(r.left)}..${Math.round(r.right)} x ${Math.round(r.top)}..${Math.round(r.bottom)}`;
+            if (r.left < s.left - 1 || r.right > s.right + 1) out.push(`${name} is cut off sideways (${at})`);
+            else if (y < s.top || y > s.bottom) out.push(`${name} cannot be scrolled onto the stage (${at})`);
+            // the compare slider starts on the middle of 整体, as it always has: that is not something in the way
+            else if (!top || !(el === top || el.contains(top) || el.id === 'fit' && top.closest('#compare')))
+                out.push(`${name} is covered (${at})`);
+        }
+        const page = document.scrollingElement;
+        return { out, sideways: stage.scrollWidth - stage.clientWidth, page: [page.scrollWidth, page.scrollLeft, page.scrollTop],
+                 canScroll: stage.scrollHeight <= stage.clientHeight || ['auto', 'scroll'].includes(getComputedStyle(stage).overflowY),
+                 status: Math.round(document.querySelector('.status').getBoundingClientRect().bottom) };
+    })()''')
+    page.screenshot(f'show-problems-short-{lang}-175-{size[0]}x{size[1]}')
+    assert seen == {'out': [], 'sideways': 0, 'page': [size[0], 0, 0], 'canScroll': True, 'status': size[1]}, seen
+    page.check_errors()
+
+
 @pytest.mark.parametrize('scale, size', ((100, (1440, 900)), (150, (1024, 768))), ids=('100-1440x900', '150-1024x768'))
 @pytest.mark.parametrize('lang', ('zh', 'en'))
 def test_texture_layers_live_in_the_panel_and_the_bar_only_switches_pages(ui, lang, scale, size):
@@ -214,9 +393,11 @@ def test_texture_layers_live_in_the_panel_and_the_bar_only_switches_pages(ui, la
     assert page.evaluate('''(() => {
         const card = document.querySelector('#layer-card'), note = document.querySelector('#global-note');
         const own = ['.styles', '#density', '#tilt', '#strength'].every((s) => card.contains(document.querySelector(s)));
-        const whole = ['#sparkle-on', '#particle-on', '#moire-on', '#btn-check', '#fade', '#exclude']
-            .every((s) => !card.contains(document.querySelector(s))
-                && (note.compareDocumentPosition(document.querySelector(s)) & Node.DOCUMENT_POSITION_FOLLOWING));
+        const settings = document.querySelector('#pane-look');
+        const whole = ['#sparkle-on', '#particle-on', '#moire-on', '#fade', '#exclude'].every((s) => {
+            const el = document.querySelector(s);
+            return settings.contains(el) && !card.contains(el) && (note.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+        });
         const edge = getComputedStyle(card), panel = getComputedStyle(document.querySelector('.side'));
         const framed = parseFloat(edge.borderTopWidth) > 0 || edge.backgroundColor !== 'rgba(0, 0, 0, 0)'
             && edge.backgroundColor !== panel.backgroundColor;

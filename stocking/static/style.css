@@ -415,7 +415,7 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .layer-add .exp-tag { margin-left: 0; }
 .layer-add:hover:not([aria-disabled="true"]) { background: var(--raised); color: var(--text); }
 .layer-add[aria-disabled="true"] { color: var(--faint); cursor: default; }
-.layers:not(.single) .layer-add { justify-content: center; width: calc(26px * var(--k)); padding: 0; color: var(--text); }
+.layers:not(.single) .layer-add { position: relative; justify-content: center; width: calc(26px * var(--k)); padding: 0; color: var(--text); }
 .layers:not(.single) .layer-add .plus { font-size: calc(22px * var(--k)); }
 .layers:not(.single) .layer-add[aria-disabled="true"] { color: var(--faint); }
 .layers:not(.single) .layer-add .exp-tag { display: none; }
@@ -453,7 +453,8 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 }
 .info-btn:hover, .info-btn[aria-expanded="true"] { border-color: var(--text); color: var(--text); }
 .info-pop {
-  position: fixed; z-index: 25; width: calc(300px * var(--k)); padding: calc(10px * var(--k)) calc(12px * var(--k)); border: 1px solid var(--line); border-radius: calc(6px * var(--k));
+  position: fixed; z-index: 25; width: calc(300px * var(--k)); max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: auto;
+  padding: calc(10px * var(--k)) calc(12px * var(--k)); border: 1px solid var(--line); border-radius: calc(6px * var(--k));
   background: var(--float); box-shadow: var(--elev); font-size: calc(12px * var(--k)); line-height: 1.6; color: var(--muted);
 }
 .info-pop p { margin: 0 0 calc(6px * var(--k)); }
@@ -480,31 +481,54 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .exclude .field-head { align-items: center; }
 .exclude .note + .field-head { margin-top: calc(14px * var(--k)); }
 .exclude .note { margin-top: calc(4px * var(--k)); }
-#btn-check { display: block; margin-bottom: calc(14px * var(--k)); }
 #btn-look-reset { margin-top: calc(18px * var(--k)); }
 
-/* 纹理: 整体 and 细节, placed by look.js (side by side, or 细节 below), on the stage */
-/* look.js shares the stage out counting the panes' title rows and the line under 细节 at their 100% heights (two
-   titles and that line when 细节 goes below: 34 + 34 + 30); at a larger 界面大小 they are taller by that much times
-   (k - 1), which is kept free at the bottom so the last line stays on the stage, however low the bar leaves it */
-.look-stage { position: absolute; inset: 0 0 calc(98px * (var(--k) - 1)); background: var(--stage); }
+/* Give the preview controls the width they need before the enlarged settings sidebar crowds them out. */
+body[data-mode="look"].stack-texture-settings {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "bar" "stage" "side" "status";
+  grid-template-rows: auto minmax(0, 2fr) minmax(0, 1fr) calc(28px * var(--k));
+}
+body[data-mode="look"].stack-texture-settings .side { border-right: 0; border-top: 1px solid var(--line); }
+
+/* 纹理: 整体 and 细节, placed by look.js (side by side, or 细节 below), on the stage. In a short window, let the
+   stage scroll rather than spend all of its height on the wrapped controls and squeeze the pictures away. */
+body[data-mode="look"] .stage { overflow-y: auto; }
+.look-stage { position: absolute; inset: 0; min-height: calc(240px * var(--k)); background: var(--stage); }
+.stack-texture-settings .look-stage { min-height: calc(320px * var(--k)); }
 .pane { position: absolute; margin: 0; }
-.pane-head { display: flex; align-items: center; gap: calc(8px * var(--k)); height: calc(34px * var(--k)); white-space: nowrap; overflow: hidden; }
-.pane-head h3 { margin: 0 calc(4px * var(--k)) 0 0; font-size: calc(14px * var(--k)); font-weight: 700; }
+.pane-head, .detail-title { display: flex; align-items: center; gap: calc(3px * var(--k)) calc(8px * var(--k)); }
+.pane-head { min-height: calc(34px * var(--k)); }
+.detail-pane .pane-head, .detail-title { flex-wrap: wrap; }
+.detail-pane .pane-head { align-content: center; padding-block: calc(4px * var(--k)); }
+.pane-head h3 { flex: none; margin: 0; font-size: calc(14px * var(--k)); font-weight: 700; }
 .pane-head .btn:hover:not(:disabled):not([aria-pressed="true"]) { background: var(--float); }   /* --hover is the stage's own grey */
 .pane-head .btn:disabled { color: var(--text); }          /* 已在最密处: a state, still readable on the stage */
-.pane-note { font-size: calc(12px * var(--k)); }
+#btn-check { font-weight: 700; }                          /* keep the header's wrapping steady when pressed */
+/* Overlay both labels so changing position in the preview does not move or resize its canvas. */
+#btn-densest { display: inline-grid; place-items: center; }
+#btn-densest > span { grid-area: 1 / 1; }
+#btn-densest:disabled > .back-to-densest, #btn-densest:enabled > .at-densest { visibility: hidden; }
+.pane-note { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--k)); }
 .pane-body { position: relative; }
 #fit { display: block; cursor: crosshair; }
 #crop { display: block; cursor: grab; image-rendering: pixelated; touch-action: none; }
 #crop.dragging { cursor: grabbing; }
-.pane-foot { display: flex; align-items: center; gap: calc(14px * var(--k)); height: calc(30px * var(--k)); font-size: calc(12px * var(--k)); white-space: nowrap; overflow: hidden; }
+.pane-foot { display: grid; align-items: center; min-height: calc(30px * var(--k)); padding-block: calc(3px * var(--k)); font-size: calc(12px * var(--k)); }
+/* Reserve the greater of the hint and the wrapped legend so switching between them does not move the preview. */
+.pane-foot > * { grid-area: 1 / 1; min-width: 0; }
+.pane-foot > [hidden] { visibility: hidden; }
+.pane-foot .peek[hidden] { display: block !important; }
+.pane-foot .legend[hidden] { display: flex !important; }
 .peek kbd { margin-right: calc(6px * var(--k)); padding: 1px calc(6px * var(--k)); border-radius: 2px; background: var(--raised); font: calc(12px * var(--k)) var(--din); }
 .peek.on kbd { background: var(--chalk); color: var(--on-chalk); }
-.legend { display: flex; gap: calc(14px * var(--k)); }
-.key-item { display: inline-flex; align-items: center; gap: calc(5px * var(--k)); padding: 0; background: none; font-size: calc(12px * var(--k)); cursor: help; }
+.legend { display: flex; flex-wrap: wrap; gap: calc(4px * var(--k)) calc(14px * var(--k)); }
+.key-item { display: inline-flex; align-items: center; gap: calc(5px * var(--k)); min-width: 0; max-width: 100%; padding: 0; background: none; font-size: calc(12px * var(--k)); text-align: left; cursor: help; }
 .key-item:hover { color: var(--chalk); }
-.key { width: calc(10px * var(--k)); height: calc(10px * var(--k)); border-radius: 2px; background: var(--c); }
+.legend-value { display: inline-grid; min-width: 0; overflow-wrap: anywhere; }
+.legend-value > span, .legend-value::before { grid-area: 1 / 1; }
+.legend-value::before { content: attr(data-measure); visibility: hidden; }
+.key { flex: none; width: calc(10px * var(--k)); height: calc(10px * var(--k)); border-radius: 2px; background: var(--c); }
 .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: calc(4px * var(--k)); background: var(--raised); }
 .seg-btn { height: calc(22px * var(--k)); padding: 0 calc(8px * var(--k)); border-radius: 2px; background: none; font-size: calc(12px * var(--k)); }
 .seg-btn:hover:not([aria-checked="true"]) { background: var(--hover); }
@@ -526,7 +550,7 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .compare:focus-visible { outline: none; }
 .compare:focus-visible .compare-grip { box-shadow: 0 0 0 calc(3px * var(--k)) rgba(255, 255, 255, .45); }
 .compare-tags { position: absolute; top: 0; left: 0; display: flex; justify-content: space-between; padding: calc(8px * var(--k)); pointer-events: none; }
-.compare-tags span { padding: 1px calc(7px * var(--k)); border-radius: 2px; background: color-mix(in oklab, var(--float) 80%, transparent); font-size: calc(12px * var(--k)); }
+.compare-tags span { flex: none; white-space: nowrap; padding: 1px calc(7px * var(--k)); border-radius: 2px; background: color-mix(in oklab, var(--float) 80%, transparent); font-size: calc(12px * var(--k)); }
 
 /* status bar */
 .status {

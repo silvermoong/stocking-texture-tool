@@ -139,7 +139,7 @@ Within one region, where one stretch of stocking lies in front of another with a
 
 ### 5. Choose a style and adjust it
 
-Switch to the Texture page at the top. The settings are on the left; Whole shows the full picture (drag the comparison slider to compare the original with the result) and Detail shows a square at 100% or 200%, updating as you drag a slider. What Detail shows is exactly what gets exported. If a preview fails, the status bar names it until it updates successfully.
+Switch to the Texture page at the top. The settings are beside the previews, or below them in a narrow window. Whole shows the full picture (drag the comparison slider to compare the original with the result) and Detail shows a square at 100% or 200%, updating as you drag a slider. What Detail shows is exactly what gets exported. If a preview fails, the status bar names it until it updates successfully.
 
 ![The Texture page](docs/images/texture-page-en.jpg)
 
@@ -219,7 +219,7 @@ Kase's share 0% / 30% / 70% / 100% (the rest is Fine lines; left to right), the 
 
 ### 6. Show problems
 
-Click Show problems in the panel. Red marks where the courses are so dense that the texture was faded to avoid moiré, blue what color exclusion removed, and yellow regions with no direction lines yet. If a main area has a large patch of red, lower the density:
+Click Show problems beside the Detail preview heading. Both previews show the marks, and the legend is below Detail. Red marks where the courses are so dense that the texture was faded to avoid moiré, blue what Color exclusion removed, and yellow regions with no direction lines yet. If a main area has a large patch of red, lower the density:
 
 ![Left: density 140%, a large red patch behind the knee; right: density 85%, almost gone](docs/images/show-problems.png)
 

@@ -23,37 +23,33 @@ const STYLE_NOTES = {
 const BUDGET = 250_000;
 const DMIN = 320;               // css px: 细节 never smaller (less on a very small window)
 const WHOLE_WEIGHT = 0.6;       // 整体 counts a little more than 细节 when they share the stage
-const PAD = 16, GAP = 18, HEAD = 34, FOOT = 30;
+const PAD = 16, GAP = 18, MIN_PICTURE = 48;
 
-// Where 整体 and the square 细节 go: side by side, or 细节 below. Every size of the square is tried in both
-// arrangements, and the one where the two are largest together wins (geometric mean of their areas, 整体 weighted).
-// Space 细节 cannot use goes to 整体; what neither can use is shared out evenly left and right.
-export function arrange(W, H, iw, ih, dpr) {
+// Where 整体 and the square 细节 go: side by side, or 细节 below. Try for the largest pictures together, but
+// leave room for the controls even when a portrait or a small square does not fill the width of its pane.
+export function arrange(W, H, iw, ih, dpr, { head, foot, minWhole, minDetail }) {
   const a = iw / ih;
   const dmax = (Math.sqrt(BUDGET) * 2) / dpr;
   const dmin = Math.min(DMIN, 0.3 * Math.min(W, H));
   let best = null;
   for (const mode of ['side', 'stack']) {
-    const body = mode === 'side' ? H - HEAD - FOOT : H - 2 * HEAD - FOOT - GAP;
+    const body = mode === 'side' ? H - head - foot : H - 2 * head - foot - GAP;
     const lim = Math.min(dmax, mode === 'side' ? body : W);
     for (let d = Math.floor(dmin); d <= lim; d += 2) {
-      const ww = mode === 'side' ? Math.min(W - GAP - d, a * body) : Math.min((body - d) * a, W);
+      const room = mode === 'side' ? W - GAP - Math.max(d, minDetail) : W;
+      if (mode === 'side' && room < minWhole) continue;
+      const ww = Math.min(room, (mode === 'side' ? body : body - d) * a);
       const wh = ww / a;
       if (ww < 40 || wh < 40) continue;
       const score = WHOLE_WEIGHT * Math.log(ww * wh) + (1 - WHOLE_WEIGHT) * Math.log(d * d);
       if (!best || score > best.score) best = { score, mode, ww: Math.floor(ww), wh: Math.floor(wh), d };
     }
   }
-  if (!best) {                  // a tiny window: share it as well as possible
-    const d = Math.max(60, Math.floor(Math.min(W / 2 - GAP, H - HEAD - FOOT)));
-    const ww = Math.max(40, Math.floor(Math.min(W - GAP - d, a * (H - HEAD - FOOT))));
-    best = { mode: 'side', ww, wh: Math.floor(ww / a), d };
+  if (!best) {                  // very little room: stack, giving the controls the full width
+    const ww = Math.max(1, Math.floor(Math.min(W, 40, a * H / 3)));
+    best = { mode: 'stack', ww, wh: Math.max(1, Math.floor(ww / a)), d: Math.min(W, 60) };
   }
-  const span = best.mode === 'side' ? best.ww + GAP + best.d : Math.max(best.ww, best.d);
-  const ox = PAD + Math.max(0, Math.floor((W - span) / 2));
-  return best.mode === 'side'
-    ? { ...best, whole: { x: ox, y: PAD }, detail: { x: ox + best.ww + GAP, y: PAD } }
-    : { ...best, whole: { x: ox, y: PAD }, detail: { x: ox, y: PAD + HEAD + best.wh + GAP } };
+  return best;
 }
 
 // A range input lit up to its thumb.
@@ -514,13 +510,38 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
   function layout() {
     const doc = getDoc();
     if (!doc) return false;
+    const k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--k')) || 1;
+    // The 272px sidebar also grows with 界面大小. Put it below before it takes half of the width.
+    document.body.classList.toggle('stack-texture-settings', window.innerWidth <= Math.max(700, 2 * 272 * k));
     const box = $('#look-stage').getBoundingClientRect();
     if (box.width < 50 || box.height < 50) return false;
     const dpr = window.devicePixelRatio || 1;
-    const A = arrange(box.width - 2 * PAD, box.height - 2 * PAD, doc.width, doc.height, dpr);
-    const whole = $('.whole-pane'), detail = $('.detail-pane');
-    Object.assign(whole.style, { left: `${A.whole.x}px`, top: `${A.whole.y}px`, width: `${A.ww}px` });
-    Object.assign(detail.style, { left: `${A.detail.x}px`, top: `${A.detail.y}px`, width: `${A.d}px` });
+    const W = Math.floor(box.width - 2 * PAD), H = box.height - 2 * PAD;
+    const minWhole = Math.ceil(84 * k), minDetail = Math.ceil(156 * k);
+    const head = 34 * k, foot = 30 * k;
+    const A = arrange(W, H, doc.width, doc.height, dpr, { head, foot, minWhole, minDetail });
+    const whole = $('.whole-pane'), detail = $('.detail-pane'), side = A.mode === 'side';
+    const stackedWidth = Math.min(W, Math.max(A.ww, A.d, Math.ceil(320 * k)));
+    const ww = side ? Math.max(A.ww, minWhole) : stackedWidth;
+    const dw = side ? Math.max(A.d, minDetail) : stackedWidth;
+    const span = side ? ww + GAP + dw : stackedWidth;
+    const x = PAD + Math.floor((W - span) / 2);
+    Object.assign(whole.style, { left: `${x}px`, top: `${PAD}px`, width: `${ww}px` });
+    Object.assign(detail.style, { left: `${side ? x + ww + GAP : x}px`, width: `${dw}px` });
+
+    // At these widths labels may wrap. Keep the chosen slots and fit the images in the actual space left by the rows.
+    const wholeHead = $('.whole-pane .pane-head').getBoundingClientRect().height;
+    const detailChrome = $('.detail-pane .pane-head').getBoundingClientRect().height + $('.detail-pane .pane-foot').getBoundingClientRect().height;
+    // Once the chrome leaves too little room for a useful thumbnail, let the stage scroll the last rows into view.
+    const scaleToFit = (room, size) => Math.min(1, Math.max(MIN_PICTURE, room) / size);
+    const stackRoom = H - wholeHead - detailChrome - GAP;
+    const stackScale = Math.min(1, Math.max(stackRoom / (A.wh + A.d), MIN_PICTURE / Math.min(A.wh, A.d)));
+    const fitScale = side ? scaleToFit(H - wholeHead, A.wh) : stackScale;
+    const cropScale = side ? scaleToFit(H - detailChrome, A.d) : stackScale;
+    A.ww = Math.max(1, Math.floor(A.ww * fitScale));
+    A.wh = Math.max(1, Math.floor(A.wh * fitScale));
+    A.d = Math.max(1, Math.floor(A.d * cropScale));
+    detail.style.top = `${side ? PAD : PAD + wholeHead + A.wh + GAP}px`;
     fitCv.style.width = `${A.ww}px`;
     fitCv.style.height = `${A.wh}px`;
     fitCv.width = Math.round(A.ww * dpr);
@@ -534,6 +555,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     L.size = { dpr, fitW: fitCv.width, fitH: fitCv.height, cropW: cw, cropH: cw, scale: fitCv.width / doc.width, mode: A.mode };
     cmp.style.height = `${A.wh}px`;
     $('#compare-tags').style.width = `${A.ww}px`;
+    // A small 整体 (a narrow window at a large 界面大小) cannot hold both labels: leave them out rather than let
+    // them hang off the picture. The slider's own tip still says which side is which.
+    L.tagsFit = !($('#compare-before').offsetWidth + $('#compare-after').offsetWidth + 24 * k > A.ww);
     placeCompare();
     drawFit();
     drawCrop();
@@ -627,9 +651,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = stageColour;
     c.fillRect(0, 0, cropCv.width, cropCv.height);
-    const densest = $('#btn-densest');
-    densest.disabled = !L.centre;
-    densest.textContent = L.centre ? t('回到最密处') : t('已在最密处');
+    $('#btn-densest').disabled = !L.centre;
     if (!L.cropImg) return;
     c.imageSmoothingEnabled = false;
     const r = L.cropRect, art = getArt();
@@ -726,8 +748,9 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     cmp.style.left = `${L.split * w}px`;
     cmp.setAttribute('aria-valuenow', String(p));
     cmp.setAttribute('aria-valuetext', t('左边 {p}% 是原图', { p }));
-    $('#compare-before').style.visibility = L.split > 0.12 ? 'visible' : 'hidden';
-    $('#compare-after').style.visibility = L.split < 0.88 ? 'visible' : 'hidden';
+    const room = L.tagsFit !== false;
+    $('#compare-before').style.visibility = room && L.split > 0.12 ? 'visible' : 'hidden';
+    $('#compare-after').style.visibility = room && L.split < 0.88 ? 'visible' : 'hidden';
   }
 
   function setSplit(x) {
@@ -819,6 +842,11 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
         : i.check.excluded > 0 ? t('现在排除了已涂部位的 {p}。', { p: pct(i.check.excluded) }) : t('这张图没有被排除的地方。');
   }
 
+  // Use the longest localized reading, including the optional solving suffix, to size each legend value.
+  for (const id of ['#check-faded', '#check-excluded', '#check-nostroke']) {
+    $(id).parentElement.dataset.measure = pct(0.0005) + (id === '#check-nostroke' ? t('（求解中…）') : '');
+  }
+
   function renderInfo() {
     const i = L.info;
     if (!i) return;
@@ -831,7 +859,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     const tip = t('部位已经涂好，但还没画走向线，所以不生成纹理。')
       + (i.untextured.length ? t('没有走向线的部位：{names}。', { names: i.untextured.join(t('、')) }) : '')
       + (i.solving.length ? t('{names}正在求解，求解完再看。', { names: i.solving.join(t('、')) }) : '');
-    setTip(ns.parentElement, tip);
+    setTip(ns.parentElement.parentElement, tip);
     $('#sparkle-painted-field').hidden = !i.has_sparkle_layer;
     const sn = $('#sparkle-note');
     sn.className = 'note';
@@ -1192,7 +1220,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
       btn.setAttribute('aria-expanded', String(on));
       if (!on) return;
       const side = $('.side').getBoundingClientRect(), b = btn.getBoundingClientRect();
-      pop.style.left = `${Math.round(side.right + 8)}px`;
+      pop.style.left = `${Math.round(Math.max(8, Math.min(side.right + 8, window.innerWidth - pop.offsetWidth - 8)))}px`;
       pop.style.top = `${Math.round(Math.max(8, Math.min(b.top - 10, window.innerHeight - pop.offsetHeight - 8)))}px`;
     };
     btn.addEventListener('click', () => show(pop.hidden));
@@ -1297,9 +1325,11 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
   cropCv.addEventListener('pointerup', endDrag);
   cropCv.addEventListener('pointercancel', endDrag);
 
-  new ResizeObserver(() => {
+  // Refit when a translated label or a legend value takes another line. Measure outside the observer delivery.
+  const previewResize = new ResizeObserver(() => requestAnimationFrame(() => {
     if (L.active && layout()) { requestCrop(); fitSoon(); }
-  }).observe($('#look-stage'));
+  }));
+  for (const selector of ['#look-stage', '.detail-pane .pane-head', '.detail-pane .pane-foot']) previewResize.observe($(selector));
 
   // The 纹理 page's undo and redo buttons: the server's latest word on whether there is a step to take or to put back.
   function history() {
