@@ -5,13 +5,21 @@ import os
 from PIL import Image
 
 A = r'D:\Video\assets\stocking-promo\readme'
+# README_IMAGES_SRC names a folder that is looked in first, file by file: retaken shots under the library's file names
+# that are not in the library (yet). What is not there comes from the library, which is only ever read.
+SRC = os.environ.get('README_IMAGES_SRC')
 OUT = os.environ.get('README_IMAGES_OUT', r'D:\Stocking\docs\images')     # a trial run can write elsewhere
 BG = (255, 255, 255)
 GAP = 10
 
 
+def find(name):
+    mine = os.path.join(SRC, name) if SRC else None
+    return mine if mine and os.path.isfile(mine) else os.path.join(A, name)
+
+
 def load(name):
-    return Image.open(os.path.join(A, name)).convert('RGB')
+    return Image.open(find(name)).convert('RGB')
 
 
 def row(tiles, gap=GAP, bg=BG):
@@ -70,8 +78,8 @@ for name, files in (('slider-density.png', ['b1-black-density-070', 'b1-black-de
                     ('slider-sparkles.png', ['b1-black-sparkles-000', 'b1-black-sparkles-100', 'b1-black-sparkles-300'])):
     save(row([load(f + '.png').crop(sl) for f in files]), name)
 
-# 高光粒子 (试验), on B1's left leg. The Texture page with its switch on at 强度 100% (Detail at 100%; scaled like the
-# other pages), and one strip of the left thigh down to the knee at 强度 0 / 35 / 70 / 100% at the pictures' own pixels:
+# 高光粒子 (试验), on B1's left leg. The Texture page with its switch on at 亮度 100% (Detail at 100%; scaled like the
+# other pages), and one strip of the left thigh down to the knee at 亮度 0 / 35 / 70 / 100% at the pictures' own pixels:
 # four 200 px tiles 6 px apart, so 818 px wide
 for src, dst in (('b1-black-10-particle-page.png', 'particle-page.jpg'),
                  ('b1-black-10-particle-page-en.png', 'particle-page-en.jpg')):
@@ -126,7 +134,7 @@ for sfx in ('', '-en'):
 save(shot('b1-black-01-guides.png', 1600), 'guides-page.jpg')
 save(shot('b1-black-04-texture-page.png', 1600), 'texture-page.jpg')
 for src, dst in (('b1-black-01-guides-en.png', 'guides-page-en.jpg'), ('b1-black-04-texture-page-en.png', 'texture-page-en.jpg')):
-    if os.path.exists(os.path.join(A, src)):
+    if os.path.exists(find(src)):
         save(shot(src, 1600), dst)
     else:
         print(f'{dst:28s} missing: {src} not in the assets yet')

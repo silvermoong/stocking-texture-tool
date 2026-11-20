@@ -2,11 +2,12 @@
  {"click":"#tab-look","wait":3000},
  {"click":"[data-style=knit]"},
  {"click":"[data-zoom='1']","wait":500},
- {"click":"#btn-layer-add","wait":1500},
+ {"click":"#layer-add","wait":1500},
  {"range":["#blend-rows .blend-row:nth-child(2) input",70]}, {"wait":2500},
  {"click":"#btn-preset-save","wait":500},
  {"eval":"(() => { const i = document.querySelector('#preset-name'); i.value = 'Black · Layers'; i.dispatchEvent(new Event('input', { bubbles: true })); return i.value; })()"},
  {"click":"#btn-preset-ok","wait":800},
  {"wait":5500},
- {"fitclick":[0.327,0.099],"wait":4000,"eval":"[[...document.querySelectorAll('.mode')].map(b => b.textContent), [...document.querySelectorAll('.blend-row')].map(r => r.children[2].textContent), document.querySelector('#blend-auto').getAttribute('aria-pressed'), document.querySelector('#preset-select').value, document.querySelector('#status-msg').textContent, document.querySelector('#tooltip').hidden]","shot":"D:/Video/assets/stocking-promo/shots/b1-black/07-layers-page-en.png"}
+ {"fitclick":[0.327,0.099],"wait":4000}, {"mouse":[{"move":[800,990]}],"wait":800},
+ {"eval":"[[...document.querySelectorAll('.mode')].map(b => b.textContent), [...document.querySelectorAll('.blend-row')].map(r => r.children[2].textContent), document.querySelector('#blend-auto').getAttribute('aria-pressed'), document.querySelector('#preset-select').value, document.querySelector('#status-msg').textContent, document.querySelector('#tooltip').hidden]","shot":"D:/Video/assets/stocking-promo/shots/b1-black/07-layers-page-en.png"}
 ]}

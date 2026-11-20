@@ -194,7 +194,7 @@ Area 35% / 50% / 70% / 100% (Contrast 100%; top left, top right, bottom left, bo
 
 **Texture layers** (Beta): lay several textures over each other, say Fine lines 30% and Kase 70%. Every layer follows the same direction lines.
 
-![The Texture page with a second layer: a Texture 2 tab and a + at the top, two sliders in the Blend section (Fine lines 30%, Kase 70%) and Auto 100% beside its title](docs/images/layers-page-en.jpg)
+![The Texture page with a second layer: the Texture layers list in the left panel has two rows, Texture 1 (30%) and Texture 2 (70%), each with a blend slider and an ×, a + to the right of the heading and Auto 100% under the list; the box below starts with “Editing: Texture 2” and has Kase selected as its style](docs/images/layers-page-en.jpg)
 
 - **Adding layers:** the layers are managed in the left panel of the Texture page; the top bar holds only the two pages, Guides and Texture. With one layer, “+ Add texture layer” beside the Style heading adds another, up to 4. With two or more, a Texture layers list appears under Presets with a row for each layer (Texture 1, Texture 2, …), and the “+” moves to the right of the list's heading; at 4 layers it is greyed out and says that 4 is the most. The × at the end of a row (or Delete with the layer's name focused) deletes that layer.
 - **Each layer's own settings:** style, density, tilt and strength are kept per layer, in the box under the list. Click a layer's name and the box switches to that layer; its first line says which layer you are editing. Sparkles, highlight particles, the moiré effect, Texture fade and Color exclusion, below the box, apply to the whole picture.

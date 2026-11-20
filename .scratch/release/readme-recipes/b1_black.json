@@ -16,7 +16,7 @@
  {"range":["#strength",50]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-black/23-strength-50.png","selector":".detail-pane"},
  {"range":["#strength",100]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-black/24-strength-100.png","selector":".detail-pane"},
  {"range":["#strength",160]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-black/25-strength-160.png","selector":".detail-pane"},
- {"click":"#btn-strength-auto","wait":1500},
+ {"click":"#strength-auto","wait":1500},
  {"click":"[data-style=lines]"}, {"range":["#sparkle-depth",100]},{"range":["#sparkle-bright",100]}, {"wait":2000},
  {"range":["#tilt",10]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-black/26-tilt-10.png","selector":".detail-pane"},
  {"range":["#tilt",32]}, {"wait":3000,"shot":"D:/Video/assets/stocking-promo/shots/b1-black/27-tilt-32.png","selector":".detail-pane"},
