@@ -47,7 +47,7 @@ const cv = $('#view');
 const ctx = cv.getContext('2d');
 const stage = $('#stage');
 const lookUI = createLook({ getDoc: () => S.doc, getArt: () => S.art, request, edit, flash,
-  focusByKeyboard: () => !focusByPointer, canLook: () => canLook(), goLook: () => setMode('look'),
+  focusByKeyboard: () => !focusByPointer, canLook: () => canLook(),
   onHistory: (undo, redo) => {
     if (!S.doc) return;
     Object.assign(S.doc, { can_undo_look: undo, can_redo_look: redo });
@@ -70,10 +70,7 @@ function setMode(m) {
   S.mode = m;
   document.body.dataset.mode = m;
   renderHistory();
-  // 纹理 has a tab for each 纹理层 (look.js adds them): only the one being edited is selected
-  for (const b of document.querySelectorAll('.mode')) {
-    b.setAttribute('aria-selected', String(b.dataset.mode === m && (m !== 'look' || +b.dataset.layer === lookUI.layer())));
-  }
+  for (const b of document.querySelectorAll('.mode')) b.setAttribute('aria-selected', String(b.dataset.mode === m));
   const url = new URL(location.href);
   if (m === 'look') url.searchParams.set('page', 'look'); else url.searchParams.delete('page');
   if (url.href !== location.href) history.replaceState(null, '', url);

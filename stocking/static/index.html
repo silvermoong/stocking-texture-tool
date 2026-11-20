@@ -16,11 +16,8 @@
   <button id="btn-open" class="btn" title="打开 (Ctrl+O)">打开…</button>
   <div class="modes" role="tablist" aria-label="页面">
     <button class="mode" id="tab-edit" data-mode="edit" role="tab" aria-controls="pane-edit" title="涂部位、画走向线">引导</button>
-    <button class="mode" id="tab-look" data-mode="look" data-layer="0" role="tab" aria-controls="pane-look">纹理</button>
-    <span id="layer-tabs" class="layer-tabs"></span>
+    <button class="mode" id="tab-look" data-mode="look" role="tab" aria-controls="pane-look">纹理</button>
   </div>
-  <button id="btn-layer-add" class="icon-btn add" type="button" aria-label="加一层纹理"
-          title="加一层纹理，和现在的纹理按比例叠在一起（试验）" aria-disabled="true">+</button>
   <div class="spacer"></div>
   <button id="btn-undo" class="btn" title="撤销 (Ctrl+Z)" disabled>撤销</button>
   <button id="btn-redo" class="btn" title="重做 (Ctrl+Shift+Z)" disabled>重做</button>
@@ -117,23 +114,31 @@
     <p class="note preset-note"><span id="preset-note"></span> <button id="btn-preset-undo" class="text-btn small" type="button" hidden></button></p>
   </section>
 
-  <section class="group" id="blend-section" hidden>
-    <div class="group-head blend-head">
-      <h2>融合<span class="exp-tag">试验</span></h2>
+  <!-- 纹理层: with one layer only its settings (the card) and a light + beside 样式; with more, the list of layers
+       (name, 融合 slider, ×), 自动 100% under it, and the card says which layer's settings it holds -->
+  <section class="group layers single" id="layers-section">
+    <div class="group-head layers-head" id="layers-head" hidden>
+      <h2 id="layers-title">纹理层<span class="exp-tag">试验</span></h2>
       <button class="info-btn" aria-expanded="false" aria-controls="blend-info" aria-label="融合说明">?</button>
-      <button id="blend-auto" class="btn small toggle" type="button" aria-pressed="true"
-              data-tip="开：各层加起来固定 100%，拖一层，其他层按比例让出。关：每层各调各的，互不影响；加起来超过 100% 纹理更重，不到 100% 会露出原图。开和关各自记着自己的设置。">自动 100%</button>
     </div>
     <div id="blend-info" class="info-pop" role="note" hidden>
-      <p>每一层都按同一套走向线画，再叠在一起。亮点和摩尔纹效果在叠好之后加，对所有层都一样。</p>
-      <p>点层的名字，下面的样式、密度、斜度和强度就切到那一层。</p>
+      <p>每一层都按同一套走向线画，再按各层的融合比例合在一起。</p>
+      <p>点层的名字，下面框里的样式、密度、斜度和强度就切到那一层。</p>
+      <p>亮点、高光粒子、摩尔纹效果在融合之后统一加，不在每层里重复算。</p>
     </div>
-    <div id="blend-rows"></div>
-    <p id="blend-total" class="note" hidden></p>
-  </section>
+    <ul id="blend-rows" class="blend-rows" aria-labelledby="layers-title" hidden></ul>
+    <div id="blend-foot" class="blend-foot" hidden>
+      <button id="blend-auto" class="btn small toggle" type="button" aria-pressed="true"
+              data-tip="开：各层加起来固定 100%，拖一层，其他层按比例让出。关：每层各调各的，互不影响；加起来超过 100% 纹理更重，不到 100% 会露出原图。开和关各自记着自己的设置。">自动 100%</button>
+      <span id="blend-total" class="blend-total num" hidden></span>
+    </div>
 
-  <section class="group">
-    <h2>样式<span id="style-layer" class="style-layer"></span></h2>
+    <div id="layer-card" class="layer-card" role="group" aria-labelledby="layer-card-title">
+    <p class="layer-card-title" id="layer-card-title-row" hidden><span id="layer-card-title"></span><span class="layer-card-own">每层各调各的</span></p>
+    <div class="layer-card-head" id="layer-card-head">
+      <h2>样式</h2>
+      <button id="layer-add" class="layer-add" type="button" aria-disabled="true"><span class="plus" aria-hidden="true">+</span><span class="layer-add-text">添加纹理层</span><span class="exp-tag">试验</span></button>
+    </div>
     <div class="styles" role="radiogroup" aria-label="样式">
       <button class="opt" data-style="knit" role="radio">细线</button>
       <button class="opt" data-style="loops" role="radio">针织</button>
@@ -143,10 +148,7 @@
       <button class="opt" data-style="oily" role="radio"
               title="试验样式：正对的地方透出肤色、深色丝袜的边缘发黑，亮的一侧整片泛光，光照最亮处是一条连续的反光带：细而亮的芯，外面一片宽而柔的光，随腿的粗细变宽变窄。深色丝袜上这条反光会一直延续到整条腿：画里高光变暗或没画的地方，会自动补一条淡淡的光线，被丝带、头发隔开的同一条腿也接得上。适合纯色黑丝。">油光<span class="exp-tag">试验</span></button>
     </div>
-    <p id="style-note" class="note"></p>
-  </section>
-
-  <section class="group">
+    <p id="style-note" class="note style-note"></p>
     <div class="field">
       <div class="field-head"><label for="density">密度</label><span id="density-val" class="val num"></span></div>
       <input id="density" type="range" min="60" max="160" step="1" value="100">
@@ -173,7 +175,10 @@
       </div>
       <input id="strength" type="range" min="0" max="200" step="1" value="100">
     </div>
+    </div>
   </section>
+
+  <p id="global-note" class="global-note" hidden>下面的设置各层共用，对整张图生效</p>
 
   <section class="group" id="sparkle-section">
     <div class="group-head">

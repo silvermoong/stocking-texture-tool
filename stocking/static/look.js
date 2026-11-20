@@ -120,13 +120,12 @@ function sameLook(a, b) {
 }
 
 export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboard = () => false,
-  canLook = () => true, goLook = () => {}, onHistory = () => {} }) {
+  canLook = () => true, onHistory = () => {} }) {
   const L = {
     active: false,
     docId: null,
     params: null,
     layer: 0,              // the 纹理层 the panel shows (0 = the first, whose settings are the look's own)
-    addOnLoad: false,      // + was pressed before the settings were loaded: add the layer as soon as they are
     info: null,
     lookRev: 0,            // the server's count of undos and redos of the look: it moved, so the settings changed under us
     gesture: null,         // what the last change was (a slider being dragged), when
@@ -239,11 +238,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
   // A new layer starts with the defaults, in a style no layer has, and takes an equal share of the weights (the others
   // give way evenly); its amount is not set, so 50% like every layer's.
   function addLayer() {
-    if (!L.params) {                    // the settings are not here yet: enter 纹理 and add it once they are
-      L.addOnLoad = true;
-      goLook();
-      return;
-    }
+    if (!L.params) return;
     const n = layerCount() + 1;
     if (n > MAX_LAYERS) return;
     const layers = allLayers();
@@ -256,7 +251,6 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
       strength: L.info ? L.info.strength_suggested : 100, strength_auto: true, weight: 100 / n, amount: null });
     L.layer = n - 1;
     set(withLayers(kept));
-    goLook();
   }
 
   // Deletes layer i (the one shown by default); the layer shown stays the same one, or the next takes the place of
@@ -274,117 +268,90 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
 
   function selectLayer(i) {
     L.layer = L.params && i < layerCount() ? i : 0;
-    goLook();
     if (L.params) renderControls();
   }
 
-  // One tab for each layer after the first (the first is the 纹理 tab), and the + beside them. With more than one
-  // layer every tab carries a × that deletes its layer (as Delete does on a tab with the focus).
-  const tabsBox = $('#layer-tabs');
-  const addBtn = $('#btn-layer-add');
+  // The 纹理层 are managed in the panel, in one place: + adds one, and with more than one there is a row for each
+  // (below). The bar's tabs are the two pages and nothing else.
+  //
+  // + with a lone layer sits beside the 样式 title, its name written out, and costs the panel no height; with more
+  // it is the + of the 纹理层 title, over the rows. It is one button, moved (renderLayers), so it keeps the focus.
+  const addBtn = $('#layer-add');
 
-  function onTab(e) {
-    const i = +e.currentTarget.dataset.layer;
-    if (e.target.closest('.tab-x')) {
-      e.stopImmediatePropagation();     // not a click on the tab: the page must not select it (or 纹理)
-      deleteLayer(i);
-    } else selectLayer(i);
-  }
-
-  function onTabKey(e) {
-    if (e.key === 'Delete' && L.active && layerCount() > 1) {
-      e.preventDefault();
-      deleteLayer(+e.currentTarget.dataset.layer);
-    }
-  }
-
-  function renderTabs() {
-    const extra = L.params ? layerCount() - 1 : tabsBox.childElementCount;
-    if (tabsBox.childElementCount !== extra) {
-      tabsBox.replaceChildren(...Array.from({ length: extra }, (_, k) => {
-        const b = document.createElement('button');
-        b.className = 'mode';
-        b.dataset.mode = 'look';
-        b.dataset.layer = String(k + 1);
-        b.setAttribute('role', 'tab');
-        b.setAttribute('aria-controls', 'pane-look');
-        b.setAttribute('aria-selected', 'false');
-        b.textContent = layerName(k + 1);
-        b.addEventListener('click', onTab);
-        b.addEventListener('keydown', onTabKey);
-        return b;
-      }));
-      if (L.active) goLook();           // the tabs just made are marked by the page
-    }
-    const many = !!L.params && layerCount() > 1;
-    for (const tab of document.querySelectorAll('.mode[data-mode="look"]')) {
-      const x = tab.querySelector('.tab-x');
-      if (many && !x) {
-        const mark = document.createElement('span');
-        mark.className = 'tab-x';
-        mark.title = t('删除这层纹理');
-        mark.setAttribute('aria-hidden', 'true');       // the tab names itself; Delete on the tab is the keyboard's way
-        mark.textContent = '×';
-        tab.append(mark);
-      } else if (!many && x) x.remove();
-      if (many) tab.setAttribute('aria-keyshortcuts', 'Delete'); else tab.removeAttribute('aria-keyshortcuts');
-    }
-  }
-
-  // why + cannot add a layer now ('' with no image: nothing to say), or null when it can
+  // why + cannot add a layer now ('' while there is nothing to add to: nothing to say), or null when it can
   function addBlocked() {
-    if (!canLook()) return getDoc() ? t('先给一个部位画走向线，才能看纹理') : '';
-    return L.params && layerCount() >= MAX_LAYERS ? t('最多 {n} 层纹理', { n: MAX_LAYERS }) : null;
+    if (!L.params || !canLook()) return '';
+    return layerCount() >= MAX_LAYERS ? t('最多 {n} 层纹理', { n: MAX_LAYERS }) : null;
   }
 
   function renderAdd() {
     const why = addBlocked();
     addBtn.setAttribute('aria-disabled', String(why !== null));
-    addBtn.title = why || t('加一层纹理，和现在的纹理按比例叠在一起（试验）');
+    addBtn.title = why || t('添加一层纹理，和现有的纹理层按比例融合，最多 {n} 层', { n: MAX_LAYERS });
   }
 
-  $('#tab-look').addEventListener('click', onTab);
-  $('#tab-look').addEventListener('keydown', onTabKey);
   addBtn.addEventListener('click', () => {
     const why = addBlocked();
     if (why === null) addLayer(); else if (why) flash(why);
   });
 
-  // 融合: a row for each layer, the slider and the name that shows the layer (built when the number of layers changes,
-  // so a slider being dragged is never replaced); 自动 100% beside the title is the switch.
+  // 融合: a row for each layer: its name (a button that shows the layer in the card below; Delete on it deletes the
+  // layer), its slider, and × (built when the number of layers changes, so a slider being dragged is never
+  // replaced); 自动 100% under the rows is the switch.
   const blendRows = $('#blend-rows');
   const blendAuto = $('#blend-auto');
+
+  // × or Delete on a row: the layer goes (renderLayers keeps the focus with the layers: the row it was on is gone).
+  function removeLayer(i) {
+    if (!L.params || layerCount() < 2) return;
+    deleteLayer(i);
+  }
 
   function renderBlend() {
     const lock = !!L.params.lock_total, levels = levelList();
     if (blendRows.childElementCount !== levels.length) {
       blendRows.replaceChildren(...levels.map((_, i) => {
-        const row = document.createElement('div');
+        const row = document.createElement('li');
         row.className = 'blend-row';
         row.dataset.layer = String(i);
         const name = document.createElement('button');
         name.className = 'blend-name';
         name.type = 'button';
+        name.setAttribute('aria-keyshortcuts', 'Delete');
+        name.addEventListener('click', () => selectLayer(i));
+        name.addEventListener('keydown', (e) => {
+          if (e.key === 'Delete') { e.preventDefault(); removeLayer(i); }
+        });
         const slider = document.createElement('input');
         slider.type = 'range';
         slider.min = '0';
         slider.max = '100';
         slider.step = '1';
+        slider.addEventListener('input', () => setLevel(i, +slider.value));
         const val = document.createElement('span');
         val.className = 'val num';
-        row.append(name, slider, val);
+        const x = document.createElement('button');
+        x.className = 'layer-x';
+        x.type = 'button';
+        x.textContent = '×';
+        x.addEventListener('click', () => removeLayer(i));
+        row.append(name, slider, val, x);
         return row;
       }));
     }
     levels.forEach((level, i) => {
       const row = blendRows.children[i];
-      const [name, slider, val] = row.children;
+      const [name, slider, val, x] = row.children;
+      const called = { name: layerName(i) };
       row.classList.toggle('on', i === L.layer);
       name.textContent = layerName(i);
       name.setAttribute('aria-current', String(i === L.layer));
-      slider.setAttribute('aria-label', layerName(i));
+      name.title = t('调“{name}”的样式、密度、斜度和强度', called);
+      slider.setAttribute('aria-label', t('“{name}”的融合比例', called));
       slider.value = level;
       setVal(val, level, '%');
+      x.setAttribute('aria-label', t('删除“{name}”', called));
+      x.title = t('删除“{name}”', called);
     });
     blendAuto.setAttribute('aria-pressed', String(lock));
     const total = $('#blend-total');
@@ -392,16 +359,43 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     total.textContent = t('合计 {n}%', { n: levels.reduce((a, b) => a + b, 0) });
   }
 
-  blendRows.addEventListener('input', (e) => {
-    const row = e.target.closest('.blend-row');
-    if (row && e.target.type === 'range') setLevel(+row.dataset.layer, +e.target.value);
-  });
-  blendRows.addEventListener('click', (e) => {
-    const row = e.target.closest('.blend-row');
-    if (row && e.target.closest('.blend-name')) selectLayer(+row.dataset.layer);
-  });
+  // One layer or several: what of the 纹理层 section shows, where + sits, and whose settings the card says it holds.
+  // With no settings (another image was opened and its own are on their way) it is as with one layer: nothing of
+  // the last image's layers stays to be seen or pressed.
+  //
+  // The rows are made anew when their number changes (a layer deleted or added, 撤销, 重做, a preset) and are gone
+  // with one layer left: a focus that was on a row goes to the name of the layer now shown, or to + when there are
+  // no rows, so the keyboard is never left on nothing.
+  function renderLayers() {
+    const many = !!L.params && layerCount() > 1;
+    const focus = document.activeElement;
+    const held = !!focus && blendRows.contains(focus);
+    $('#layers-section').classList.toggle('single', !many);
+    for (const id of ['#layers-head', '#blend-foot', '#layer-card-title-row', '#global-note']) $(id).hidden = !many;
+    blendRows.hidden = !many;
+    const host = many ? $('#layers-head') : $('#layer-card-head');
+    if (addBtn.parentElement !== host) {
+      const focused = document.activeElement === addBtn;
+      host.append(addBtn);
+      if (focused) addBtn.focus();
+    }
+    renderAdd();
+    $('#layer-card-title').textContent = t('正在调：{name}', { name: layerName(L.layer) });
+    if (many) renderBlend();
+    else {
+      if (blendRows.childElementCount) blendRows.replaceChildren();
+      $('#blend-info').hidden = true;                    // its ? went with the title
+      $('#layers-head .info-btn').setAttribute('aria-expanded', 'false');
+    }
+    if (held && !blendRows.contains(document.activeElement)) {
+      const row = many ? blendRows.children[L.layer] : null;
+      (row ? row.children[0] : addBtn).focus();
+    }
+  }
+
   // The user's last choice for the switch is kept (per user, the server's settings): a look not saved yet starts from it.
   blendAuto.addEventListener('click', () => {
+    if (!L.params) return;
     const on = !L.params.lock_total;
     set({ lock_total: on });
     if (L.info) L.info.blend_auto = on;
@@ -676,13 +670,8 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     const all = L.params;                // sparkles and the moiré effect: one setting for the whole look
     const doc = getDoc();
     if (!all || !doc) return;
-    renderTabs();
-    renderAdd();
-    const p = layerAt(L.layer);          // style, density, tilt and strength: the layer shown
-    const many = layerCount() > 1;
-    $('#blend-section').hidden = !many;
-    if (many) renderBlend();
-    $('#style-layer').textContent = many ? `· ${layerName(L.layer)}` : '';
+    renderLayers();
+    const p = layerAt(L.layer);          // style, density, tilt and strength: the layer shown, in the card
     for (const b of document.querySelectorAll('.styles .opt')) b.setAttribute('aria-checked', String(b.dataset.style === p.style));
     $('#style-note').textContent = STYLE_NOTES[p.style];
     $('#density').value = p.density;
@@ -1058,7 +1047,6 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
     renderFitStatus();
     requestCrop();
     requestFit();
-    if (L.addOnLoad) { L.addOnLoad = false; addLayer(); }
   }
 
   function refresh() {
@@ -1236,7 +1224,6 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
 
   return {
     params() { return L.params ? { ...L.params } : null; },
-    layer() { return L.layer; },
     flush,
     enter() {
       L.active = true;
@@ -1254,14 +1241,12 @@ export function createLook({ getDoc, getArt, request, edit, flash, focusByKeyboa
         clearTimeout(saveTimer);                  // the last document's settings are not this one's to save
         unsaved = false;
         Object.assign(L, { params: null, info: null, centre: null, fitImg: null, checkImg: null, cropImg: null,
-          presetName: null, layer: 0, addOnLoad: false,
+          presetName: null, layer: 0,
           gesture: null, newStep: true,
           cropCheckImg: null,
           cropRect: null });
-        tabsBox.replaceChildren();
-        renderTabs();
         renderPresetState();
-        renderAdd();
+        renderLayers();                           // the last document's layers are not this one's to show
         if (L.active && st) load().catch((e) => flash(e.message, true));
         return;
       }

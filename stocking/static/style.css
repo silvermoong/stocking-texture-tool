@@ -151,14 +151,6 @@ input[type="checkbox"] { width: calc(13px * var(--k)); height: calc(13px * var(-
 .mode:hover:not([aria-disabled="true"]):not([aria-selected="true"]) { color: var(--text); }
 .mode[aria-selected="true"] { background: var(--chalk); color: var(--on-chalk); font-weight: 700; }
 .mode[aria-disabled="true"] { color: var(--faint); cursor: default; }
-.layer-tabs { display: contents; }
-/* × on a 纹理层's tab (with more than one layer, on the 纹理 page): deletes that layer */
-.tab-x {
-  display: inline-block; margin: 0 calc(-6px * var(--k)) 0 calc(8px * var(--k)); padding: 0 calc(5px * var(--k)); border-radius: calc(3px * var(--k)); font-size: calc(14px * var(--k)); line-height: calc(18px * var(--k));
-  font-weight: 400; vertical-align: top; opacity: .6;
-}
-.tab-x:hover { opacity: 1; background: color-mix(in srgb, currentColor 18%, transparent); }
-body[data-mode="edit"] .tab-x { display: none; }
 .tip {
   position: absolute; z-index: 20; left: 0; top: calc(36px * var(--k)); padding: calc(6px * var(--k)) calc(10px * var(--k)); border: 1px solid var(--line); border-radius: calc(4px * var(--k));
   background: var(--float); box-shadow: var(--elev); font-size: calc(12px * var(--k)); white-space: nowrap; pointer-events: none;
@@ -387,17 +379,59 @@ body[data-mode="edit"] .look-only, body[data-mode="look"] .edit-only { display: 
 .preset-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: calc(4px * var(--k)); }
 .preset-note { margin-top: calc(6px * var(--k)); overflow-wrap: anywhere; }
 .preset-head #btn-preset-import { margin-left: auto; }
-/* 融合: one slider for each 纹理层, the layer shown in bold; 自动 100% on the right of the title */
-.blend-head .btn { margin-left: auto; }
-.blend-row { display: grid; grid-template-columns: calc(56px * var(--k)) minmax(0, 1fr) calc(44px * var(--k)); align-items: center; gap: calc(8px * var(--k)); margin-bottom: calc(4px * var(--k)); }
-.blend-name {
-  min-width: 0; padding: 0; overflow: hidden; background: none; color: var(--muted); font-size: calc(12px * var(--k)); text-align: left;
-  text-overflow: ellipsis; white-space: nowrap;
+/* 纹理层: the layers, and what belongs to one of them. With several there is a row for each (its name, its 融合
+   slider, its share, ×), the one shown in the card filled like the chosen region's row, and 自动 100% under the rows.
+   The card frames the settings of one layer; the line after it says the rest goes on the whole picture. */
+.layers { margin-bottom: calc(14px * var(--k)); }
+.blend-rows {
+  display: grid; grid-template-columns: max-content minmax(0, 1fr) max-content calc(22px * var(--k)); gap: 2px calc(8px * var(--k));
+  margin: 0 calc(-6px * var(--k)); padding: 0; list-style: none;
 }
+.blend-row {
+  display: grid; grid-template-columns: subgrid; grid-column: 1 / -1; align-items: center; height: calc(26px * var(--k));
+  padding: 0 calc(2px * var(--k)) 0 calc(6px * var(--k)); border-radius: calc(3px * var(--k));
+}
+.blend-row.on { background: var(--raised); }
+.blend-name { height: 100%; padding: 0; background: none; color: var(--muted); font-size: calc(12px * var(--k)); text-align: left; white-space: nowrap; }
 .blend-name:hover { color: var(--text); }
 .blend-row.on .blend-name { color: var(--text); font-weight: 700; }
-.blend-row .val { font-size: calc(15px * var(--k)); text-align: right; }
-.style-layer { margin-left: calc(6px * var(--k)); font-weight: 400; color: var(--muted); }
+.blend-row .val { min-width: calc(36px * var(--k)); font-size: calc(15px * var(--k)); text-align: right; }
+.layer-x {
+  width: calc(22px * var(--k)); height: calc(22px * var(--k)); padding: 0; border-radius: calc(3px * var(--k)); background: none;
+  color: var(--muted); font-size: calc(15px * var(--k)); line-height: 1;
+}
+.layer-x:hover { background: var(--hover); color: var(--text); }
+.blend-foot { display: flex; align-items: center; gap: calc(8px * var(--k)); margin-top: calc(8px * var(--k)); }
+.blend-total { margin-left: auto; font-size: calc(13px * var(--k)); color: var(--muted); }
+/* + : beside 样式 with its name written out (a lone layer), or the + of the 纹理层 title (several) */
+.layer-add {
+  display: inline-flex; align-items: center; gap: calc(4px * var(--k)); height: calc(26px * var(--k)); margin-left: auto; padding: 0 calc(6px * var(--k));
+  border-radius: calc(3px * var(--k)); background: none; color: var(--muted); font-size: calc(12px * var(--k)); white-space: nowrap;
+}
+.layer-add .plus { font: 300 calc(18px * var(--k))/1 var(--din); }
+.layer-add .exp-tag { margin-left: 0; }
+.layer-add:hover:not([aria-disabled="true"]) { background: var(--raised); color: var(--text); }
+.layer-add[aria-disabled="true"] { color: var(--faint); cursor: default; }
+.layers:not(.single) .layer-add { justify-content: center; width: calc(26px * var(--k)); padding: 0; color: var(--text); }
+.layers:not(.single) .layer-add .plus { font-size: calc(22px * var(--k)); }
+.layers:not(.single) .layer-add[aria-disabled="true"] { color: var(--faint); }
+.layers:not(.single) .layer-add .exp-tag { display: none; }
+.layers:not(.single) .layer-add-text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+/* the frame stands out into the panel's own margin, so what is in it is as wide as it was without a frame (a
+   narrower column would wrap the notes onto more lines and push the sliders down) */
+.layer-card { margin: 0 calc(-11px * var(--k)); padding: calc(10px * var(--k)) calc(10px * var(--k)) 0; border: 1px solid var(--hover); border-radius: calc(6px * var(--k)); }
+#preset-section { margin-bottom: calc(14px * var(--k)); }
+.layers:not(.single) .layer-card { margin-top: calc(12px * var(--k)); }
+.layer-card-title {
+  display: flex; align-items: baseline; justify-content: space-between; gap: calc(8px * var(--k)); margin: 0 0 calc(8px * var(--k)); padding-bottom: calc(8px * var(--k));
+  border-bottom: 1px solid var(--line); font-size: calc(12px * var(--k)); color: var(--muted);
+}
+#layer-card-title { color: var(--text); font-weight: 700; }
+.layer-card-head { display: flex; align-items: center; height: calc(26px * var(--k)); margin-bottom: calc(8px * var(--k)); }
+.layer-card-head h2 { font-size: calc(14px * var(--k)); }
+.layer-card .style-note { margin-bottom: calc(14px * var(--k)); }
+.layer-card > .field:last-child { margin-bottom: calc(12px * var(--k)); }
+.global-note { margin: 0 0 calc(12px * var(--k)); font-size: calc(12px * var(--k)); line-height: 1.55; color: var(--muted); }
 .opt { height: calc(32px * var(--k)); border-radius: calc(3px * var(--k)); background: var(--raised); font-size: calc(13px * var(--k)); white-space: nowrap; }
 .opt:hover { background: var(--hover); }
 .opt[aria-checked="true"] { background: var(--chalk); color: var(--on-chalk); font-weight: 700; }

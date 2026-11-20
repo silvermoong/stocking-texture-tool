@@ -667,6 +667,62 @@ assert.equal(srv.puts.length, putsAtDelete);
 assert.equal(srv.undo.length, stepsAtDelete);
 assert.equal(srv.preset, null);
 assert.deepEqual(shown(), ['', 'grain', 135, false, false]);
+
+// 13. 纹理层 are managed in the panel. A lone layer has no rows, only +; + adds a layer and shows it; at four it says
+//     why it adds no more; × on a row and Delete on a layer's name delete that layer; 撤销 brings it back
+const zh = {json.dumps(lang)} === 'zh';
+const layerNames = (n) => Array.from({{ length: n }}, (_, i) => (zh ? `纹理 ${{i + 1}}` : `Texture ${{i + 1}}`));
+const add = getEl('#layer-add');
+const rows = getEl('#blend-rows');
+const rowNames = () => rows.children.map((r) => r.children[0].textContent);
+const current = () => rows.children.map((r) => r.children[0].getAttribute('aria-current'));
+assert.equal(add.getAttribute('aria-disabled'), 'false');
+assert.deepEqual([rows.hidden, rows.children.length, getEl('#global-note').hidden], [true, 0, true]);
+add.dispatch('click');
+await settle();
+assert.equal(lookUI.params().layers.length, 1);
+assert.deepEqual([rows.hidden, getEl('#blend-foot').hidden, getEl('#global-note').hidden], [false, false, false]);
+assert.deepEqual(rowNames(), layerNames(2));
+assert.deepEqual(current(), ['false', 'true']);                       // the new layer is the one shown in the card
+assert.equal(getEl('#layer-card-title').textContent.includes(layerNames(2)[1]), true);
+rows.children[0].children[0].dispatch('click');                       // a layer's name shows that layer
+assert.deepEqual(current(), ['true', 'false']);
+assert.equal(getEl('#layer-card-title').textContent.includes(layerNames(2)[0]), true);
+add.dispatch('click');
+add.dispatch('click');
+await settle();
+assert.deepEqual(rowNames(), layerNames(4));
+assert.equal(add.getAttribute('aria-disabled'), 'true');
+add.dispatch('click');                                                // a fifth: none, and the reason is said
+await settle();
+assert.equal(lookUI.params().layers.length, 3);
+assert.equal(flashes.at(-1), zh ? '最多 4 层纹理' : 'At most 4 texture layers');
+const secondStyle = lookUI.params().layers[0].style, thirdStyle = lookUI.params().layers[1].style;
+rows.children[1].children[3].dispatch('click');                       // × of the second row: that layer goes
+await settle();
+assert.deepEqual(rowNames(), layerNames(3));
+assert.equal(lookUI.params().layers[0].style, thirdStyle);
+assert.equal(add.getAttribute('aria-disabled'), 'false');
+rows.children[0].children[0].dispatch('keydown', {{ key: 'Delete' }});  // Delete on the first layer's name
+await settle();
+assert.deepEqual(rowNames(), layerNames(2));
+assert.equal(lookUI.params().style, thirdStyle);
+await step('undo');
+assert.deepEqual(rowNames(), layerNames(3));
+assert.equal(lookUI.params().style, 'grain');
+await step('undo');
+assert.deepEqual(rowNames(), layerNames(4));
+assert.equal(lookUI.params().layers[0].style, secondStyle);
+
+// 14. Another image is opened: at once nothing of the last image's layers is shown, + waits for the new settings,
+//     and what is still there to press does nothing rather than fail on settings that are not here yet
+lookUI.onState({{ ...doc, id: 'd2' }});
+assert.equal(lookUI.params(), null);
+assert.deepEqual([rows.hidden, rows.children.length, getEl('#layers-head').hidden, getEl('#blend-foot').hidden,
+  getEl('#global-note').hidden, add.getAttribute('aria-disabled')], [true, 0, true, true, true, 'true']);
+getEl('#blend-auto').dispatch('click');
+add.dispatch('click');
+assert.equal(lookUI.params(), null);
 """;
     res = subprocess.run(['node', '--input-type=module', '-e', script], capture_output=True, text=True, encoding='utf-8')
     assert res.returncode == 0, res.stderr or res.stdout
