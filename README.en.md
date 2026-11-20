@@ -223,13 +223,13 @@ Kase's share 0% / 30% / 70% / 100% (the rest is Fine lines; left to right), the 
 
 Tick Show problems beside the previews. Both previews show the marks (in the previews only, never in an export). The box and the three rows under it are one group, which the tool places in the preview area, under or beside one of the previews, to suit the window and the picture's shape; in a small window you may have to scroll the previews down a little to see all of it.
 
-The block at the start of each row is its color on the previews:
+The small bar at the start of each row is its color on the previews:
 
 - **Red** marks where the courses are so dense that the texture was faded to avoid moiré. The Texture fade switch on that row decides it.
 - **Blue** marks what Color exclusion removed. The switch on that row decides it.
 - **Yellow** marks what is painted but gets no texture: a region with no direction lines, a region whose solve failed, or a separate piece of a region with no line of its own. It has no switch; go back to Guides and check those regions' direction lines. The row names the regions, and the ? beside it shows the whole list when it is cut short.
 
-The two switches work whether or not Show problems is ticked, and they change what is exported; under each row is its present share of the painted regions. A block is hollow while Show problems is not ticked or the switch on its row is off. With the box or a switch focused by Tab, Space toggles it; after a mouse click on one, Space is still the hold that shows the original in Detail.
+The two switches work whether or not Show problems is ticked, and they change what is exported; under each row is its present share of the painted regions. A bar always has its row's color: dim while Show problems is not ticked or the switch on its row is off, bright while that color is marked on the previews. Each switch sits right after its own name. With the box or a switch focused by Tab, Space toggles it; after a mouse click on one, Space is still the hold that shows the original in Detail.
 
 If a main area has a large patch of red, lower the density (with several texture layers, the one whose courses are closest):
 

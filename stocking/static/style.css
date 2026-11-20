@@ -567,19 +567,33 @@ body[data-mode="look"] .stage { overflow-y: auto; scrollbar-gutter: stable; }   
 /* the rows wrap by the group's width; a row left alone on its line takes the whole of it */
 .check-rows { display: flex; flex-wrap: wrap; gap: calc(8px * var(--k)) calc(20px * var(--k)); padding-left: calc(19px * var(--k)); }
 .check-row { flex: 1 1 var(--row-min); min-width: 0; }
-/* the switch stays beside its own name, however wide the column; the notes below take the column's width */
-.check-line { display: flex; align-items: center; gap: calc(6px * var(--k)); max-width: var(--row-max); min-height: calc(20px * var(--k)); }
+/* a row's title: its colour, its name and ?, then its switch right after them. Any other .switch goes to the end of
+   its line; here a wide column would carry it away from its own name to the next row's (20 px from that one, five
+   times as far from its own), and it read as that row's switch. The notes below take the column's width. */
+.check-line { display: flex; align-items: center; gap: calc(6px * var(--k)); min-height: calc(20px * var(--k)); }
+.check-line .switch { margin-left: calc(4px * var(--k)); }
 .check-line .switch-label, .check-name { min-width: 0; font-size: calc(13px * var(--k)); }
+/* a switch's name and ? (.shown) over the other switch's name, unseen (.measure, with room for its ?): both titles
+   are as wide as the longer, so the two switches line up where the rows lie one under another */
+.check-title { display: inline-grid; grid-template-columns: minmax(0, auto); flex: 0 1 auto; min-width: 0; }     /* it gives way in a narrow column: the name wraps there, as it always has */
+.check-title > * { grid-area: 1 / 1; }
+/* (in a narrow column the room is taken from the name, broken inside a word if need be: the ? keeps its size, and
+   the switch, whose unseen input is on top, never comes to lie on it) */
+.check-title > .shown { display: flex; align-items: center; gap: calc(6px * var(--k)); min-width: 0; }
+.check-title .switch-label { overflow-wrap: anywhere; }
+.check-title .info-btn { flex: none; }
+.check-title > .measure { visibility: hidden; min-width: 0; padding-right: calc(22px * var(--k)); font-size: calc(13px * var(--k)); }
 /* what a row says (.shown) and, unseen in the same cell, the same with each other reading of its status (.measure):
    the cell is as tall as the tallest, and the room to spare is at the row's end, not between its lines */
-.check-notes { display: grid; grid-template-columns: minmax(0, 1fr); margin-left: calc(16px * var(--k)); }
+.check-notes { display: grid; grid-template-columns: minmax(0, 1fr); margin-left: calc(10px * var(--k)); }     /* under the name, past the colour bar */
 .check-notes > * { grid-area: 1 / 1; min-width: 0; }
 .check-notes > .measure { visibility: hidden; }
 .check-group .note { display: block; min-height: 1.55em; margin: calc(2px * var(--k)) 0 0; }
 .check-notes.one-line .note { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* hollow while its colour is not on the previews: 标出问题 not ticked, or the switch of this row off */
-.key { flex: none; box-sizing: border-box; width: calc(10px * var(--k)); height: calc(10px * var(--k)); border: 1px solid var(--muted-raised); border-radius: 2px; background: transparent; }
-.key.on { border-color: var(--c); background: var(--c); }
+/* a short bar in the row's own colour, never an outlined box (three of those under 标出问题 read as boxes to tick):
+   dim while that colour is not on the previews (标出问题 not ticked, or the switch of this row off), full while it is */
+.key { flex: none; width: calc(4px * var(--k)); height: calc(14px * var(--k)); border-radius: calc(2px * var(--k)); background: var(--c); opacity: .5; }
+.key.on { opacity: 1; }
 .seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: calc(4px * var(--k)); background: var(--raised); }
 .seg-btn { height: calc(22px * var(--k)); padding: 0 calc(8px * var(--k)); border-radius: 2px; background: none; font-size: calc(12px * var(--k)); }
 .seg-btn:hover:not([aria-checked="true"]) { background: var(--hover); }

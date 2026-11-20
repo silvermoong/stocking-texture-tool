@@ -247,6 +247,12 @@ function pct(x) {
   return x < 0.001 ? t('不到 {p}', { p: PCT[1].format(0.001) }) : PCT[x < 0.1 ? 1 : 0].format(x);
 }
 
+// What a row of the check group says of its share. "…的 14%。" has the space Chinese sets before a number;
+// "…的不到 0.1%。" has none before a word. The readings laid out unseen to size the rows are made here too.
+const fadedShare = (x) => (x < 0.001 ? t('现在减弱了纹理的{p}。', { p: pct(x) }) : t('现在减弱了纹理的 {p}。', { p: pct(x) }));
+const excludedShare = (x) => (x < 0.001 ? t('现在排除了已涂部位的{p}。', { p: pct(x) })
+  : t('现在排除了已涂部位的 {p}。', { p: pct(x) }));
+
 const MAX_LAYERS = 4;                                                  // as look.MAX_LAYERS
 const GESTURE_MS = 700;                                                // a slider at rest this long: the next move is a new step
 const DEFAULT_AMOUNT = 50;                                             // as look.DEFAULT_AMOUNT
@@ -1041,12 +1047,13 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     const i = L.info;
     $('#fade-note').textContent = !on ? t('已关闭：横纹密集处也不减弱纹理。')
       : !i ? '' : i.solving.length ? t('正在更新…')
-        : i.check.faded > 0 ? t('现在减弱了纹理的 {p}。', { p: pct(i.check.faded) }) : t('这张图没有被减弱的地方。');
+        : i.check.faded > 0 ? fadedShare(i.check.faded) : t('这张图没有被减弱的地方。');
     renderKeys();
   }
 
-  // A row's colour block is filled while its colour is on the previews: 标出问题 ticked and, for red and blue, the
-  // switch that causes it on (with the switch off there is nothing of that colour to mark). Hollow otherwise.
+  // A row's colour bar is at full strength while its colour is on the previews: 标出问题 ticked and, for red and blue,
+  // the switch that causes it on (with the switch off there is nothing of that colour to mark). Dim otherwise, and
+  // still of its own colour: the row says which marks are its own before any are shown.
   function renderKeys() {
     const doc = getDoc();
     // (while another picture's settings are on their way nothing says the switch is off: the block does not blink)
@@ -1064,7 +1071,7 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
     const i = L.info;
     $('#exclude-note').textContent = !on ? t('已关闭：不再按颜色排除。')
       : !i ? '' : i.solving.length ? t('正在更新…')
-        : i.check.excluded > 0 ? t('现在排除了已涂部位的 {p}。', { p: pct(i.check.excluded) }) : t('这张图没有被排除的地方。');
+        : i.check.excluded > 0 ? excludedShare(i.check.excluded) : t('这张图没有被排除的地方。');
     renderKeys();
   }
 
@@ -1082,12 +1089,26 @@ export function createLook({ getDoc, getArt, request, edit, flash, setTip, focus
       return m;
     }));
   }
-  const longestShare = pct(0.0005);
+  const LEAST = 0.0005;                                   // a share that reads "不到 0.1%": the longest a share is said
   reserve('#fade-note', [t('已关闭：横纹密集处也不减弱纹理。'), t('正在更新…'),
-    t('现在减弱了纹理的 {p}。', { p: longestShare }), t('这张图没有被减弱的地方。')]);
+    fadedShare(LEAST), t('这张图没有被减弱的地方。')]);
   reserve('#exclude-note', [t('已关闭：不再按颜色排除。'), t('正在更新…'),
-    t('现在排除了已涂部位的 {p}。', { p: longestShare }), t('这张图没有被排除的地方。')]);
+    excludedShare(LEAST), t('这张图没有被排除的地方。')]);
   reserve('#check-nostroke', [t('没有。')]);
+  // The two switches' titles each hold the other's name too, unseen: both are as wide as the longer name, and the
+  // switches after them line up where the rows lie one under another. (t(): the page's text may be translated
+  // already or not yet; an English name is no key and stays as it is.)
+  const titles = [...groupEl.querySelectorAll('.check-title')];
+  for (const title of titles) {
+    for (const other of titles) {
+      if (other === title) continue;
+      const m = document.createElement('span');
+      m.className = 'measure';
+      m.setAttribute('aria-hidden', 'true');
+      m.textContent = t(other.querySelector('label').textContent.trim());
+      title.append(m);
+    }
+  }
   // The box's description is on its label, where the pointer finds it: the box itself has it too, to be read out.
   $('#show-problems').setAttribute('aria-description', $('#show-problems').closest('label').dataset.tip);
 

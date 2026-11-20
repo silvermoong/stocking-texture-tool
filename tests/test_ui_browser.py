@@ -275,19 +275,130 @@ def test_the_check_group_stays_available_with_or_without_marks(ui, lang, scale, 
             && !document.querySelector('#check-faded, #check-excluded');
     })()''')
     seen = '''(() => {
-        const keys = [...document.querySelectorAll('#check-group .key')];
+        const keys = [...document.querySelectorAll('#check-group .key')].map(e => [e, getComputedStyle(e)]);
         const visible = (s) => document.querySelector(s).checkVisibility({visibilityProperty: true});
         return [document.querySelector('#show-problems').checked,
-            keys.map(e => getComputedStyle(e).backgroundColor),
+            keys.map(([e, cs]) => cs.backgroundColor),
+            // dim is still plain to see: a bar faded away altogether would leave the rows with no colour again
+            keys.map(([e, cs]) => +cs.opacity >= 1 ? 'full' : +cs.opacity >= 0.35 ? 'dim' : 'gone'),
+            // a bar of the legend, never a box to tick: no outline, and clearly taller than it is wide
+            keys.every(([e, cs]) => cs.borderTopStyle === 'none' && e.offsetWidth >= 3
+                && e.offsetHeight >= 2 * e.offsetWidth
+                && e.checkVisibility({visibilityProperty: true, opacityProperty: true})),
             ['#fade', '#exclude', '#peek-hint'].every(visible)];
     })()'''
-    hollow = ['rgba(0, 0, 0, 0)'] * 3
-    assert page.evaluate(seen) == [False, hollow, True]
+    hues = ['rgb(255, 50, 60)', 'rgb(70, 160, 255)', 'rgb(255, 190, 40)']
+    # not ticked: every row still shows its own colour, dimmed, so the three never read as empty boxes to tick
+    assert page.evaluate(seen) == [False, hues, ['dim'] * 3, True, True]
     page.click('#show-problems')
-    assert page.evaluate(seen) == [True, ['rgb(255, 50, 60)', 'rgb(70, 160, 255)', 'rgb(255, 190, 40)'], True]
+    assert page.evaluate(seen) == [True, hues, ['full'] * 3, True, True]
     page.click('#show-problems')
-    assert page.evaluate(seen) == [False, hollow, True]
+    assert page.evaluate(seen) == [False, hues, ['dim'] * 3, True, True]
     page.check_errors()
+
+
+# How the rows of the check group lie (how many on each line) and where each switch is: how far right of its own ?
+# (`own`) and, with another row to its right on the same line, how far left of that row (`next`), both in ems of the
+# group's text.
+SWITCH_PLACES = '''(() => {
+    const r = (e) => e.getBoundingClientRect();
+    const rows = [...document.querySelectorAll('#check-group .check-row')];
+    const em = parseFloat(getComputedStyle(document.querySelector('#check-group')).fontSize);
+    const top = (row) => Math.round(r(row).top);
+    const tops = [...new Set(rows.map(top))];
+    return { perLine: tops.map((t) => rows.filter((row) => top(row) === t).length),
+        switches: rows.filter((row) => row.querySelector('.switch')).map((row) => {
+            const sw = r(row.querySelector('.switch')), info = r(row.querySelector('.info-btn'));
+            const next = rows[rows.indexOf(row) + 1];
+            const beside = next && top(next) === top(row) ? r(next) : null;
+            return { left: Math.round(sw.left), own: (sw.left - info.right) / em,
+                     next: beside ? (beside.left - sw.right) / em : null, inRow: sw.right <= r(row).right + 1 };
+        }) };
+})()'''
+
+
+@pytest.mark.parametrize('lang, scale, size, lines', (
+    ('zh', 100, (1100, 520), [3]), ('zh', 100, (1440, 900), [2, 1]), ('en', 100, (1024, 768), [2, 1]),
+    ('zh', 125, (1024, 768), [1, 1, 1]), ('en', 125, (360, 840), [1, 1, 1]),
+), ids=('zh-100-1100x520-three-abreast', 'zh-100-1440x900-two-and-one', 'en-100-1024x768-two-and-one',
+        'zh-125-1024x768-stacked', 'en-125-360x840-stacked'))
+def test_each_switch_stays_with_its_own_name_however_the_rows_lie(check_ui, lang, scale, size, lines):
+    # a wide group once pushed each switch to the far end of its column, 20 px from the next row's name and five
+    # times as far from its own: it read as the next row's switch
+    server, page = check_page(check_ui, lang, scale, size)
+    page.hover('.status')
+    resting_places(page)
+    seen = page.evaluate(SWITCH_PLACES)
+    assert seen['perLine'] == lines, seen           # the window really lays the rows out this way
+    assert len(seen['switches']) == 2, seen
+    for sw in seen['switches']:
+        assert 0 < sw['own'] <= 3 and sw['inRow'], seen                 # right after its own name and ?
+        assert sw['next'] is None or sw['next'] >= 3 and sw['next'] > sw['own'], seen     # and well clear of the next row
+    if lines == [1, 1, 1]:
+        # one under another, the two switches line up whatever the lengths of the two names
+        assert len({sw['left'] for sw in seen['switches']}) == 1, seen
+    page.check_errors()
+
+
+@pytest.mark.parametrize('size', ((360, 840), (320, 840)), ids=lambda s: f'{s[0]}x{s[1]}')
+def test_a_question_mark_keeps_its_shape_and_stays_clear_of_its_switch_in_a_narrow_column(ui, size):
+    # where a name has to wrap, the room is taken from the name: the ? stays round, and the switch never lies on it
+    # (the switch's input is unseen and on top: a ? under it would turn the switch instead of opening its note)
+    page = show(ui, 'en', 175, size, look=1)
+    page.wait_for('!!document.querySelector("#fade-note").textContent', what='the rows to say what they do now')
+    seen = page.evaluate('''(() => {
+        const k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--k'));
+        const stage = document.querySelector('#stage');
+        const rows = [...document.querySelectorAll('#check-group .check-row')].filter((row) => row.querySelector('.switch'));
+        return { sideways: stage.scrollWidth - stage.clientWidth, rows: rows.map((row) => {
+            const info = row.querySelector('.info-btn');
+            info.scrollIntoView({ block: 'center' });
+            const i = info.getBoundingClientRect(), sw = row.querySelector('.switch').getBoundingClientRect();
+            return { size: [i.width / k, i.height / k], gap: sw.left - i.right,
+                     reached: document.elementFromPoint(i.right - 2, i.top + i.height / 2) === info,
+                     inRow: sw.right <= row.getBoundingClientRect().right + 1 };
+        }) };
+    })()''')
+    assert seen['sideways'] == 0 and len(seen['rows']) == 2, seen
+    for row in seen['rows']:
+        assert all(abs(side - 16) <= 0.5 for side in row['size']), seen     # 16 px at 100%, as every ? of the page
+        assert row['gap'] >= 2 and row['reached'] and row['inRow'], seen
+    page.check_errors()
+
+
+@pytest.mark.parametrize('tiny, fade, exclude', (
+    (True, '现在减弱了纹理的不到 0.1%。', '现在排除了已涂部位的不到 0.1%。'),
+    (False, '现在减弱了纹理的 14%。', '现在排除了已涂部位的 3.6%。'),
+), ids=('under-a-tenth-of-a-percent', 'a-plain-number'))
+def test_a_share_has_a_space_before_a_number_and_none_before_a_word_in_chinese(check_ui, tiny, fade, exclude):
+    # "…的 14%。" takes the space Chinese sets before a number; "…的 不到 0.1%。" had it before a word, on both rows.
+    # For the tiny shares only the two numbers of the public /look answer are changed; the rows say them themselves.
+    server, page = check_ui
+    script = page.send('Page.addScriptToEvaluateOnNewDocument', source='''(() => {
+        const real = window.fetch;
+        window.fetch = async (url, opt) => {
+            const res = await real(url, opt);
+            if (!/\\/api\\/doc\\/[^/]+\\/look(\\?|$)/.test(String(url)) || !res.ok) return res;
+            const info = await res.json();
+            if (info && info.check) Object.assign(info.check, {faded: 0.0005, excluded: 0.0005});
+            return Response.json(info, {status: res.status});
+        };
+    })()''')['identifier'] if tiny else None
+    try:
+        check_page(check_ui, 'zh', 100, (1280, 720))
+        seen = page.evaluate('''Object.fromEntries(['fade', 'exclude'].map((row) => {
+            const note = document.querySelector(`#${row}-note`);
+            return [row, { said: note.textContent, reserved: [...note.closest('.check-notes')
+                .querySelectorAll('.measure .note')].map((e) => e.textContent) }];
+        }))''')
+        assert (seen['fade']['said'], seen['exclude']['said']) == (fade, exclude), seen
+        # the readings laid out unseen, which keep each row as tall as its longest, say the tiny share the same way
+        assert '现在减弱了纹理的不到 0.1%。' in seen['fade']['reserved'], seen
+        assert '现在排除了已涂部位的不到 0.1%。' in seen['exclude']['reserved'], seen
+        assert not any('的 不到' in text for row in seen.values() for text in row['reserved']), seen
+    finally:
+        if script:
+            page.send('Page.removeScriptToEvaluateOnNewDocument', identifier=script)
 
 
 def check_document(server, portrait=False, *, image_size=None):
