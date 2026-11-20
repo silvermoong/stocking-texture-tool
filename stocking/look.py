@@ -85,7 +85,7 @@ SPARKLE_RECIPES = {
     'coil': dict(density=0.014, r_lo=0.12, r_hi=0.38, tint=None, draws='grain'),
     'oily': dict(density=0.014, r_lo=0.12, r_hi=0.38, tint=None, draws='grain'),
 }
-# 摩尔纹效果 is off until its switch (moire_on) is turned on; then moire (强度) is how strongly the bands show and
+# 摩尔纹效果 is off until its switch (moire_on) is turned on; then moire (明暗) is how strongly the bands show and
 # moire_area (面积) how much of each bulge carries them. The fringes of two fine layers over a stretched surface are
 # contours of its height, so the bands run along the depth model's bulge (smoothed by MOIRE_BLUR px at REF_AREA
 # first), one ring for every MOIRE_STEP of the depth the stockings span: a taller bulge holds more rings, a flat one
@@ -94,7 +94,7 @@ SPARKLE_RECIPES = {
 # rises new rings are added around the outside while the inner ones stay in place. A band is a cosine squared up by
 # tanh (MOIRE_SHARP) into crisp edges; it shows only once the revealed bulge has climbed MOIRE_FIRST of a step
 # (a surface that has not yet risen half a step has no ring at all). Where the bulge changes so fast that the bands
-# would run finer than MOIRE_FADE cycles/px they fade out, as the texture's own courses do. At strength 100% a band
+# would run finer than MOIRE_FADE cycles/px they fade out, as the texture's own courses do. At 100% Contrast a band
 # moves the stocking's lightness by MOIRE_LIGHT (at the strength a dark stocking gets, less on light ones, where the
 # same ratio looks twice as strong) and the texture's own contrast by MOIRE_TEXTURE.
 MOIRE_STEP = 0.045
@@ -492,13 +492,13 @@ def moire_fringes(phase, slope, area):
 
 
 def moire_active(q):
-    """Whether the (cleaned) settings q draw the 摩尔纹效果 at all: its switch is on and the 强度 slider is above 0."""
+    """Whether the (cleaned) settings q draw the 摩尔纹效果 at all: its switch is on and the 明暗 slider is above 0."""
     return bool(q['moire_on']) and q['moire'] > 0
 
 
 def apply_moire(out, src, fringes, amount, light):
     """The moire bands over a style's render. out: BGR uint8 render of src; fringes: Scene.moire_map (cropped like
-    src); amount: the 强度 slider, 0..1; light: the strength a stocking this light gets, 0..1 (Scene.suggested_strength).
+    src); amount: the 明暗 slider, 0..1; light: the strength a stocking this light gets, 0..1 (Scene.suggested_strength).
     In a bright band the stocking is lighter and its texture stronger, in a dark one the reverse."""
     b = (amount * fringes)[..., None]
     s = src.astype(np.float32)
@@ -521,7 +521,7 @@ def particle_field(rng, h, w, scale=1.0):
 
 
 def particle_active(q):
-    """Whether the (cleaned) settings q draw 高光粒子 at all: its switch is on and the 强度 slider is above 0."""
+    """Whether the (cleaned) settings q draw 高光粒子 at all: its switch is on and the 亮度 slider is above 0."""
     return bool(q['particle_on']) and q['particle'] > 0
 
 
@@ -529,7 +529,7 @@ def apply_particles(out, src, core, band, tail, centre, field, gate, amount):
     """高光粒子 over a style's render: along 油光's glint tracks (core, band, tail, centre from Scene.oily_maps,
     cropped like src), the highlight line is drawn purely out of discrete 1-3 px grains at the spine that thin out
     and fade smoothly toward the boundary of the highlight's range, with inter-particle pores breaking up smooth
-    painted highlights. field, gate: Scene.particle_maps (cropped like src); amount: the 强度 slider, 0..1."""
+    painted highlights. field, gate: Scene.particle_maps (cropped like src); amount: the 亮度 slider, 0..1."""
     if amount <= 0:
         return out
     on = (centre > 1e-3) & (tail >= 0.01)

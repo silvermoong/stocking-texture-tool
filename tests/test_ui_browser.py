@@ -262,6 +262,54 @@ def press(page, key, code, vk, ctrl=False):
                   modifiers=2 if ctrl else 0)
 
 
+@pytest.mark.parametrize('lang, names', (('zh', ['点选', '隔开']), ('en', ['Pick', 'Divider'])))
+def test_guides_tool_shortcuts_match_their_labels_and_s_is_unassigned(ui, lang, names):
+    page = show(ui, lang, 100, (1280, 720))
+    page.click('[data-tool="brush"]')
+    page.evaluate('document.querySelector("#stage").focus()')
+    active = 'document.querySelector(".tool[aria-checked=true]").dataset.tool'
+    for key, tool in (('w', 'segment'), ('s', 'segment'), ('d', 'wall'), ('s', 'wall')):
+        press(page, key, f'Key{key.upper()}', ord(key.upper()))
+        assert page.evaluate(active) == tool, key
+    assert page.evaluate('''['segment', 'wall'].map((tool) => {
+        const b = document.querySelector(`[data-tool="${tool}"]`);
+        return [b.firstChild.textContent.trim(), b.querySelector('kbd').textContent, b.getAttribute('aria-keyshortcuts')];
+    })''') == [[names[0], 'W', 'W'], [names[1], 'D', 'D']]
+
+
+@pytest.mark.parametrize('lang, strength, brightness, contrast', (
+    ('zh', '强度', '亮度', '明暗'), ('en', 'Strength', 'Brightness', 'Contrast'),
+))
+def test_texture_strength_and_the_two_effects_have_distinct_slider_and_help_names(ui, lang, strength, brightness, contrast):
+    page = show(ui, lang, 100, (1440, 900), look=1)
+    assert page.evaluate('document.querySelector("#strength").labels[0].textContent') == strength
+    for effect, name in (('particle', brightness), ('moire', contrast)):
+        toggle = f'#{effect}-on'
+        if not page.evaluate(f'document.querySelector("{toggle}").checked'):
+            page.click(toggle)
+        slider = f'document.querySelector("#{effect}")'
+        assert page.evaluate(f'{slider}.checkVisibility()')
+        page.click(f'[aria-controls="{effect}-info"]')
+        note = f'document.querySelector("#{effect}-info")'
+        assert page.evaluate(f'{note}.checkVisibility()')
+        assert page.evaluate(f'[{slider}.labels[0].textContent, {note}.querySelector("b").textContent]') == [name, name]
+
+
+@pytest.mark.parametrize('lang, compare, fill_gaps, avoid', (
+    ('zh', '原图与效果对比拖杆', '补细缝', ('角度', '细线')),
+    ('en', 'Compare original and result', 'Fill gaps', ('angle', 'fine lines')),
+))
+def test_compare_pick_and_tilt_use_distinct_ui_terms(ui, lang, compare, fill_gaps, avoid):
+    page = show(ui, lang, 100, (1440, 900), look=1)
+    assert page.evaluate('document.querySelector("#compare").getAttribute("aria-label")') == compare
+    assert page.evaluate('document.querySelector("#fill-seams").labels[0].textContent.trim()') == fill_gaps
+    page.click('[data-style="lines"]')
+    page.click('[aria-controls="tilt-info"]')
+    assert page.evaluate('document.querySelector("#tilt-info").checkVisibility()')
+    tilt = page.evaluate('document.querySelector("#tilt-info p").textContent').lower()
+    assert '0°' in tilt and not any(word in tilt for word in avoid), tilt
+
+
 def test_the_focus_stays_with_the_layers_when_their_rows_are_made_anew(ui):
     # the rows are made anew when the number of 纹理层 changes: by Delete on a layer's name, and by 撤销 after it.
     # The keyboard must not be left on nothing (the page's body) either time

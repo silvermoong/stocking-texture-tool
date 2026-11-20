@@ -1570,7 +1570,7 @@ $('#cut-snap').checked = localStorage.getItem('cut_snap') !== '0';
 $('#cut-snap').addEventListener('change', (e) => { localStorage.setItem('cut_snap', e.target.checked ? '1' : '0'); redraw(); });
 $('#wall-snap').checked = localStorage.getItem('wall_snap') !== '0';
 $('#wall-snap').addEventListener('change', (e) => localStorage.setItem('wall_snap', e.target.checked ? '1' : '0'));
-// 补接缝 sits in the range chooser, so it applies to the click the chooser is showing as well as to later ones
+// 补细缝 sits in the range chooser, so it applies to the click the chooser is showing as well as to later ones
 $('#fill-seams').checked = localStorage.getItem('fill_seams') !== '0';
 $('#fill-seams').addEventListener('change', (e) => {
   localStorage.setItem('fill_seams', e.target.checked ? '1' : '0');
@@ -1860,7 +1860,7 @@ function keyboardOnControl() {
 
 const PAN_KEYS = { ArrowLeft: [1, 0], ArrowRight: [-1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 
-const TOOL_KEYS = { s: 'segment', b: 'brush', e: 'erase', p: 'pen', k: 'cut', w: 'wall' };
+const TOOL_KEYS = { w: 'segment', b: 'brush', e: 'erase', p: 'pen', k: 'cut', d: 'wall' };
 
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement && e.target.type !== 'checkbox' && e.target.type !== 'range') return;

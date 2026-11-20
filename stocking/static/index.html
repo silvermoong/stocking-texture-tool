@@ -58,7 +58,7 @@
       </div>
       <ul id="region-list" class="region-list" aria-label="部位"></ul>
       <div class="tools" role="radiogroup" aria-label="部位工具">
-        <button class="tool" data-tool="segment" role="radio" aria-keyshortcuts="S" title="点选：左键把点到的部分加进当前部位，右键减去">点选<kbd aria-hidden="true" translate="no">S</kbd></button>
+        <button class="tool" data-tool="segment" role="radio" aria-keyshortcuts="W" title="点选：左键把点到的部分加进当前部位，右键减去">点选<kbd aria-hidden="true" translate="no">W</kbd></button>
         <button class="tool" data-tool="brush" role="radio" aria-keyshortcuts="B" title="画笔：涂当前部位，右键擦除">画笔<kbd aria-hidden="true" translate="no">B</kbd></button>
         <button class="tool" data-tool="erase" role="radio" aria-keyshortcuts="E" title="橡皮：擦当前部位">橡皮<kbd aria-hidden="true" translate="no">E</kbd></button>
         <button class="tool" data-tool="cut" role="radio" aria-keyshortcuts="K" title="切开：在当前部位上画一条线，把它分割成两块">切开<kbd aria-hidden="true" translate="no">K</kbd></button>
@@ -84,7 +84,7 @@
       <div class="tool-row">
         <div class="tools" role="radiogroup" aria-label="走向工具">
           <button class="tool" data-tool="pen" role="radio" aria-keyshortcuts="P" title="走向：沿一道横纹画线，右键删除线">走向<kbd aria-hidden="true" translate="no">P</kbd></button>
-          <button class="tool" data-tool="wall" role="radio" aria-keyshortcuts="W" title="隔开：沿两块丝袜的交界画线，横纹不会穿过它。一块挡住另一块的会自动找到（虚线），贴在一起的（比如大腿压着小腿）要自己画；右键删除隔开线">隔开<kbd aria-hidden="true" translate="no">W</kbd></button>
+          <button class="tool" data-tool="wall" role="radio" aria-keyshortcuts="D" title="隔开：沿两块丝袜的交界画线，横纹不会穿过它。一块挡住另一块的会自动找到（虚线），贴在一起的（比如大腿压着小腿）要自己画；右键删除隔开线">隔开<kbd aria-hidden="true" translate="no">D</kbd></button>
         </div>
         <button id="btn-mirror" class="tool-btn" type="button" aria-disabled="true">镜像</button>
       </div>
@@ -162,7 +162,7 @@
       </div>
       <input id="tilt" type="range" min="0" max="60" step="1" value="32">
       <div id="tilt-info" class="info-pop" role="note" hidden>
-        <p>细线和横纹之间的夹角。0° 就是顺着横纹走，角度越大线越斜。</p>
+        <p>斜单线相对横纹的倾斜程度：0° 就是顺着横纹走；数值越大，线越斜。</p>
         <p>两条腿往相反的方向斜，左右对称成人字形：名字里带“左”“右”的部位按名字分边，其他部位按在画面里的位置分，画面左边的算左；夹在两边中间的（比如胯部）不斜。</p>
       </div>
     </div>
@@ -228,11 +228,11 @@
     </div>
     <div id="particle-info" class="info-pop" role="note" hidden>
       <p>像油光那样顺着画面里的受光处找出高光带（深色丝袜上同样会延续到整条腿），但把高光画成细密的粒子，中间密、往两侧渐渐散开。默认关，打开开关才有，可以叠加在任何样式上。</p>
-      <p><b>强度</b>：高光粒子有多亮、多明显。</p>
+      <p><b>亮度</b>：高光粒子有多亮、多明显。</p>
     </div>
     <div id="particle-fields" hidden>
       <div class="field">
-        <div class="field-head"><label for="particle">强度</label><span id="particle-val" class="val num"></span></div>
+        <div class="field-head"><label for="particle">亮度</label><span id="particle-val" class="val num"></span></div>
         <input id="particle" type="range" min="0" max="100" step="1" value="100">
       </div>
     </div>
@@ -246,14 +246,14 @@
     </div>
     <div id="moire-info" class="info-pop" role="note" hidden>
       <p>给丝袜加上一圈圈水波似的明暗条纹，像现实里的丝袜叠穿、拍照时出现的摩尔纹。默认关，打开开关才有。</p>
-      <p><b>强度</b>：条纹的明暗有多深。</p>
+      <p><b>明暗</b>：条纹的明暗差别有多大。</p>
       <p><b>面积</b>：从每个鼓起处顶上的一小圈开始，一圈圈往外扩，环数也跟着变多；拉满就是整个鼓起的地方都有。</p>
       <p>条纹顺着身体鼓起的地方走：膝盖、大腿、胸顶各围成一圈圈，平的地方没有。位置由深度模型估出的起伏决定，鼓得越高，环越多。</p>
       <p>这是特意加上的效果。纹理本身不会出摩尔纹，这一点不变；关掉开关，效果就没了。</p>
     </div>
     <div id="moire-fields" hidden>
       <div class="field">
-        <div class="field-head"><label for="moire">强度</label><span id="moire-val" class="val num"></span></div>
+        <div class="field-head"><label for="moire">明暗</label><span id="moire-val" class="val num"></span></div>
         <input id="moire" type="range" min="0" max="100" step="1" value="100">
       </div>
       <div class="field">
@@ -310,7 +310,7 @@
       <button class="tier" data-k="1" role="radio">中</button>
       <button class="tier" data-k="2" role="radio">大</button>
     </div>
-    <label id="seams" class="check seams" title="拼几次点选时，各块中间被线稿隔开、没点到的细缝自动补上；只补细缝，不会多选大块"><input type="checkbox" id="fill-seams" checked>补接缝</label>
+    <label id="seams" class="check seams" title="拼几次点选时，各块中间被线稿隔开、没点到的细缝自动补上；只补细缝，不会多选大块"><input type="checkbox" id="fill-seams" checked>补细缝</label>
   </div>
   <div id="empty" class="empty">
     <div class="drop-frame">
@@ -339,7 +339,7 @@
         <div id="compare-tags" class="compare-tags" aria-hidden="true">
           <span id="compare-before">原图</span><span id="compare-after">效果</span>
         </div>
-        <div id="compare" class="compare" role="slider" tabindex="0" aria-label="原图和效果的分界线"
+        <div id="compare" class="compare" role="slider" tabindex="0" aria-label="原图与效果对比拖杆"
              aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" title="左右拖动，对比原图（左）和效果（右）">
           <span class="compare-grip" aria-hidden="true"></span>
         </div>

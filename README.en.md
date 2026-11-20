@@ -6,9 +6,9 @@
 
 Adds a realistic knit texture to the stockings in an illustration. Roughly paint where the stockings are, draw a few lines along the knit, and the tool works out how the texture wraps around the legs and body and renders it in the style you pick, free of moiré. Everything runs on your own computer; nothing is uploaded.
 
-<p align="center"><img src="docs/images/hook.png" width="820" alt="One picture before and after: the original left of a sliding divider, the textured result right of it"></p>
+<p align="center"><img src="docs/images/hook.png" width="820" alt="One picture before and after: the original on the left of the comparison slider, the textured result on the right"></p>
 
-<p align="center"><sub>Original left of the divider, processed right of it.</sub></p>
+<p align="center"><sub>Original on the left of the comparison slider, processed on the right.</sub></p>
 
 Black or white stockings alike (original on the left, processed on the right):
 
@@ -24,9 +24,9 @@ Black or white stockings alike (original on the left, processed on the right):
 - **Presets:** save a tuned style, density, tilt, strength, texture layers, sparkles, highlight particles and moiré effect, and load them in one click on another image, or export them as a small file to give to someone.
 - **Black or white stockings.** Strength follows the stockings' lightness: the same texture stands out about twice as much on white, so it is turned down there automatically.
 - **No moiré.** Where the courses get close to a pixel apart the texture fades out by itself, and Show problems marks where that happens.
-- **A beta switch for when you do want moiré.** The rippling bands of light and dark that real stockings show worn in layers or photographed: turn on the Moiré effect switch, then use Strength for how strong the bands are and Area for how far they grow from one small ring. Off by default; the bands follow the bulges of the knees and thighs and leave the flat parts alone.
+- **A beta switch for when you do want moiré.** The rippling bands of light and dark that real stockings show worn in layers or photographed: turn on the Moiré effect switch, then use Contrast for how much the bands lighten and darken the stockings and Area for how far they grow from one small ring. Off by default; the bands follow the bulges of the knees and thighs and leave the flat parts alone.
 - **Mirror in one click.** Finish the left leg and the right one follows.
-- **Three exports:** the finished image; a PNG of the stockings alone with everything else transparent (laid over the original it gives the finished image, handy as a Photoshop layer); and a guides PSD you can open again to keep working. Your own PSD is never written to.
+- **Four exports:** a finished image PNG; a Stockings only PNG (transparent elsewhere, so it can sit over the original as a Photoshop layer); a Texture only PNG (blend it over the original in Linear Light); and a guides PSD you can open again to keep working. Your own PSD is never written to.
 - Chinese and English interface. If the text is too small on a 2K or 4K screen, Interface size (top right) enlarges it to 115%–175%.
 
 ## Install
@@ -77,7 +77,7 @@ Drop a PNG, JPG or PSD on the window, or press Ctrl+O. A PSD is read as its flat
 
 Step 1, Regions, on the left. There are two to start with, Left leg and Right leg.
 
-- **Pick (S):** left-click a leg to select all of it; right-click subtracts. After a click, Small / Medium / Large appears beside it, and Tab switches between them. Fill in anything missed with another click at Small. When several picks make up one region, the thin gaps the line art leaves between the pieces are filled in automatically (the Fill seams switch beside the range turns that off).
+- **Pick (W):** left-click a leg to select all of it; right-click subtracts. After a click, Small / Medium / Large appears beside it, and Tab switches between them. Fill in anything missed with another click at Small. When several picks make up one region, the thin gaps the line art leaves between the pieces are filled in automatically (the Fill gaps switch beside the range turns that off).
 - **Brush (B) / Eraser (E):** touch up the edges by hand; `[` and `]` change the brush size.
 - **Split (K):** draw a line across a region to cut it in two. A Snap to line art switch appears above the picture: with it on, the line snaps to nearby line art. If two breasts or two legs ended up in one region, Auto split there cuts it down the middle.
 
@@ -115,7 +115,7 @@ With just the two direction lines, the thigh's courses run straight on into the 
 
 ![No divider line: one direction line each on thigh and calf, and the thigh's courses run on into the calf](docs/images/fold-step1.jpg)
 
-**Thigh and calf each go their own way:** draw a Divider (W) along the line where thigh and calf touch (with Snap to line art on, above the picture, the line snaps to nearby line art). The courses part there, so the thigh and the calf can have direction lines running different ways.
+**Thigh and calf each go their own way:** draw a Divider (D) along the line where thigh and calf touch (with Snap to line art on, above the picture, the line snaps to nearby line art). The courses part there, so the thigh and the calf can have direction lines running different ways.
 
 ![With a divider line: the courses of thigh and calf part at the join](docs/images/fold-step2.jpg)
 
@@ -139,7 +139,7 @@ Within one region, where one stretch of stocking lies in front of another with a
 
 ### 5. Choose a style and adjust it
 
-Switch to the Texture page at the top. The settings are on the left; Whole shows the full picture (drag the divider to compare with the original) and Detail shows a square at 100% or 200%, updating as you drag a slider. What Detail shows is exactly what gets exported.
+Switch to the Texture page at the top. The settings are on the left; Whole shows the full picture (drag the comparison slider to compare the original with the result) and Detail shows a square at 100% or 200%, updating as you drag a slider. What Detail shows is exactly what gets exported.
 
 ![The Texture page](docs/images/texture-page-en.jpg)
 
@@ -176,19 +176,19 @@ Sparkles (off by default, turn the switch on for the sliders; Evenly) 0% / 100% 
 
 Sparkles come from several sources that mix: By depth puts them where the body bulges toward you (knees, the fronts of the legs), By highlights on the highlights the artist painted, and Evenly everywhere, for sequinned or glitter stockings.
 
-**Highlight particles** (Beta; off by default): finds the continuous highlight bands along the lit parts of the picture the way Glossy does (running the whole length of the leg on dark stockings too), and draws them as fine particles instead of a smooth band—dense along the spine and scattering and fading smoothly toward the flanks and ends, while breaking up smooth painted highlights into particles as well. Turn the switch on and use Strength to set how bright they are; works over any style.
+**Highlight particles** (Beta; off by default): finds the continuous highlight bands along the lit parts of the picture the way Glossy does (running the whole length of the leg on dark stockings too), and draws them as fine particles instead of a smooth band—dense along the spine and scattering and fading smoothly toward the flanks and ends, while breaking up smooth painted highlights into particles as well. Turn the switch on and use Brightness to set how bright they are; works over any style.
 
-![The Texture page with Highlight particles switched on: Strength appears under the switch, and the Detail shows granular highlight bands along the fronts of the thighs and knees](docs/images/particle-page-en.jpg)
+![The Texture page with Highlight particles switched on: a slider below controls particle brightness, and Detail shows granular highlight bands along the fronts of the thighs and knees](docs/images/particle-page-en.jpg)
 
-Strength 0% / 35% / 70% / 100% (left to right), the same strip of left thigh down to the knee: fine particles come out along the highlight line and scatter and fade toward either side
+Brightness 0% / 35% / 70% / 100% (left to right), the same strip of left thigh down to the knee: fine particles come out along the highlight line and scatter and fade toward either side
 
-![Highlight particles from 0% to 100% strength: from left to right off, 35%, 70%, 100%](docs/images/particle-strength.png)
+![Highlight particle brightness from 0% to 100%: from left to right off, 35%, 70%, 100%](docs/images/particle-strength.png)
 
-**Moiré effect** (Beta; off by default): rings of light and dark like ripples on water, as moiré shows on real stockings worn in layers or photographed. A sliding switch in the panel turns it on, and only then do its two sliders appear: Strength is how deep the light and dark go; Area starts as one small ring on top of each bulge and spreads outward, gaining rings as it grows, and all the way up covers the whole bulge. The bands follow the bulges the depth model finds, rings round each knee, thigh or breast and none on the flat parts (at full Area about six tenths of the stocking carries bands, the rest is flat); each ring is a fixed step of height, so the higher a bulge the more rings it holds, and where they go and how close they run is not yours to set. Turning the switch off folds the sliders away and removes the effect; turn it on again and the sliders are where you left them. It works with all six styles. It is added on purpose; the texture itself still never causes moiré.
+**Moiré effect** (Beta; off by default): rings of light and dark like ripples on water, as moiré shows on real stockings worn in layers or photographed. A sliding switch in the panel turns it on, and only then do its two sliders appear: Contrast sets how much the bands lighten and darken the stockings; Area starts as one small ring on top of each bulge and spreads outward, gaining rings as it grows, and all the way up covers the whole bulge. The bands follow the bulges the depth model finds, rings round each knee, thigh or breast and none on the flat parts (at full Area about six tenths of the stocking carries bands, the rest is flat); each ring is a fixed step of height, so the higher a bulge the more rings it holds, and where they go and how close they run is not yours to set. Turning the switch off folds the sliders away and removes the effect; turn it on again and the sliders are where you left them. It works with all six styles. It is added on purpose; the texture itself still never causes moiré.
 
-![The Texture page with the Moiré effect switched on: Strength and Area appear under the switch, and the Detail shows concentric bands on the thighs and knees](docs/images/moire-page-en.jpg)
+![The Texture page with the Moiré effect switched on: two sliders below control contrast and area, and Detail shows concentric bands on the thighs and knees](docs/images/moire-page-en.jpg)
 
-Area 35% / 50% / 70% / 100% (Strength 100%; top left, top right, bottom left, bottom right), the same patch of thigh: the bands start as one ring, spread outward and gain rings
+Area 35% / 50% / 70% / 100% (Contrast 100%; top left, top right, bottom left, bottom right), the same patch of thigh: the bands start as one ring, spread outward and gain rings
 
 ![Area from 35% to 100%: the bands on the thigh grow from a faint ring into concentric rings](docs/images/moire-area.png)
 
@@ -240,7 +240,7 @@ The tool saves your work as you go: close it and it opens where you left off. Be
 
 ## Common questions
 
-**The courses run across the join between two stretches of stocking.** Draw a Divider (W) along the join.
+**The courses run across the join between two stretches of stocking.** Draw a Divider (D) along the join.
 
 **The texture is too faint or too strong.** Adjust Strength. Dark clothes and dark stockings can be faint at the default.
 
