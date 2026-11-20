@@ -148,6 +148,29 @@ def _read_runfile():
         return {}
 
 
+def open_given(path, taken_over=False, register=lambda: None):
+    """Open the file named on the command line in this process's own server. register() lets other launchers find the
+    server (it writes the runfile).
+
+    After taking over from a tool that ran older code, the image that was open there comes back first (that tool saved
+    its session as it stopped), so the file does not replace regions and 走向 lines that are not exported without the
+    page asking. Other launchers find the server only after that: a file of theirs opened into the still empty server
+    would be autosaved over the old session before it is read. A session that cannot be read stops the file from
+    opening, for the same reason; the error goes to the caller."""
+    from . import server
+    if not taken_over:
+        register()
+        server.open_asking(path)
+        return
+    try:
+        doc = server.sessions.restore()
+        if doc is not None:
+            print(f'restored session: {doc.name}', flush=True)
+        server.open_asking(path)
+    finally:
+        register()
+
+
 def main():
     ap = argparse.ArgumentParser(prog='stocking')
     ap.add_argument('file', nargs='?')
@@ -168,7 +191,8 @@ def main():
         if info and info.get('version') == code_version():
             if path:
                 try:
-                    _request(port, '/api/open/path', {'path': path}, timeout=60)
+                    # ask: with regions and 走向 lines not exported the image stays, and the page asks before opening
+                    _request(port, '/api/open/path', {'path': path, 'ask': True}, timeout=60)
                 except Exception as e:
                     _alert(tr('打不开 {name}：{error}', name=path, error=e))
             if not args.no_window:
@@ -178,6 +202,10 @@ def main():
             print(f'server on port {port} runs older code; replacing it', flush=True)
             if _retire(port, info):
                 taken_over = port
+                try:
+                    os.remove(RUNFILE)          # left behind if that tool was killed: nothing is at that port for now
+                except OSError:
+                    pass
             else:
                 _alert(tr('旧版的工具没有退出，请在任务管理器里结束 pythonw.exe 后再试'))
                 return
@@ -198,19 +226,22 @@ def main():
             if srv.should_exit:
                 return
             time.sleep(0.05)
-        if not args.isolated:
-            os.makedirs(settings.DIR, exist_ok=True)
-            with open(RUNFILE, 'w', encoding='utf-8') as f:
-                json.dump({'port': port, 'pid': os.getpid()}, f)
+        def register():
+            if not args.isolated:
+                os.makedirs(settings.DIR, exist_ok=True)
+                with open(RUNFILE, 'w', encoding='utf-8') as f:
+                    json.dump({'port': port, 'pid': os.getpid()}, f)
+
         print(f'{TITLE}: {url}', flush=True)
         if path:
             if not args.no_window:
                 open_window(url)
             try:
-                server.open_path(path)
+                open_given(path, taken_over is not None, register)
             except Exception as e:
                 _alert(tr('打不开 {name}：{error}', name=path, error=e))
         else:
+            register()
             try:
                 doc = server.sessions.restore()
                 if doc is not None:

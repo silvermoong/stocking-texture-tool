@@ -73,6 +73,12 @@ app.mount('/static', StaticFiles(directory=STATIC), name='static')
 _doc = None
 _doc_lock = threading.Lock()
 _dialog_lock = threading.Lock()
+# A file from outside that waits for the page to ask (open_asking): {'id', 'path', 'name', 'doc': the image it would
+# replace}. It changes under _doc_lock, like the document, and each change has a revision: events and what a window
+# reads carry it, so that a page can tell an older one from a newer. It starts at the clock, so a server started later
+# never counts below one a page has seen.
+_pending_open = None
+_pending_rev = int(time.time() * 1000)
 request_exit = None             # set by the launcher: stops the server
 
 
@@ -169,9 +175,12 @@ async def _bad_value(request, exc):
 
 
 def set_document(doc):
-    global _doc
+    global _doc, _pending_open, _pending_rev
     with _doc_lock:
         old, _doc = _doc, doc
+        _pending_open = None            # whatever replaced the image, the user was asked for it: no file waits now
+        _pending_rev += 1
+        rev = _pending_rev
     if old is not None:
         old.close()
         if sam.service.status == 'ready':
@@ -183,7 +192,7 @@ def set_document(doc):
     # the depth model finds the walls (one stretch of stocking in front of another) the courses must not cross
     doc._depth_started = True
     depth.service.disparity_async(doc)
-    bus.publish({'type': 'opened', 'doc': doc.id})
+    bus.publish({'type': 'opened', 'doc': doc.id, 'rev': rev})
     return doc
 
 
@@ -210,6 +219,47 @@ def open_path(path):
         if isinstance(e, ValueError):
             raise
         raise ValueError(tr('打不开 {name}：{error}', name=os.path.basename(path), error=e)) from e
+
+
+def open_asking(path):
+    """Open a file handed to the tool from outside (dragged onto the shortcut or start.bat, or named on the command
+    line), unless that would lose something: an image whose regions and 走向 lines no file holds stays open, the file
+    waits (_pending_open), and the page asks as it does for 打开…. Returns the document, or None for a file that
+    waits."""
+    global _pending_open, _pending_rev
+    path = os.path.abspath(path)
+    if not os.path.isfile(path):
+        raise ValueError(tr('文件不存在：{path}', path=path))
+    with _doc_lock:
+        d = _doc
+        waiting = None
+        if d is not None and d.unsaved_guides():
+            waiting = {'id': os.urandom(6).hex(), 'path': path, 'name': os.path.basename(path), 'doc': d.id}
+            _pending_open = waiting
+            _pending_rev += 1
+            rev = _pending_rev
+    if waiting is None:
+        return open_path(path)
+    bus.publish(dict(_shown(waiting), type='open-request', rev=rev))
+    return None
+
+
+def _shown(waiting):
+    """A waiting file as the page gets it."""
+    return {k: waiting[k] for k in ('id', 'path', 'name')}
+
+
+def _take_pending(pid):
+    """(the waiting file with this id, which then waits no longer, and the revision that made); (None, None) if it is
+    not the one that waits, or the image it was to replace is no longer the one open (then it is on its way out)."""
+    global _pending_open, _pending_rev
+    with _doc_lock:
+        waiting = _pending_open
+        if waiting is None or waiting['id'] != pid or _doc is None or _doc.id != waiting['doc']:
+            return None, None
+        _pending_open = None
+        _pending_rev += 1
+        return waiting, _pending_rev
 
 
 def doc_for(doc_id):
@@ -321,11 +371,55 @@ def open_dialog():
 
 class PathIn(BaseModel):
     path: str
+    ask: bool = False                   # the launcher's: do not replace an image whose guides no file holds; ask first
 
 
 @app.post('/api/open/path')
 def open_by_path(body: PathIn):
-    return state_of(open_path(body.path))
+    """Open the file at a path. With ask (the launcher's, for a file handed to the running tool from outside) it opens
+    only if nothing is lost: see open_asking. Returns the new document's state, or {'pending', 'name'} for a file that
+    waits."""
+    if not body.ask:
+        return state_of(open_path(body.path))
+    d = open_asking(body.path)
+    return state_of(d) if d is not None else {'pending': True, 'name': os.path.basename(body.path)}
+
+
+class PendingIn(BaseModel):
+    id: str
+
+
+@app.get('/api/open/pending')
+def pending_open():
+    """{'rev', 'file'}: the file from the launcher that waits for the page to ask ({'id', 'path', 'name'}, or null) and
+    the revision of that answer. A window reads it when it connects: the launcher opens one after handing the file
+    over, and none may have been open to get the event."""
+    with _doc_lock:
+        return {'rev': _pending_rev, 'file': _shown(_pending_open) if _pending_open is not None else None}
+
+
+@app.post('/api/open/pending/open')
+def open_pending(body: PendingIn):
+    """The user agreed in a window: open the waiting file. Every window asks and only the first answer counts: for a
+    file that no longer waits (answered elsewhere, or another image was opened since) nothing happens, {'settled'}."""
+    waiting, rev = _take_pending(body.id)
+    if waiting is None:
+        return {'settled': True}
+    try:
+        return state_of(open_path(waiting['path']))
+    except Exception:
+        # it waits no longer, and no 'opened' will say so: the other windows stop asking
+        bus.publish({'type': 'open-settled', 'id': waiting['id'], 'rev': rev})
+        raise
+
+
+@app.post('/api/open/pending/cancel')
+def cancel_pending_open(body: PendingIn):
+    """The user chose to keep the image: forget the waiting file, unless a newer one has taken its place."""
+    waiting, rev = _take_pending(body.id)
+    if waiting is not None:
+        bus.publish({'type': 'open-settled', 'id': waiting['id'], 'rev': rev})      # the other windows stop asking
+    return {'ok': True}
 
 
 @app.post('/api/open/upload')

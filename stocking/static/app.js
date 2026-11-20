@@ -5,6 +5,7 @@
 
 import { createLook, fillRange, setVal } from './look.js';
 import { LANG, t, translatePage } from './i18n.js';
+import { createReplaceGuard } from './openwait.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -1458,20 +1459,33 @@ $('#btn-reveal').addEventListener('click', () => {
 
 // Opening another image replaces this one: its regions and 走向 lines are gone unless a file holds them (the one
 // opened, or a 丝袜引导.psd exported since). Then ask first. Resolves true to go ahead.
-async function readyToReplace() {
-  if (!S.doc) return true;
-  let d;
-  try { d = await request('GET', '/api/doc'); } catch { d = S.doc; }    // the latest, not the last one drawn
-  if (!d || !d.unsaved_guides) return true;
-  const dlg = $('#confirm-open');
-  $('#confirm-open-text').textContent = t('打开新图后，“{name}”的部位和走向线就找不回来了。先导出成丝袜引导.psd，以后可以再打开接着改。', { name: d.name });
-  dlg.returnValue = '';
-  dlg.showModal();
-  const choice = await new Promise((resolve) => dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }));
-  if (choice === 'discard') return true;
-  if (choice === 'export') return exportDoc('guides', { remember: false });
-  return false;
-}
+// A file handed to the running tool from outside (dragged onto the desktop shortcut or start.bat, or named on the
+// command line) waits in the server for the same question: openwait.js has how the two share the dialog.
+const replaceGuard = createReplaceGuard({
+  latestDoc: () => request('GET', '/api/doc'),
+  shownDoc: () => S.doc,
+  ask: (d) => {
+    if (!S.doc || S.doc.id !== d.id) applyState(d);   // a window that has just opened: 先导出 needs the image here
+    const dlg = $('#confirm-open');
+    $('#confirm-open-text').textContent = t('打开新图后，“{name}”的部位和走向线就找不回来了。先导出成丝袜引导.psd，以后可以再打开接着改。', { name: d.name });
+    dlg.returnValue = '';
+    dlg.showModal();
+    return new Promise((resolve) => dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }));
+  },
+  dismiss: () => {
+    const dlg = $('#confirm-open');
+    if (dlg.open) dlg.close('cancel');
+  },
+  exportGuides: () => exportDoc('guides', { remember: false }),
+  pending: () => request('GET', '/api/open/pending'),
+  take: (id) => request('POST', '/api/open/pending/open', { id }),
+  cancel: (id) => request('POST', '/api/open/pending/cancel', { id }),
+  opening: (name) => busy(t('正在打开 {name}…', { name })),
+  opened: (st) => applyState(st),
+  failed: (e) => flash(e.message, true),
+  done: () => busy(null),
+});
+const readyToReplace = replaceGuard.ready;
 
 async function openDialog() {
   if (!(await readyToReplace())) return;
@@ -1919,12 +1933,14 @@ function checkVersion() {
 
 function connectEvents() {
   const es = new EventSource('/api/events');
-  es.onopen = () => { checkVersion(); refresh(0); };
+  es.onopen = () => { checkVersion(); refresh(0); replaceGuard.sync(); };
   es.onmessage = (m) => {
     const ev = JSON.parse(m.data);
     if (ev.type === 'opening') busy(t('正在打开 {name}…', { name: ev.name }));
     else if (ev.type === 'open-failed') { busy(null); flash(t('打不开 {name}：{error}', { name: ev.name, error: ev.error }), true); }
-    else if (ev.type === 'opened') { busy(null); refresh(0); }
+    else if (ev.type === 'opened') { replaceGuard.settle(undefined, ev.rev); busy(null); refresh(0); }
+    else if (ev.type === 'open-request') replaceGuard.request({ id: ev.id, path: ev.path, name: ev.name }, ev.rev);
+    else if (ev.type === 'open-settled') replaceGuard.settle(ev.id, ev.rev);
     else if (ev.type === 'sam') refresh();
     else if (ev.type === 'depth') lookUI.onEvent(ev);
     else if (S.doc && ev.doc === S.doc.id) {
