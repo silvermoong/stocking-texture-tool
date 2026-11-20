@@ -1,6 +1,6 @@
 # Committing and publishing
 
-One repo: `main`, origin `github.com/silvermoong/stocking-texture-tool`. Everything in it is public, the development material too (`.scratch/`, `AGENTS.md`, `docs/agents/`); `.gitattributes` keeps those out of GitHub's code ZIPs, so `install.bat` never copies them to users. Agents work on `agents/*` branches in worktrees and merge into `main`. Users get `main` the next time they run `install.bat`, so a push is a release.
+One repo: `main`, origin `github.com/silvermoong/stocking-texture-tool`. Everything in it is public, the development material too (`.scratch/`, `AGENTS.md`, `docs/agents/`); `.gitattributes` keeps those out of GitHub's code ZIPs, so `install.bat` never copies them to users. Agents work in worktrees on `agents/*` or `agent/*` branches, which are merged into `main`. Users get `main` the next time they run `install.bat`, so a push is a release.
 
 ## 提交 (commit)
 

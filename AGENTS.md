@@ -12,6 +12,10 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 
 提交 (commit) stays in this repo; 发布 (publish) is a push of `main` to GitHub, only when the user asks. See `docs/agents/publishing.md`.
 
+### Tests
+
+How to run the tests, and the interface tests that drive the real page in headless Edge through `tests/uibrowser.py` (screenshots go to the ignored `out/ui-browser`): see the Development section (开发) of `README.md`.
+
 ### Test images and diagnostic artifacts
 
 Before adding test images, generating visual diagnostics, or staging their outputs, read [the media policy](docs/agents/publishing.md#test-images-and-diagnostic-artifacts). Prefer synthetic fixtures; private artwork and derivatives belong in verified ignored paths, not public `.scratch/` content.
