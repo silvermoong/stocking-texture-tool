@@ -275,6 +275,8 @@ GitHub 下载失败的文件，会改从各自的原始来源下载（PyPI、PyT
 
 一部分测试要用一张样图，它不随仓库发布，没有时这些测试会自动跳过，见 [tests/sample_data.py](tests/sample_data.py)。
 
+界面的测试（[tests/test_ui_browser.py](tests/test_ui_browser.py)）用 Windows 自带的 Edge 在后台打开真实的页面，检查只有跑起来才看得到的东西，比如界面放大后顶栏的按钮是否都点得到。它自己起一个独立的工具进程，用程序画出来的图，不碰你的设置，也不需要另外安装什么；没有 Edge 时自动跳过。每次运行的截图留在 `out/ui-browser`（不进仓库）。写新的界面测试可以直接用 [tests/uibrowser.py](tests/uibrowser.py) 里的这套辅助。
+
 改了依赖版本（`requirements*.txt`）之后，要重新打包安装文件包：`.venv\Scripts\python tools\make_deps.py deps-2`，把生成的文件上传到新的 GitHub Release `deps-2`，再提交并推送更新后的 `tools/deps.json`。顺序不能反：用户运行 `install.bat` 时会立刻拿到新代码，并按新的 `deps.json` 下载。
 
 `tools/commit.txt` 由 GitHub 在生成代码 ZIP 时写入提交号（`.gitattributes` 里的 `export-subst`），`install.bat` 靠它判断 ZIP 版是否需要更新，不要改它。

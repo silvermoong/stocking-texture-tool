@@ -71,7 +71,7 @@ html, body { height: 100%; margin: 0; }
 body {
   display: grid;
   grid-template-columns: calc(272px * var(--k)) 1fr;
-  grid-template-rows: calc(44px * var(--k)) 1fr calc(28px * var(--k));
+  grid-template-rows: auto 1fr calc(28px * var(--k));     /* the bar: one row of buttons, two in a window too narrow */
   grid-template-areas: "bar bar" "side stage" "status status";
   background: var(--chrome);
   color: var(--text);
@@ -108,6 +108,9 @@ h1, h2, h3 { text-wrap: balance; }
 .btn.primary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--primary-hover); }
 .btn.primary:disabled, .btn.primary[aria-disabled="true"] { background: none; color: var(--faint); font-weight: 400; }
 .btn.toggle[aria-pressed="true"] { background: var(--chalk); color: var(--on-chalk); font-weight: 700; }
+/* pressed and under the pointer: still a light fill (every button's hover fill would leave its dark text on mid grey),
+   one step down, as the main action goes one step up */
+.btn.toggle[aria-pressed="true"]:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--primary); }
 .text-btn { padding: 0; background: none; color: var(--muted); font-size: calc(12px * var(--k)); text-decoration: underline; text-underline-offset: calc(3px * var(--k)); }
 .text-btn:hover:not(:disabled) { color: var(--text); }
 .text-btn:disabled { color: var(--faint); text-decoration: none; cursor: default; }
@@ -128,11 +131,18 @@ input[type="range"]:focus-visible { outline-offset: 2px; }
 input[type="checkbox"] { width: calc(13px * var(--k)); height: calc(13px * var(--k)); margin: 0; accent-color: var(--chalk); }
 
 /* top bar */
-.bar { grid-area: bar; display: flex; align-items: center; gap: calc(8px * var(--k)); padding: 0 calc(12px * var(--k)); border-bottom: 1px solid var(--line); }
+.bar {
+  grid-area: bar; display: flex; flex-wrap: wrap; align-items: center; align-content: center; justify-content: flex-end;
+  gap: calc(6px * var(--k)) calc(8px * var(--k)); min-height: calc(44px * var(--k)); padding: calc(7px * var(--k)) calc(12px * var(--k));
+  border-bottom: 1px solid var(--line); container: bar / inline-size;
+}
 /* nothing in the bar gives way but the space in the middle: squeezed, Chinese labels break between characters and
-   stand on end; a narrow window drops the zoom readout and the dividers first */
+   stand on end. A narrow bar drops the zoom readout and the dividers first; what still does not fit goes to a second
+   row, on the right where it was, so every control stays in the window (界面大小 itself was once pushed out of it
+   with no way back: L-3 of docs/findings/ui-ux-audit-20261119.md). Narrow is measured in em, 900px at 100%: the
+   bar's font size follows 界面大小, so a large interface in a middling window is narrow too. */
 .bar > :not(.spacer) { flex: none; }
-@media (max-width: 900px) { .bar .zoom, .bar .sep { display: none; } }
+@container bar (max-width: 69.25em) { .bar .zoom, .bar .sep { display: none; } }
 .modes { position: relative; display: flex; gap: 2px; padding: 2px; border-radius: calc(4px * var(--k)); background: var(--float); }
 .mode { height: calc(24px * var(--k)); padding: 0 calc(16px * var(--k)); border-radius: calc(3px * var(--k)); background: none; color: var(--muted); white-space: nowrap; }
 .mode:hover:not([aria-disabled="true"]):not([aria-selected="true"]) { color: var(--text); }

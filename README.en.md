@@ -275,6 +275,8 @@ It also uses PyTorch, Transformers, OpenCV, NumPy, SciPy, psd-tools, FastAPI and
 
 Some tests need a sample picture that is not distributed with the code; without it they are skipped. See [tests/sample_data.py](tests/sample_data.py).
 
+The interface tests ([tests/test_ui_browser.py](tests/test_ui_browser.py)) open the real page in the Edge that comes with Windows, in the background, and check what only shows when it runs, such as whether every button of the top bar can still be reached at a large interface size. They start a separate copy of the tool, use a picture drawn by the program, leave your settings alone and need nothing installed; without Edge they are skipped. Each run leaves its screenshots in `out/ui-browser` (not in the repository). New interface tests can use the same helpers, in [tests/uibrowser.py](tests/uibrowser.py).
+
 After changing a dependency's version (`requirements*.txt`), rebuild the install files package: `.venv\Scripts\python tools\make_deps.py deps-2`, upload what it makes to a new GitHub release `deps-2`, and then commit and push the updated `tools/deps.json`. Keep that order: `install.bat` gets users the new code at once, and downloads what the new `deps.json` lists.
 
 `tools/commit.txt` gets the commit written into it by GitHub when it makes the code ZIP (`export-subst` in `.gitattributes`); `install.bat` reads it to tell whether a ZIP copy needs updating. Leave it as it is.
