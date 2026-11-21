@@ -244,7 +244,7 @@ def test_the_check_group_reads_clearly_with_marks_off_and_on(ui, lang):
             page.click('#show-problems')
         page.hover('#status-msg')
         for text in ('#show-problems-name', 'label[for="fade"]', 'label[for="exclude"]', '.check-name',
-                     '#fade-note', '#exclude-note', '#exclude-scope', '#check-nostroke'):
+                     '#fade-note', '#exclude-note', '#check-nostroke'):
             seen = uibrowser.text_contrast(page, text)
             if seen['ratio'] < 4.5:
                 low[f'{text}, ticked: {ticked}'] = seen
@@ -1833,14 +1833,11 @@ def test_a_preview_failure_gives_way_to_a_message_in_a_narrow_window(ui):
     assert whole or room < 1, f'the message is cut short while the preview notice keeps {room} px'
 
 
-@pytest.mark.parametrize('lang, scope', (
-    ('zh', '随当前图保存，不进入预设。'), ('en', 'Saved with this image, not in presets.'),
-))
-def test_color_exclusion_says_it_is_saved_with_the_image_not_presets(ui, lang, scope):
+@pytest.mark.parametrize('lang', ('zh', 'en'))
+def test_color_exclusion_has_no_permanent_scope_note(ui, lang):
     page = show(ui, lang, 100, (360, 840), look=1)
-    exclude = 'document.querySelector("#exclude")'
-    assert page.evaluate(f'document.getElementById({exclude}.getAttribute("aria-describedby"))?.textContent') == scope
-    assert page.evaluate('document.querySelector("#exclude-scope").innerText') == scope
+    assert page.evaluate('document.querySelector("#exclude-scope") === null')
+    assert page.evaluate('document.querySelector("#exclude").getAttribute("aria-describedby")') is None
 
 
 @pytest.mark.parametrize('lang, reset', (
@@ -2395,8 +2392,8 @@ def test_tab_reaches_the_group_in_order_and_space_goes_by_how_the_focus_came(che
     assert not page.evaluate(peek)
 
 
-@pytest.mark.parametrize('lang, scale, size', (('zh', 100, (1440, 900)), ('en', 125, (1024, 768)), ('en', 100, (360, 840))),
-                         ids=('zh-100-1440x900', 'en-125-1024x768', 'en-100-360x840'))
+@pytest.mark.parametrize('lang, scale, size', (('zh', 100, (1440, 900)), ('en', 125, (1024, 768)), ('en', 125, (360, 840))),
+                         ids=('zh-100-1440x900', 'en-125-1024x768', 'en-125-360x840'))
 def test_a_question_mark_in_the_group_opens_beside_itself_and_closes_four_ways(check_ui, lang, scale, size):
     server, page = check_page(check_ui, lang, scale, size)
     scrolls = page.evaluate('(() => { const s = document.querySelector("#stage"); return s.scrollHeight > s.clientHeight + 20; })()')
