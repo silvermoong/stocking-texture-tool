@@ -97,7 +97,7 @@ def test_the_previews_stay_on_the_stage_under_a_bar_of_two_rows(ui, lang, scale,
 @pytest.mark.parametrize('scale', (150, 175))
 @pytest.mark.parametrize('lang', ('zh', 'en'))
 def test_every_control_of_the_bar_can_be_reached_at_a_large_interface_size(ui, lang, scale, size, look):
-    # L-3 of docs/findings/ui-ux-audit-20261119.md: 界面大小 itself was pushed out of a narrow window, with no way back
+    # 界面大小 itself was once pushed out of a narrow window, with no way back
     page = show(ui, lang, scale, size, look)
     page.screenshot(f'bar-{lang}-{scale}-{size[0]}x{size[1]}-{"texture" if look else "guides"}')
     assert bar_out_of_reach(page) == []
@@ -2866,12 +2866,12 @@ def test_reloading_clears_the_box_and_another_picture_keeps_it(check_ui):
 
 
 def test_a_click_on_whole_of_a_very_upright_picture_shows_that_place_in_detail(check_ui):
-    # Whole of a picture ten times as high as it is wide is a few dozen px wide: its two sides are rounded to whole
-    # px apart, so it is not scaled by one number both ways. A click near its lower end must still bring that very
-    # place into Detail, and the frame on Whole must lie where Detail's picture is.
+    # A 1:10 picture can keep its ratio after Whole rounds both sides in this window. Use a slightly different
+    # ratio to exercise the two different scales: a click near the lower end must still bring that place into
+    # Detail, and the frame on Whole must lie where Detail's picture is.
     server, page = check_ui
     server.set_lang('en')
-    iw, ih = 500, 5000
+    iw, ih = 511, 5000
     check_document(server, image_size=(iw, ih))
     show(check_ui, 'en', 100, (360, 850), look=1)
     page.wait_for('''document.querySelector('#fade-note').textContent && document.querySelector('#crop').width > 2

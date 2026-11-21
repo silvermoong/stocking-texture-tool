@@ -142,8 +142,8 @@ input[type="checkbox"] { width: calc(13px * var(--k)); height: calc(13px * var(-
 /* nothing in the bar gives way but the space in the middle: squeezed, Chinese labels break between characters and
    stand on end. A narrow bar drops the zoom readout and the dividers first; what still does not fit goes to a second
    row, on the right where it was, so every control stays in the window (界面大小 itself was once pushed out of it
-   with no way back: L-3 of docs/findings/ui-ux-audit-20261119.md). Narrow is measured in em, 900px at 100%: the
-   bar's font size follows 界面大小, so a large interface in a middling window is narrow too. */
+   with no way back). Narrow is measured in em, 900px at 100%: the bar's font size follows 界面大小, so a large
+   interface in a middling window is narrow too. */
 .bar > :not(.spacer) { flex: none; }
 /* 打开 on a row of its own (the tabs too wide to share it) stays on the left, where it always is; on a row with the
    space in the middle that space takes what is free first, so nothing moves */
