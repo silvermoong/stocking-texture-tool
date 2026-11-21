@@ -7,7 +7,7 @@ import os
 import subprocess
 import threading
 import time
-from typing import Literal
+from typing import Literal, get_args
 from urllib.parse import urlsplit
 
 import cv2
@@ -269,15 +269,44 @@ def doc_for(doc_id):
     return d
 
 
+ToolPreference = Literal['cut_snap', 'wall_snap', 'fill_seams']
+
+
+def tool_preferences():
+    unset = object()
+    values = {key: settings.get(key, unset) for key in get_args(ToolPreference)}
+    return {key: None if value is unset else value is not False for key, value in values.items()}
+
+
 @app.get('/')
 def index():
     """The page, in the user's language: static/i18n.js translates it from the lang attribute."""
     with open(os.path.join(STATIC, 'index.html'), encoding='utf-8') as f:
         html = f.read()
-    if i18n.lang() == 'en':
-        html = html.replace('<html lang="zh-CN">', '<html lang="en">', 1)
-    html = html.replace('<html ', f'<html style="--k: {ui_scale() / 100:g}" ', 1)
+    lang = 'en' if i18n.lang() == 'en' else 'zh-CN'
+    prefs = json.dumps(tool_preferences())  # only fixed keys and booleans/null in the attribute
+    html = html.replace('<html lang="zh-CN">',
+                        f'''<html style="--k: {ui_scale() / 100:g}" lang="{lang}" data-tool-prefs='{prefs}'>''', 1)
     return Response(html, media_type='text/html; charset=utf-8')
+
+
+class ToolPreferenceIn(BaseModel):
+    on: bool
+    only_if_unset: bool = False
+
+
+@app.put('/api/tool-preferences/{key}')
+def put_tool_preference(key: ToolPreference, body: ToolPreferenceIn):
+    """Remember a guide tool's preference; a browser's legacy value only fills a missing setting."""
+    if body.only_if_unset:
+        try:
+            return {'on': settings.set_if_unset(key, body.on) is not False}
+        except settings.Unreadable:
+            # Not an answer the page may act on: it keeps its old value and asks again at its next start,
+            # without a message (so the detail is never shown).
+            raise HTTPException(503, 'settings.json cannot be read') from None
+    settings.update(**{key: body.on})
+    return {'on': body.on}
 
 
 UI_SCALES = (100, 115, 125, 150, 175)     # 界面大小, percent

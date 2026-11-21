@@ -83,6 +83,8 @@ Step 1, Regions, on the left. There are two to start with, Left leg and Right le
 - **Brush (B) / Eraser (E):** touch up the edges by hand; `[` and `]` change the brush size.
 - **Split (K):** draw a line across a region to cut it in two. A Snap to line art switch appears above the picture: with it on, the line snaps to nearby line art. If two breasts or two legs ended up in one region, Auto split there cuts it down the middle. If you draw too short a line with Split, Direction or Divider, the status bar asks you to drag farther.
 
+Snap to line art for Split and Divider, and Fill gaps for Pick, are all checked by default. Your choices are saved in the tool's settings on this computer and carry over if you reopen it on a different port or in a different browser.
+
 Give each side of a crease its own region: left and right thigh, crotch, left and right breast. It works beyond legs too, for instance a top split into collar, left chest and right chest:
 
 ![A turtleneck top split into three regions: collar, left chest and right chest](docs/images/torso-regions.jpg)

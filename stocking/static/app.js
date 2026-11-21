@@ -128,7 +128,7 @@ for (const b of document.querySelectorAll('.lang .seg-btn')) {
     if (b.dataset.lang === LANG) return;
     try {
       await request('POST', '/api/lang', { lang: b.dataset.lang });
-      location.reload();
+      await reloadPage();
     } catch (e) { flash(e.message, true); }
   });
 }
@@ -141,7 +141,7 @@ for (const b of document.querySelectorAll('.lang .seg-btn')) {
   sel.addEventListener('change', async () => {
     try {
       await request('POST', '/api/ui-scale', { scale: +sel.value });
-      location.reload();
+      await reloadPage();
     } catch (e) { flash(e.message, true); }
   });
 }
@@ -232,6 +232,23 @@ async function request(method, url, body) {
   try { j = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
   if (!r.ok) throw new Error((j && j.detail) || t('服务器出错（{status}），再试一次；一直这样就关掉工具重新打开', { status: r.status }));
   return j;
+}
+
+// A reload this page asks for itself (language, 界面大小, new server code) would drop tool preferences that are
+// still on their way, a choice queued behind a slow answer included, with nothing said. So it lets them finish
+// first, those made while it waits too. A failed save has reported itself and holds nothing up, and neither does a
+// server that never answers: past the limit the page reloads with what was stored.
+const RELOAD_WAIT_MS = 3000;
+async function reloadPage() {
+  const saved = async () => {
+    for (let seen = []; ;) {
+      const now = [...toolPrefSaves.values()];
+      if (now.length === seen.length && now.every((p, i) => p === seen[i])) return;
+      await Promise.all(seen = now);
+    }
+  };
+  await Promise.race([saved(), new Promise((done) => setTimeout(done, RELOAD_WAIT_MS))]);
+  location.reload();
 }
 
 // Edits run one after another so their responses arrive in order.
@@ -1664,14 +1681,41 @@ $('#btn-auto-cut').addEventListener('click', () => {
   if (!r) return;
   edit('POST', `/regions/${r.id}/split`).then((st) => splitDone(st, r.name));
 });
-$('#cut-snap').checked = localStorage.getItem('cut_snap') !== '0';
-$('#cut-snap').addEventListener('change', (e) => { localStorage.setItem('cut_snap', e.target.checked ? '1' : '0'); redraw(); });
-$('#wall-snap').checked = localStorage.getItem('wall_snap') !== '0';
-$('#wall-snap').addEventListener('change', (e) => localStorage.setItem('wall_snap', e.target.checked ? '1' : '0'));
+const toolPrefs = JSON.parse(document.documentElement.dataset.toolPrefs || '{}');
+const toolPrefSaves = new Map();     // key -> the last save asked for here; it never rejects (see reloadPage)
+let toolPrefError = null;            // what the bar was last told about a save that failed (see the solved event)
+for (const [id, key] of [['#cut-snap', 'cut_snap'], ['#wall-snap', 'wall_snap'], ['#fill-seams', 'fill_seams']]) {
+  const box = $(id);
+  const url = `/api/tool-preferences/${key}`;
+  // Assign before connecting to the document, without firing change (which can redo a pick).
+  const stored = toolPrefs[key] ?? null;
+  box.checked = stored !== false;
+  box.addEventListener('change', () => {
+    const on = box.checked;
+    // Keep fast clicks in order, without making tool actions wait for these writes.
+    toolPrefSaves.set(key, (toolPrefSaves.get(key) ?? Promise.resolve())
+      .then(() => request('PUT', url, { on })).catch((e) => { toolPrefError = e.message; flash(e.message, true); }));
+  });
+
+  // One-time import from an old page on this origin. Some browser profiles deny storage access altogether.
+  try {
+    if (stored !== null) {
+      localStorage.removeItem(key);
+    } else {
+      const legacy = localStorage.getItem(key);
+      if (legacy === null) continue;
+      box.checked = legacy !== '0';
+      request('PUT', url, { on: box.checked, only_if_unset: true }).then((result) => {
+        if (typeof result?.on !== 'boolean') return;
+        if (!toolPrefSaves.has(key)) box.checked = result.on;   // another page may have stored a value; never undo a click here
+        localStorage.removeItem(key);
+      }).catch(() => {});                      // leave the old value for next time if the import fails
+    }
+  } catch { /* browser storage unavailable; keep the server's value or the default */ }
+}
+$('#cut-snap').addEventListener('change', () => redraw());
 // 补细缝 sits in the range chooser, so it applies to the click the chooser is showing as well as to later ones
-$('#fill-seams').checked = localStorage.getItem('fill_seams') !== '0';
 $('#fill-seams').addEventListener('change', (e) => {
-  localStorage.setItem('fill_seams', e.target.checked ? '1' : '0');
   const c = S.doc && S.doc.segment_cycle;
   if (c && !c.subtract && !S.segPending) edit('POST', '/segment/select', { k: c.k, seams: e.target.checked });
 });
@@ -2030,7 +2074,7 @@ let serverVersion = null;
 
 function checkVersion() {
   request('GET', '/api/ping').then((p) => {
-    if (serverVersion && p.version !== serverVersion) location.reload();
+    if (serverVersion && p.version !== serverVersion) reloadPage();
     else serverVersion = p.version;
   }).catch(() => {});
 }
@@ -2054,7 +2098,9 @@ function connectEvents() {
         if (r && ev.error) flash(t('{name}：{error}', { name: r.name, error: ev.error }), true);
         // A fast solve must not erase the receipt the user just got for an action (the mirror it solves). Anything
         // else in the bar is older news than this: the note about a line too short, the solve before this one.
-        else if (r && !receipt) {
+        // Except a tool preference that was not saved, while the bar still shows it: switching 补细缝 redoes the
+        // pick, whose solve would otherwise replace within a second the only word that the choice will not last.
+        else if (r && !receipt && !($('#status-msg').matches('.error') && $('#status-msg').textContent === toolPrefError)) {
           flash(t('“{name}”的横纹已更新，用时 {s} 秒', { name: r.name, s: ev.seconds }));
         }
       }

@@ -63,12 +63,12 @@ UNSAFE_PORTS = frozenset((1719, 1720, 1723, 2049, 3659, 4045, 4190, 5060, 5061, 
                           6669, 6679, 6697, 10080))
 
 
-def _free_port():
+def _free_port(previous=None):
     while True:
         with socket.socket() as s:
             s.bind(('127.0.0.1', 0))
             port = s.getsockname()[1]
-        if port != TOOL_PORT and port not in UNSAFE_PORTS:
+        if port not in (TOOL_PORT, previous) and port not in UNSAFE_PORTS:
             return port
 
 
@@ -93,6 +93,9 @@ def _end(proc):
 _CHILD = ('import sys; from stocking import depth, sam; sam.checkpoint_path = lambda: None; '
           'depth.LOCAL += "-not-used-by-tests"; from stocking.__main__ import main; '
           'sys.argv = ["stocking"] + sys.argv[1:]; main()')
+# Keep the fixture's redirected LOCALAPPDATA settings file for port/restart tests. --isolated still disables sharing,
+# the runfile and session restore. The real user's LOCALAPPDATA isn't passed to either kind of child.
+_KEEP_SETTINGS = 'from stocking import settings; settings.isolate = lambda: None; '
 
 
 def _wait(what, test, timeout, every=0.1):
@@ -112,32 +115,37 @@ class Server:
     """An --isolated server in a folder of its own. Its settings (language, 界面大小) start empty and are thrown away
     with it (its temporary files are in the folder too); the user's are never read or written. It finds no model and
     downloads none, so 点选 and the depth model report themselves unavailable, as on a computer without them.
+    With keep_settings=True, restarting on another port reuses settings_path, inside the fixture's own folder.
 
     It is ours only once our own process has said it is serving on our port: a tool that merely answers there (another
     program can take a port between the moment it is picked and the moment it is bound) is never sent anything, and
     stopping ends our process, not whatever listens on the port."""
 
-    def __init__(self, folder):
+    def __init__(self, folder, *, keep_settings=False):
         self.folder = str(folder)
         self.port = None
         self.proc = None
         self.log = os.path.join(self.folder, 'server.log')
+        self.keep_settings = keep_settings
+        self.localappdata = os.path.join(self.folder, 'localappdata')
+        self.settings_path = os.path.join(self.localappdata, 'StockingTexture', 'settings.json') if keep_settings else None
 
     @property
     def url(self):
         return f'http://127.0.0.1:{self.port}'
 
     def start(self, timeout=90):
-        self.port = _free_port()
+        self.port = _free_port(self.port)
         home, tmp = os.path.join(self.folder, 'home'), os.path.join(self.folder, 'tmp')
         for d in (home, tmp):
             os.makedirs(d, exist_ok=True)
-        env = dict(os.environ, LOCALAPPDATA=os.path.join(self.folder, 'localappdata'), USERPROFILE=home,
+        env = dict(os.environ, LOCALAPPDATA=self.localappdata, USERPROFILE=home,
                    TEMP=tmp, TMP=tmp, TMPDIR=tmp, HF_HOME=os.path.join(home, 'hf'), HF_HUB_OFFLINE='1',
                    TRANSFORMERS_OFFLINE='1', CUDA_VISIBLE_DEVICES='-1', PYTHONUTF8='1', PYTHONPATH=ROOT)
+        child = (_KEEP_SETTINGS if self.keep_settings else '') + _CHILD
         with open(self.log, 'w', encoding='utf-8') as log:
             self.proc = subprocess.Popen(
-                [sys.executable, '-c', _CHILD, '--isolated', '--no-window', '--stay', '--port', str(self.port)],
+                [sys.executable, '-c', child, '--isolated', '--no-window', '--stay', '--port', str(self.port)],
                 cwd=ROOT, env=env, stdout=log, stderr=subprocess.STDOUT,
                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
         try:
@@ -495,11 +503,11 @@ class Page:
 
 
 @contextlib.contextmanager
-def running(folder):
+def running(folder, *, keep_settings=False):
     """(server, browser), started in `folder` and both ended on the way out, whatever happened in between and
     whichever of them failed to start or to stop: an interruption too."""
     with contextlib.ExitStack() as stack:
-        server, browser = Server(folder), Browser(folder)
+        server, browser = Server(folder, keep_settings=keep_settings), Browser(folder)
         stack.callback(server.stop)
         stack.callback(browser.stop)
         server.start()
